@@ -7,7 +7,8 @@ import type { NtfyInstruction } from '../../electron/uniwork-notify/contract'
  * 配置已在主进程落盘后广播：会话里的默认模型/推理档位与模型菜单各自重读一次。
  * 用窗口事件而不是全局 store —— 只有当前窗口的聊天面板需要重读。
  */
-export const NTFY_CONFIG_REFRESHED_EVENT = 'hermes:ntfy-config-refreshed'
+export const DESKTOP_CONFIG_REFRESHED_EVENT = 'hermes:desktop-config-refreshed'
+export const NTFY_PLAN_REFRESHED_EVENT = 'hermes:ntfy-plan-refreshed'
 
 /**
  * 指令只在页面做「重读」，写盘在主进程：一条消息带多个 tag 时合并成一次刷新，
@@ -25,6 +26,8 @@ export async function runNtfyInstruction(instruction: NtfyInstruction): Promise<
 
       if (result?.status === 'failed') {
         console.warn('[ntfy] 套餐刷新失败，保留当前配置')
+      } else if (result?.status === 'ok') {
+        window.dispatchEvent(new Event(NTFY_PLAN_REFRESHED_EVENT))
       }
     }
   }
@@ -40,5 +43,5 @@ export async function runNtfyInstruction(instruction: NtfyInstruction): Promise<
     return
   }
 
-  window.dispatchEvent(new CustomEvent(NTFY_CONFIG_REFRESHED_EVENT))
+  window.dispatchEvent(new Event(DESKTOP_CONFIG_REFRESHED_EVENT))
 }

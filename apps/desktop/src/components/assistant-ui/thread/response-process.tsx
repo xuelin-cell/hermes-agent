@@ -5,9 +5,11 @@ import { type ComponentProps, createContext, useState } from 'react'
 import { useSessionView } from '@/app/chat/session-view'
 import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
 import { Clock } from '@/lib/icons'
+import { parseMessageTime } from '@/lib/message-time'
 
 import type { ToolPart } from '../tool/fallback-model'
 import { SearchSources } from '../tool/search-links'
+import { useViewingMessagingSession } from '../tool/turn-still-running'
 
 import { contentHasVisibleText } from './content'
 import { responseDurationParts } from './response-presentation'
@@ -42,14 +44,33 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
   const view = useSessionView()
   const busy = useStore(view.$busy)
   const awaiting = useStore(view.$awaitingResponse)
+  const messaging = useViewingMessagingSession()
   const [expanded, setExpanded] = useState(false)
 
   const signature = useAuiState(s => {
     const lastIndex = indices.at(-1) ?? -1
     const last = s.thread.messages[lastIndex]
-    const live = lastIndex === s.thread.messages.length - 1 && (s.thread.isRunning || busy || awaiting)
+    const live =
+      last?.status?.type === 'running' ||
+      (lastIndex === s.thread.messages.length - 1 && (s.thread.isRunning || busy || awaiting))
     const first = s.thread.messages[indices[0]!]
     const prompt = s.thread.messages[Math.max(0, indices[0]! - 1)]
+    const custom = last?.metadata?.custom
+    const completedAt = parseMessageTime(custom?.turnCompletedAt)
+    const duration = custom?.durationS
+    // The answer text can reach disk before the gateway finishes the turn.
+    // Older history can fall back to a final reply row once a later user turn exists.
+    const awaitingStoredCompletion =
+      messaging && completedAt === undefined && typeof duration !== 'number' &&
+      s.thread.messages.findLastIndex(message => message.role === 'user') < lastIndex
+    const completed =
+      last?.role === 'assistant' &&
+      custom?.interim !== true &&
+      custom?.durableComplete !== false &&
+      !awaitingStoredCompletion &&
+      last.status?.type === 'complete' &&
+      last.status.reason === 'stop' &&
+      contentHasVisibleText(last.content)
 
     const start = Number(
       prompt?.metadata?.custom?.timelineTimestamp ??
@@ -58,15 +79,17 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
     )
 
     const end = Number(
-      last?.metadata?.custom?.timelineCompletedAt ??
-        last?.metadata?.custom?.timelineTimestamp ??
+      completedAt ??
+        custom?.timelineCompletedAt ??
+        custom?.timelineTimestamp ??
         (last?.createdAt?.getTime() ?? 0) / 1000
     )
 
-    const duration = last?.metadata?.custom?.durationS
+    const storedDuration = (completedAt !== undefined || completed) && start > 0 && end >= start
+      ? end - start
+      : undefined
 
     return JSON.stringify({
-      live: live || last?.status?.type === 'running',
       presentingAnswer:
         last?.role === 'assistant' &&
         last.metadata?.custom?.interim !== true &&
@@ -74,20 +97,17 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
         last.content.at(-1)?.type === 'text' &&
         contentHasVisibleText(last.content) &&
         indices.every(index => s.thread.messages[index]?.content.every(part =>
-          part.type !== 'tool-call' || part.result !== undefined || part.isError
+          part.type !== 'tool-call' || part.result !== undefined || part.isError ||
+          (part as { completedAt?: number }).completedAt !== undefined ||
+          (part as { interrupted?: boolean }).interrupted === true
         )),
-      completed:
-        last?.role === 'assistant' &&
-        last.metadata?.custom?.interim !== true &&
-        last.status?.type === 'complete' &&
-        last.status.reason === 'stop' &&
-        contentHasVisibleText(last.content),
+      completed,
       hasParts: last?.content?.findLastIndex(part => part.type === 'text') > 0,
-      seconds: typeof duration === 'number' ? duration : start > 0 && end >= start ? end - start : undefined
+      seconds: live ? undefined : typeof duration === 'number' ? duration : storedDuration
     })
   })
 
-  const state = JSON.parse(signature) as { live: boolean; presentingAnswer: boolean; completed: boolean; hasParts: boolean; seconds?: number }
+  const state = JSON.parse(signature) as { presentingAnswer: boolean; completed: boolean; hasParts: boolean; seconds?: number }
 
   const searches = useAuiState(s => JSON.stringify(indices.flatMap(index =>
     s.thread.messages[index]?.content.filter(part => part.type === 'tool-call' && part.toolName === 'web_search' && part.result !== undefined) ?? []
@@ -95,10 +115,10 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
 
   const duration = responseDurationParts(state.seconds ?? 0)
 
-  const collapsible = (state.presentingAnswer || (!state.live && state.completed)) && (indices.length > 1 || state.hasParts)
+  const collapsible = (state.presentingAnswer || state.completed) && (indices.length > 1 || state.hasParts)
   const processVisible = !collapsible || expanded
 
-  const label = !state.live && state.seconds !== undefined
+  const label = state.seconds !== undefined
     ? copy('duration', copy('time', duration.hours, duration.minutes, duration.seconds))
     : copy('process')
 
@@ -115,7 +135,7 @@ export function ResponseProcess({ indices, components }: ResponseProcessProps) {
           <span data-slot="aui_turn-duration">{label}</span>
           <span aria-hidden="true">{expanded ? '⌄' : '›'}</span>
         </button>
-      ) : !state.live && state.seconds !== undefined ? (
+      ) : state.seconds !== undefined ? (
         <div
           className="flex w-fit items-center gap-2 py-2 text-xs font-medium tabular-nums text-muted-foreground"
           data-slot="aui_turn-duration"

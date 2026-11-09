@@ -187,7 +187,10 @@ class GatewayAgentCacheMixin:
                     "Credential re-resolution failed for persisted override "
                     "(provider=%s); using credential-less override", provider, exc_info=True,
                 )
-        self._session_state(session_key).conversation.model_override = override
+        state = self._session_state(session_key).conversation
+        if state.model_override is not None:
+            return  # A newer live switch landed while credentials were being resolved.
+        state.model_override = override
         logger.info(
             "Rehydrated persisted /model override for session=%s: model=%s provider=%s",
             session_key, override.get("model"), provider or "",

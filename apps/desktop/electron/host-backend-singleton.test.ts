@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import { resolveProfileBackendRoute, unscopableMutatingRequest } from './connection-config'
+import { resolveProfileBackendRoute } from './connection-config'
 import { assertNoSecondLocalBackend, SecondLocalBackendError, sharesHostBackend } from './host-backend-singleton'
 
 const LOCAL = { globalRemote: false, primaryProfile: 'default', profileRemoteOverride: false }
@@ -48,20 +48,19 @@ test('the local pool spawn path is unreachable, and the escape hatches still rea
   assertNoSecondLocalBackend('worker', { profileRemoteOverride: true })
   assert.equal(resolveProfileBackendRoute('worker', { ...LOCAL, profileRemoteOverride: true }).backend, 'pool')
 
-  // A mutating request the server cannot profile-scope is the third way
-  // through: the pooled backend's HERMES_HOME is its only scope, so the guard
-  // must let that spawn happen instead of refusing a legitimate route.
+  // 保留旧池调用方的接口，但本机路由已不再选择这条分支。
   assert.equal(sharesHostBackend({ unscopableRequest: true }), false)
   assertNoSecondLocalBackend('worker', { unscopableRequest: true })
 })
 
-test('the spawn guard and the router agree on which requests keep a backend', () => {
-  // The guard is a backstop, not a second opinion: every request the router
-  // sends to the pool must be one the guard admits, or the destructive write
-  // fails with SecondLocalBackendError instead of reaching the right home.
+test('本机读写请求均不进入池启动路径', () => {
   const cases: Array<[string, string]> = [
     ['POST', '/api/files/upload'],
     ['DELETE', '/api/files/managed'],
+    ['POST', '/api/dashboard/agent-plugins/install'],
+    ['POST', '/api/plugins/uniwork-kits/expert-sync'],
+    ['POST', '/api/cron/jobs'],
+    ['PUT', '/api/plugins/desktop-messaging/platforms/feishu'],
     ['POST', '/api/skills'],
     ['POST', '/api/memory/reset'],
     ['GET', '/api/config'],
@@ -70,12 +69,6 @@ test('the spawn guard and the router agree on which requests keep a backend', ()
 
   for (const [requestMethod, requestPath] of cases) {
     const opts = { ...LOCAL, requestMethod, requestPath }
-    const pooled = resolveProfileBackendRoute('worker', opts).backend === 'pool'
-
-    assert.equal(
-      sharesHostBackend({ unscopableRequest: unscopableMutatingRequest(opts) }),
-      !pooled,
-      `${requestMethod} ${requestPath}: guard and router disagree`
-    )
+    assert.equal(resolveProfileBackendRoute('worker', opts).backend, 'primary', `${requestMethod} ${requestPath}`)
   }
 })

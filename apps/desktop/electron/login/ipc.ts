@@ -1,4 +1,4 @@
-import { type BrowserWindow, ipcMain, type IpcMainInvokeEvent, net } from 'electron'
+import { type BrowserWindow, ipcMain, type IpcMainInvokeEvent, net, shell } from 'electron'
 
 import { fetchCaptcha } from './captcha'
 import {
@@ -6,12 +6,14 @@ import {
   type CaptchaResult,
   LOGIN_CHANNEL,
   type LoginResult,
+  OPEN_LEGAL_CHANNEL,
   PLAN_CHANNEL,
   type PlanResult,
   RESTORE_CHANNEL,
   SEND_SMS_CHANNEL,
   type SmsResult
 } from './contract'
+import { LOGIN_LEGAL_DOCUMENTS } from './legal-documents'
 import type { LoginSession } from './session'
 import { createSmsSender } from './sms'
 
@@ -78,6 +80,19 @@ export function installLoginIpc(
       return result
     })
   })
+  ipcMain.handle(OPEN_LEGAL_CHANNEL, async (event, ...args): Promise<boolean> => {
+    if (!isTrusted(event) || args.length !== 1 || (args[0] !== 'privacy' && args[0] !== 'service')) {
+      return false
+    }
+
+    try {
+      await shell.openExternal(LOGIN_LEGAL_DOCUMENTS[args[0]])
+
+      return true
+    } catch {
+      return false
+    }
+  })
   window.once('closed', () => {
     closed = true
     ipcMain.removeHandler(CAPTCHA_CHANNEL)
@@ -85,5 +100,6 @@ export function installLoginIpc(
     ipcMain.removeHandler(LOGIN_CHANNEL)
     ipcMain.removeHandler(RESTORE_CHANNEL)
     ipcMain.removeHandler(PLAN_CHANNEL)
+    ipcMain.removeHandler(OPEN_LEGAL_CHANNEL)
   })
 }

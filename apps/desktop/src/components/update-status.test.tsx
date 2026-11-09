@@ -18,15 +18,22 @@ vi.mock('@/store/updates', async () => {
     $backendUpdateApply: atom<UpdateApplyState | null>(null),
     $backendUpdateChecking: atom<boolean>(false),
     $backendUpdateStatus: atom<DesktopUpdateStatus | null>(null),
+    $desktopVersion: atom<DesktopVersionInfo | null>(null),
     $updateApply: atom<UpdateApplyState | null>(null),
     $updateChecking: atom<boolean>(false),
+    $updateOverlayTarget: atom('client'),
+    $updateReady: atom<{ version: string | null } | null>(null),
     $updateStatus: atom<DesktopUpdateStatus | null>(null),
     checkBackendUpdates: vi.fn(),
     checkUpdates: vi.fn(),
     openUpdateOverlayFor: vi.fn(),
+    refreshDesktopVersion: vi.fn(),
+    setUpdateOverlayOpen: vi.fn(),
     startActiveUpdate: vi.fn()
   }
 })
+
+vi.mock('@/store/update-check', () => ({ requestUpdateCheck: vi.fn() }))
 
 const IDLE_APPLY: UpdateApplyState = {
   applying: false,
@@ -167,6 +174,41 @@ describe('VersionHero bundle banners', () => {
     const optedOut: { container: HTMLElement } = render(<VersionHero showBrandMark={false} version={version({})} />)
 
     expect(optedOut.container.querySelector('img')).toBeNull()
+  })
+
+  // About opts out of the whole brand header: no mark, no product-name heading.
+  it('keeps the version line when the surface drops its heading', (): void => {
+    render(<VersionHero showBrandMark={false} showHeading={false} version={version({})} />)
+
+    expect(screen.queryByRole('heading')).toBeNull()
+    expect(screen.getByText(en.updates.version('0.19.0'))).toBeTruthy()
+  })
+
+  // Nothing to draw (About with no bundle banner) renders nothing at all, so the
+  // host page does not start with an empty hero's padding.
+  it('renders nothing when every part is opted out and there is no banner', (): void => {
+    const { container }: { container: HTMLElement } = render(
+      <VersionHero showBrandMark={false} showHeading={false} showVersion={false} version={version({})} />
+    )
+
+    expect(container.innerHTML).toBe('')
+  })
+
+  // The banner is the one part About keeps; opting the header out must not drop it.
+  it('keeps the bundle banner when the heading is off', (): void => {
+    stubRelaunch()
+
+    render(
+      <VersionHero
+        showBrandMark={false}
+        showHeading={false}
+        showVersion={false}
+        version={version({ bundleSwapPending: true })}
+      />
+    )
+
+    expect(screen.getByText(en.updates.bundleSwapPending)).toBeTruthy()
+    expect(screen.queryByRole('heading')).toBeNull()
   })
 
   it.each(Object.entries(TRANSLATIONS) as [Locale, Translations][])(

@@ -62,6 +62,18 @@ const isRecoveryShown = () =>
   Boolean(screen.queryByText(/use local gateway/i) || screen.queryByText(/retry/i) || screen.queryByText(/sign in/i))
 
 describe('connecting overlay vs recovery surface', () => {
+  it('keeps startup visible after the socket opens until boot and configuration are ready', async () => {
+    $desktopBoot.set({ ...$desktopBoot.get(), running: true, visible: true, progress: 97 })
+    $desktopOnboarding.set({ ...$desktopOnboarding.get(), configured: null })
+    setGatewayState('open')
+    render(<GatewayConnectingOverlay />)
+    expect(screen.getByRole('status')).toBeTruthy()
+    await act(async () => {
+      $desktopBoot.set({ ...$desktopBoot.get(), running: false, visible: false, progress: 100 })
+    })
+    expect(screen.getByRole('status')).toBeTruthy()
+  })
+
   it('post-boot socket drops do not re-cover the app with the initial CONNECTING overlay', async () => {
     // 1. Initial boot succeeded: gateway opened, boot completed (no error).
     setGatewayState('open')

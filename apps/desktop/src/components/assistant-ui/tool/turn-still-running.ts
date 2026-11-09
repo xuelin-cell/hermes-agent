@@ -87,8 +87,8 @@ export function turnStillRunning(facts: TurnFacts, nowSeconds: number = Date.now
   return facts.messaging && facts.latest > 0 && nowSeconds - facts.latest < MESSAGING_TURN_STALE_SECONDS
 }
 
-/** 当前查看的会话是不是消息平台会话（微信、钉钉等），这类会话的运行状态桌面拿不到。 */
-function useViewingMessagingSession(): boolean {
+/** 当前查看的会话是不是消息平台会话（微信、钉钉等）。 */
+export function useViewingMessagingSession(): boolean {
   const storedId = useStore(useSessionView().$storedId)
   const sessions = useStore($messagingSessions)
 

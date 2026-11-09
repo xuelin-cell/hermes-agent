@@ -2,7 +2,6 @@ export interface ConversationShareRequest {
   sessionId: string
   scope: 'session' | 'response'
   responseRowId?: number
-  includeProcess?: boolean
   locale?: string
   theme?: 'light' | 'dark'
 }
@@ -28,7 +27,12 @@ export interface ConversationShareDocument {
   theme: 'light' | 'dark'
   rendererVersion: number
   assets?: Array<{ reference: string; path: string; hash: string }>
-  messages: Array<{ role: 'user' | 'assistant'; blocks: ConversationShareBlock[] }>
+  /** 助手消息的 blocks 只含最终答案；旁白、思考和工具在 process 中，与桌面版的折叠过程一致。 */
+  messages: Array<{
+    role: 'user' | 'assistant'
+    blocks: ConversationShareBlock[]
+    process?: ConversationShareBlock[]
+  }>
 }
 
 export interface ConversationSnapshot {

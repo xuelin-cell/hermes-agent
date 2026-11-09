@@ -19,9 +19,9 @@ function AccountLogout({ account }: { account: LoginAccount }) {
 
   useEffect(() => {
     if (account.planAuthRejected) {
-      notify({ id: 'maas-plan-rejected', kind: 'warning', message: copy.planAuthRejected, placement: 'bottom-right' })
+      notify({ id: 'maas-plan-rejected', kind: 'warning', message: copy.planUsage.auth, placement: 'bottom-right' })
     }
-  }, [account.planAuthRejected, copy.planAuthRejected])
+  }, [account.planAuthRejected, copy.planUsage.auth])
 
   useEffect(() => {
     if (expired) {
@@ -71,7 +71,6 @@ function AccountLogout({ account }: { account: LoginAccount }) {
             </span>
             <span className="min-w-0 flex-1 truncate text-left">{account.maskedPhone}</span>
             {expired && <span className="text-xs text-muted-foreground">{copy.expiredLabel}</span>}
-            <Codicon name="chevron-up" size="0.875rem" />
           </Button>
         }
       />
@@ -144,7 +143,7 @@ export function useMaasAccount(): LoginAccount | null {
 export function MaasAccountSidebar() {
   const account = useMaasAccount()
   return account ? (
-    <div data-slot="sidebar-account" className="shrink-0 px-3 pb-1.5 pt-1">
+    <div data-slot="sidebar-account" className="shrink-0 px-[6px] pb-0 pt-1">
       <AccountLogout account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
     </div>
   ) : null

@@ -26,7 +26,7 @@ vi.mock('@/i18n', () => ({
           disconnected: 'Disconnected',
           inferenceNotReady: 'Inference not ready',
           inferenceReady: 'Inference ready',
-          messagingPlatforms: 'Messaging platforms',
+          messagingPlatforms: 'Chat apps',
           offline: 'Offline',
           openSystem: 'Open system panel',
           recentActivity: 'Recent activity',

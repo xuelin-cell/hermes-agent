@@ -9,12 +9,15 @@ import { type Translations, useI18n } from '@/i18n'
 import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, RefreshCw } from '@/lib/icons'
 import { cn } from '@/lib/utils'
 import { shortVersion } from '@/lib/version-label'
+import { requestUpdateCheck } from '@/store/update-check'
 import {
   $backendUpdateApply,
   $backendUpdateChecking,
   $backendUpdateStatus,
+  $desktopVersion,
   $updateApply,
   $updateChecking,
+  $updateReady,
   $updateStatus,
   checkBackendUpdates,
   checkUpdates,
@@ -28,6 +31,9 @@ import {
 // the upstream GitHub releases page; About's release-notes row points there.
 const RELEASE_NOTES_URL = 'https://www.yjworker.10010.com/app/documents/uniwork/doc/98'
 const INSTALLER_URL = 'https://hermes-agent.nousresearch.com/'
+// Product home page (same site as the release notes), opened from About's
+// "visit website" row.
+const WEBSITE_URL = 'https://www.yjworker.10010.com/'
 
 export type UpdateStatusTone = 'idle' | 'available' | 'error' | 'unsupported'
 
@@ -160,37 +166,55 @@ function relativeTime(ms: number | undefined, u: Translations['updates']): strin
  * The "Hermes Desktop / version / brand mark" hero shared by the About page
  * and the updates overlay, including the bundle-out-of-sync warning. The
  * heading render is injectable so a dialog surface can emit a DialogTitle
- * for its accessible name while About keeps a plain h2. The brand mark can be
- * hidden (About hides it) without affecting surfaces that keep it.
+ * for its accessible name while About keeps a plain h2. `showBrandMark`,
+ * `showHeading` and `showVersion` are independent: About turns the whole brand
+ * header (mark + product name) off — the nav entry and the update card already
+ * name the app — and keeps only the warning, if any. Every part off renders
+ * nothing, so the host page does not start with an empty hero's padding.
  */
 export function VersionHero({
   renderHeading,
   showBrandMark = true,
+  showHeading = true,
+  showVersion = true,
   version
 }: {
   renderHeading?: (heading: string) => ReactNode
   showBrandMark?: boolean
+  showHeading?: boolean
+  showVersion?: boolean
   version: DesktopVersionInfo | null
-}): ReactElement {
+}): ReactElement | null {
   const { t } = useI18n()
   const u = t.updates
+  const hasBanner: boolean = Boolean(version?.bundleSwapPending || version?.bundleOutOfSync)
+  const hasHeadingBlock: boolean = showHeading || showVersion
+
+  if (!showBrandMark && !hasHeadingBlock && !hasBanner) {
+    return null
+  }
 
   return (
     <div className="flex flex-col items-center gap-3 pt-6 pb-2 text-center">
       {showBrandMark && <BrandMark className="size-16" />}
-      <div>
-        {renderHeading ? (
-          renderHeading(u.appName)
-        ) : (
-          <h2 className="text-lg font-semibold tracking-tight">{u.appName}</h2>
-        )}
-        <p className="mt-1 text-xs text-muted-foreground">
-          {version?.appVersion ? u.version(shortVersion(version.appVersion)) : u.versionUnavailable}
-          {version?.channel
-            ? ` · ${Object.entries(u.channels).find(([name]: [string, string]): boolean => name === version.channel)?.[1] ?? version.channel}`
-            : ''}
-        </p>
-      </div>
+      {hasHeadingBlock && (
+        <div>
+          {showHeading &&
+            (renderHeading ? (
+              renderHeading(u.appName)
+            ) : (
+              <h2 className="text-lg font-semibold tracking-tight">{u.appName}</h2>
+            ))}
+          {showVersion && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {version?.appVersion ? u.version(shortVersion(version.appVersion)) : u.versionUnavailable}
+              {version?.channel
+                ? ` · ${Object.entries(u.channels).find(([name]: [string, string]): boolean => name === version.channel)?.[1] ?? version.channel}`
+                : ''}
+            </p>
+          )}
+        </div>
+      )}
       {(version?.bundleSwapPending || version?.bundleOutOfSync) && (
         <div className="mx-auto w-full max-w-2xl rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-left text-sm">
           <div className="flex items-start gap-2">
@@ -241,6 +265,10 @@ interface UpdateActionsProps {
 }
 
 function UpdateActions({ target, u, view }: UpdateActionsProps): ReactElement | null {
+  // Once the package is on disk the primary action installs it directly; the
+  // release-notes detour lands on the same handoff, so it is not offered.
+  const ready = useStore($updateReady)
+
   if (view.applying) {
     return null
   }
@@ -254,9 +282,11 @@ function UpdateActions({ target, u, view }: UpdateActionsProps): ReactElement | 
       <Button onClick={() => startActiveUpdate(target)} size="sm">
         {u.updateNow}
       </Button>
-      <Button onClick={() => openUpdateOverlayFor(target)} size="sm" variant="textStrong">
-        {u.seeWhatsNew}
-      </Button>
+      {target === 'backend' || !ready ? (
+        <Button onClick={() => openUpdateOverlayFor(target)} size="sm" variant="textStrong">
+          {u.seeWhatsNew}
+        </Button>
+      ) : null}
     </>
   )
 }
@@ -267,13 +297,19 @@ function UpdateActions({ target, u, view }: UpdateActionsProps): ReactElement | 
  * Target-aware: 'client' reads the desktop self-update atoms, 'backend' the
  * remote backend's. The actual apply flow stays in the updates overlay —
  * "Update now" opens it and starts the install there.
+ *
+ * `variant="about"` is the reference two-row layout used by Settings › About:
+ * current version + primary action, then about-the-product + website. The
+ * updates overlay keeps the default card, so its visuals stay unchanged.
  */
 export function UpdateStatusCard({
   showReleaseNotes = true,
-  target
+  target,
+  variant = 'card'
 }: {
   showReleaseNotes?: boolean
   target: UpdateTarget
+  variant?: 'about' | 'card'
 }): ReactElement {
   const { t } = useI18n()
   const u = t.updates
@@ -281,6 +317,7 @@ export function UpdateStatusCard({
   const status = useStore(isBackend ? $backendUpdateStatus : $updateStatus)
   const checking = useStore(isBackend ? $backendUpdateChecking : $updateChecking)
   const apply = useStore(isBackend ? $backendUpdateApply : $updateApply)
+  const desktopVersion = useStore($desktopVersion)
   const [justChecked, setJustChecked] = useState<boolean>(false)
 
   const view = deriveUpdateStatus({ apply, checking, status, target, u })
@@ -289,6 +326,21 @@ export function UpdateStatusCard({
     setJustChecked(false)
     const next = await (isBackend ? checkBackendUpdates({ force: true }) : checkUpdates({ force: true }))
     setJustChecked(Boolean(next))
+  }
+
+  if (variant === 'about') {
+    return (
+      <AboutUpdateCard
+        channel={isBackend ? null : (desktopVersion?.channel ?? null)}
+        checking={checking}
+        currentVersion={isBackend ? (status?.currentVersion ?? null) : (desktopVersion?.appVersion ?? null)}
+        onCheck={() => void (isBackend ? handleCheck() : requestUpdateCheck())}
+        showWebsite={showReleaseNotes}
+        target={target}
+        u={u}
+        view={view}
+      />
+    )
   }
 
   return (
@@ -348,6 +400,105 @@ export function UpdateStatusCard({
               </a>
             </Button>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface AboutUpdateCardProps {
+  channel: string | null
+  checking: boolean
+  currentVersion: string | null
+  onCheck: () => void
+  showWebsite: boolean
+  target: UpdateTarget
+  u: Translations['updates']
+  view: UpdateStatusView
+}
+
+/**
+ * Settings › About's two-row update card: the running version with its primary
+ * action, then the product/website row. An available update keeps the single
+ * primary button and switches it to "update now"; the check itself always runs
+ * through the manual-check flow so the user gets the software-update dialog.
+ */
+function AboutUpdateCard({
+  channel,
+  checking,
+  currentVersion,
+  onCheck,
+  showWebsite,
+  target,
+  u,
+  view
+}: AboutUpdateCardProps): ReactElement {
+  const busy = checking || view.applying
+  const canUpdate = view.updateAvailable && view.supported && !busy
+  const channelLabel = channel ? ((u.channels as Record<string, string>)[channel] ?? channel) : null
+  const statusLine = [view.error ?? view.line, channelLabel].filter(Boolean).join(' · ')
+
+  const primaryLabel = checking
+    ? u.checkingShort
+    : canUpdate
+      ? u.updateNow
+      : view.applying
+        ? u.installing
+        : u.checkForUpdates
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-6">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-[0.9375rem] leading-6 text-foreground">
+            {u.currentVersion}
+            <span className="ml-1.5 text-xs text-muted-foreground">
+              {currentVersion ? `v${shortVersion(currentVersion)}` : u.versionUnavailable}
+            </span>
+          </p>
+          <p
+            className={cn(
+              'mt-1 whitespace-pre-line text-xs leading-5',
+              view.tone === 'error' ? 'text-destructive' : 'text-muted-foreground'
+            )}
+          >
+            {statusLine}
+          </p>
+        </div>
+        <Button
+          className="min-w-24 shrink-0 rounded-[0.625rem]"
+          disabled={busy}
+          onClick={() => (canUpdate ? startActiveUpdate(target) : onCheck())}
+          size="lg"
+          type="button"
+          variant="outline"
+        >
+          {primaryLabel}
+        </Button>
+      </div>
+
+      {showWebsite && (
+        <div className="mt-6 flex items-center justify-between gap-4">
+          {/* `aboutApp` + `aboutAppName`: the CJK pair needs no separator, so
+              the space lives in the English prefix only. */}
+          <p className="text-[0.9375rem] leading-6 text-foreground">
+            {u.aboutApp}
+            <span className="text-muted-foreground">{u.aboutAppName}</span>
+          </p>
+          <Button asChild className="min-w-24 shrink-0 rounded-[0.625rem]" size="lg" variant="outline">
+            <a
+              href={WEBSITE_URL}
+              onClick={event => {
+                event.preventDefault()
+                void window.hermesDesktop?.openExternal?.(WEBSITE_URL)
+              }}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {u.goToWebsite}
+              <ExternalLink className="size-3" />
+            </a>
+          </Button>
         </div>
       )}
     </div>

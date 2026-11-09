@@ -223,27 +223,83 @@ def test_wecom_real_websocket_handshake_and_cleanup(code, monkeypatch):
 
 
 def test_prepare_and_apply_stop_empty_gateway_and_restart_configured_profiles(monkeypatch):
-    """真实扫描和配置读取决定停止或重启，不借用别的账号环境。"""
+    """真实配置决定只停、直接启动或先停后起，不借用别的账号环境。"""
     from types import SimpleNamespace
     from hermes_cli import web_server_gateway
 
     actions = []
+    running = False
 
     def spawn(command, name, *, env_overrides):
         """捕获原版动作边界，防止测试影响真实用户网关。"""
         actions.append((command, name))
-        assert env_overrides == ({"HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0"} if name == "gateway-stop" else {
-            "HERMES_GATEWAY_INSTALL_START_ON_LOGIN": "0", "HERMES_GATEWAY_BUSY_ACK_ENABLED": "false",
-            "HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED": "false"})
+        assert env_overrides["HERMES_GATEWAY_INSTALL_START_ON_LOGIN"] == "0"
+        assert env_overrides["HERMES_GATEWAY_ADAPTER_DISCONNECT_TIMEOUT"] == "1"
         return SimpleNamespace(pid=123)
 
+    def start(env):
+        """单独记录桌面入口，避免把原版 run 误当成新启动链路。"""
+        assert env["HERMES_GATEWAY_BUSY_ACK_ENABLED"] == "false"
+        assert env["HERMES_GATEWAY_BUSY_STEER_ACK_ENABLED"] == "false"
+        return spawn(["desktop-gateway.py"], "gateway-start", env_overrides=env)
+
     monkeypatch.setattr(web_server_gateway, "_spawn_hermes_action", spawn)
-    assert asyncio.run(api.apply_gateway())["name"] == "gateway-stop"
+    monkeypatch.setattr(api, "_spawn_desktop_gateway", start)
+    monkeypatch.setattr(api, "_owned_gateway", lambda: running)
+    assert asyncio.run(api.apply_gateway()) == {"ok": True, "name": "gateway-stop", "pid": 123}
     save_env_value("FEISHU_APP_ID", "saved-id")
     save_env_value("FEISHU_APP_SECRET", "saved-secret")
-    assert asyncio.run(api.apply_gateway())["name"] == "gateway-restart"
+    state = asyncio.run(api.apply_gateway())
+    assert (state["configured"], state["profiles"], state["name"]) == (True, ["default"], "gateway-start")
     assert load_env()["FEISHU_GROUP_POLICY"] == "open"
-    assert actions[-1][0][-2:] == ["gateway", "restart"]
+    assert actions[-1][0] == ["desktop-gateway.py"]
+    running = True
+    assert asyncio.run(api.apply_gateway())["name"] == "gateway-stop"
+    assert actions[-1][0][-2:] == ["gateway", "stop"]
+    running = False
+    assert asyncio.run(api.restore_gateway())["name"] == "gateway-start"
+    assert [name for _, name in actions] == ["gateway-stop", "gateway-start", "gateway-stop", "gateway-start"]
+
+
+def test_desktop_gateway_installs_os_trust_before_start(monkeypatch):
+    """桌面网关入口须像原版命令行一样先换系统证书，再启动网关建连接。"""
+    import importlib.util
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from agent import ssl_verify
+    from gateway import config as gateway_config, run as gateway_run
+    from hermes_cli import boot_bootstrap, gateway as cli_gateway
+    from hermes_constants import get_hermes_home
+
+    calls = []
+
+    async def start_gateway(config):
+        """记录启动时机与单助手配置，不真正连接消息平台。"""
+        calls.append(("start", config.multiplex_profiles))
+        return True
+
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.setattr(sys, "argv", ["desktop-gateway.py", str(root)])
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    for name in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HERMES_HOME", str(get_hermes_home()))
+    monkeypatch.setattr(ssl_verify, "install_truststore", lambda: calls.append(("trust", None)))
+    monkeypatch.setattr(gateway_config, "load_gateway_config", lambda: SimpleNamespace(multiplex_profiles=True))
+    monkeypatch.setattr(gateway_run, "start_gateway", start_gateway)
+    monkeypatch.setattr(gateway_run, "_exit_after_graceful_shutdown", lambda code: calls.append(("exit", code)))
+    monkeypatch.setattr(boot_bootstrap, "maybe_run_boot_bootstrap", lambda *_: None)
+    monkeypatch.setattr(cli_gateway, "_windows_gateway_should_absorb_console_controls", lambda: False)
+    monkeypatch.setattr(cli_gateway, "_apply_startup_watchdog_config", lambda: None)
+    monkeypatch.setattr(cli_gateway, "_respawn_storm_backoff", lambda: None)
+    monkeypatch.setitem(sys.modules, "hermes_startup_watchdog", SimpleNamespace(arm_startup_watchdog=lambda: None))
+    spec = importlib.util.spec_from_file_location("desktop_gateway_entry", root / "plugins/desktop-messaging/desktop-gateway.py")
+    entry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(entry)
+    entry.main()
+    assert calls == [("trust", None), ("start", False), ("exit", 0)]
 
 
 def test_plugin_is_discovered_and_mounted_through_native_dashboard(monkeypatch):

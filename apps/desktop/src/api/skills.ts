@@ -287,6 +287,6 @@ export function uploadSkillPackage(filename: string, content: string, profile?: 
     path: '/api/skills/upload',
     method: 'POST',
     body: { filename, content, approved_hash: approvedHash },
-    timeoutMs: 120_000
+    timeoutMs: 600_000
   })
 }

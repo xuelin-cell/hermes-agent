@@ -1,7 +1,16 @@
-import type { LoginAccount, LoginResult, PlanResult } from './contract'
+import type { PlanUsage } from '../uniwork-usage/contract'
+
+import type { InvitationLoginError, LoginAccount, LoginResult, PlanResult, SmsLoginError } from './contract'
 import type { CredentialStore } from './credential-store'
 import { type FetchedPlan, fetchPlan, type MaasPlan } from './plan'
 import { parseUniAgentGate, type UniAgentGateUpdate } from './uniagentgate'
+
+const INVITATION_ERRORS = new Map<number, InvitationLoginError>([
+  [5001, 'invitationInvalid'],
+  [5002, 'invitationExpired'],
+  [5004, 'invitationExhausted'],
+  [5005, 'invitationUsed']
+])
 
 export interface LoginIdentity {
   phone?: string
@@ -73,10 +82,16 @@ function accountFor(identity: LoginIdentity): LoginAccount {
   return { maskedPhone: identity.maskedPhone, expiresAt: identity.expiresAt }
 }
 
+const SMS_LOGIN_ERRORS = new Map<string, SmsLoginError>([
+  ['短信验证码错误', 'smsIncorrect'],
+  ['验证码失效，请重新发送短信', 'smsExpired']
+])
+
 /** 管理短信登录和本地记录恢复的身份，关闭和过期后清除进程内凭据。 */
 export class LoginSession {
   private identity: LoginIdentity | null = null
   private plan: MaasPlan | null = null
+  private planUsage: PlanUsage | null = null
   private planStatus: FetchedPlan['status'] = 'failed'
   private planFailureReason: 'auth' | undefined
   private planQuery: Promise<PlanResult> | null = null
@@ -97,6 +112,7 @@ export class LoginSession {
     if (this.closed || !this.identity || this.identity.expiresAt <= Date.now()) {
       this.identity = null
       this.plan = null
+      this.planUsage = null
       this.planStatus = 'failed'
       this.planFailureReason = undefined
       this.binding = { status: 'missing' }
@@ -118,6 +134,10 @@ export class LoginSession {
     return this.planStatus === 'empty'
       ? { status: 'empty' }
       : { status: 'failed', ...(this.planFailureReason ? { reason: this.planFailureReason } : {}) }
+  }
+
+  currentPlanUsage(): PlanUsage | null {
+    return this.currentIdentity() ? this.planUsage : null
   }
 
   /** 仅供账号环境准备读取；可选绑定失败不改变合法登录/模型套餐状态。 */
@@ -172,18 +192,27 @@ export class LoginSession {
     }
 
     let bindingUpdate: UniAgentGateUpdate | undefined
-    this.planQuery = fetchPlan(this.request, identity.token, this.cancellation.signal, update => {
-      const current = this.currentIdentity()
+    let usage: PlanUsage | null = null
+    this.planQuery = fetchPlan(
+      this.request,
+      identity.token,
+      this.cancellation.signal,
+      update => {
+        const current = this.currentIdentity()
 
-      if (
-        current?.uid === identity.uid &&
-        current.token === identity.token &&
-        (update.status === 'available' || update.status === 'clear')
-      ) {
-        this.binding = update
-        bindingUpdate = update
+        if (
+          current?.uid === identity.uid &&
+          current.token === identity.token &&
+          (update.status === 'available' || update.status === 'clear')
+        ) {
+          this.binding = update
+          bindingUpdate = update
+        }
+      },
+      data => {
+        usage = data
       }
-    })
+    )
       .then(async (result): Promise<PlanResult> => {
         const current = this.currentIdentity()
 
@@ -201,6 +230,7 @@ export class LoginSession {
         }
 
         this.planStatus = result.status
+        this.planUsage = usage
         this.planFailureReason = result.status === 'failed' ? result.reason : undefined
 
         if (result.status !== 'available') {
@@ -243,6 +273,16 @@ export class LoginSession {
       return { ok: false }
     }
 
+    let invitationCode = ''
+
+    if (input.invitationCode !== undefined) {
+      if (typeof input.invitationCode !== 'string') {
+        return { ok: false }
+      }
+
+      invitationCode = input.invitationCode.trim()
+    }
+
     const current = this.currentIdentity()
 
     if (current) {
@@ -255,7 +295,13 @@ export class LoginSession {
       const response = await this.request('https://maas.ai-yuanjing.com/app/login/smsLogin', {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: input.phone, smsCode: input.smsCode, origin: 'app', application: 'uniwork' }),
+        body: JSON.stringify({
+          phone: input.phone,
+          smsCode: input.smsCode,
+          origin: 'app',
+          application: 'uniwork',
+          ...(invitationCode ? { invitationCode } : {})
+        }),
         signal: AbortSignal.any([AbortSignal.timeout(15_000), this.cancellation.signal]),
         redirect: 'error',
         credentials: 'omit',
@@ -267,9 +313,30 @@ export class LoginSession {
       }
 
       const body: unknown = await response.json()
+
+      if (this.closed) {
+        return { ok: false }
+      }
+
+      if (isRecord(body) && (body.code === 401 || body.code === '401') && typeof body.msg === 'string') {
+        const reason = SMS_LOGIN_ERRORS.get(body.msg)
+
+        if (reason) {
+          return { ok: false, reason }
+        }
+      }
+
+      if (invitationCode && isRecord(body) && typeof body.code === 'number') {
+        const reason = INVITATION_ERRORS.get(body.code)
+
+        if (reason) {
+          return { ok: false, reason }
+        }
+      }
+
       const identity = parseIdentity(body, input.phone)
 
-      if (this.closed || !identity) {
+      if (!identity) {
         return { ok: false }
       }
 
@@ -296,6 +363,7 @@ export class LoginSession {
     this.closed = true
     this.identity = null
     this.plan = null
+    this.planUsage = null
     this.planStatus = 'failed'
     this.planFailureReason = undefined
     this.binding = { status: 'missing' }

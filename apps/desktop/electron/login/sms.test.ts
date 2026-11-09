@@ -66,6 +66,18 @@ it('失败不冷却、不重试、不泄露正文；遵守限流秒数和日期�
 
   expect(request).toHaveBeenCalledTimes(4)
 
+  for (const [msg, error] of [
+    ['图形验证码错误', 'captchaIncorrect'],
+    ['图形验证码已失效，请刷新后重试', 'captchaExpired']
+  ]) {
+    request.mockResolvedValueOnce(Response.json({ code: 1002, msg, data: 'private' }))
+    expect(await send(input)).toEqual({ ok: false, error })
+  }
+
+  request.mockResolvedValueOnce(Response.json({ code: 429, msg: '已经发送短信，请稍后再试' }))
+  expect(await send(input)).toEqual({ ok: false, error: 'limited', retryAt: Date.now() + 60_000 })
+  vi.advanceTimersByTime(60_000)
+
   for (const header of ['120', new Date(Date.now() + 180_000).toUTCString()]) {
     request.mockResolvedValueOnce(new Response('private', { status: 429, headers: { 'Retry-After': header } }))
     const expected = /^\d+$/.test(header) ? Date.now() + Number(header) * 1000 : Date.parse(header)

@@ -14,7 +14,7 @@ import {
   settingSearchTargets
 } from './settings-manifest'
 import { settingsSearchTargetQuery } from './settings-search'
-import { resolveSettingsSubpage, settingsSubpages } from './subpages'
+import { resolveSettingsSubpage, settingsNavSubpages, settingsSubpages } from './subpages'
 import type { SettingsView } from './types'
 import { settingsFieldVisible, settingsViewVisible } from './visibility'
 
@@ -68,12 +68,14 @@ describe('settings subpage routing', () => {
   it('opens the first ordered child for parents and keeps explicit child destinations', () => {
     for (const view of views) {
       const pages = settingsSubpages(view)
+      const navigable = pages.filter(page => !page.anchor)
       expect(pages.length).toBeGreaterThan(0)
-      expect(resolveSettingsSubpage(view, new URLSearchParams())).toBe(pages[0].id)
-      expect(resolveSettingsSubpage(view, new URLSearchParams({ page: 'missing' }))).toBe(pages[0].id)
+      // A page made only of in-page anchors (About) opens whole, with no page param.
+      expect(resolveSettingsSubpage(view, new URLSearchParams())).toBe(navigable[0]?.id)
+      expect(resolveSettingsSubpage(view, new URLSearchParams({ page: 'missing' }))).toBe(navigable[0]?.id)
 
-      if (pages.some(page => page.id === 'general')) {
-        expect(pages[0].id).toBe('general')
+      if (navigable.some(page => page.id === 'general')) {
+        expect(navigable[0]?.id).toBe('general')
       }
 
       for (const page of pages) {
@@ -83,6 +85,22 @@ describe('settings subpage routing', () => {
           expect(locale.settings.subpages[page.labelKey]).toBeTruthy()
         }
       }
+    }
+  })
+
+  it('关于页合并后，两个旧子页降级为页内锚点但仍可定位', () => {
+    expect(settingsSubpages('about').map(page => page.id)).toEqual(['updates', 'legal'])
+    expect(settingsNavSubpages('about')).toEqual([])
+    expect(resolveSettingsSubpage('about', new URLSearchParams())).toBeUndefined()
+    expect(resolveSettingsSubpage('about', new URLSearchParams({ page: 'updates' }))).toBe('updates')
+    expect(resolveSettingsSubpage('about', new URLSearchParams({ page: 'legal' }))).toBe('legal')
+    expect(resolveSettingsSubpage('about', new URLSearchParams({ setting: SETTING_IDS.about.legal }))).toBe('legal')
+
+    // Search and palette anchors still serialize a page param for both sections.
+    for (const key of ['updates', 'legal'] as const) {
+      const params = new URLSearchParams(settingsSearchTargetQuery({ view: 'about', setting: SETTING_IDS.about[key] }))
+
+      expect(params.get('page')).toBe(key)
     }
   })
 
@@ -172,7 +190,6 @@ describe('settings subpage routing', () => {
     )
   })
 })
-
 
 it('keeps safety approvals available while restricting privacy and checkpoints to developers', () => {
   expect(settingsViewVisible('config:safety', false)).toBe(true)

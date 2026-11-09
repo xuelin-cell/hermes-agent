@@ -17,14 +17,15 @@ export const en: Translations = {
     sessionShare: 'Share conversation',
     responseShare: 'Share response',
     disclosure:
-      'Anyone with the link can read this snapshot until you revoke it. Attachments are excluded. Selected process content is public even when collapsed. Review the page for sensitive information before publishing.',
-    includeProcess: 'Include available reasoning and tool names',
+      'Anyone with the link can read this snapshot until you revoke it. Attachments are excluded. The execution process is collapsed but still public. Review the page for sensitive information before publishing.',
     readonly: 'Read-only conversation snapshot',
     user: 'You',
     assistant: 'Assistant',
     process: 'Reasoning',
     resourceError: 'The complete page could not be prepared. Nothing was published.',
-    unavailable: 'Sharing is unavailable. Check that the backend has the conversation sharing plugin.',
+    unavailable: 'Unable to open sharing',
+    ownerUnknown:
+      'Could not determine which profile this conversation belongs to. Open the conversation, then try again.',
     preview: 'Public page preview',
     preparing: 'Preparing the complete snapshot…',
     retry: 'Prepare again',
@@ -147,6 +148,7 @@ export const en: Translations = {
     officePreviewFailed: 'Office conversion failed. Download the original file to view it.',
     artifactSensitive: 'Sensitive configuration and credential files cannot be uploaded to the cloud drive.',
     uploadArtifact: 'Upload to cloud drive',
+    uploadToLibrary: 'Upload to library',
     uploadHere: 'Upload to this folder',
     chooseUploadFolder: 'Choose a destination in your personal cloud drive',
     artifactRemote:
@@ -200,8 +202,14 @@ export const en: Translations = {
       'Cloud files are not available yet. Search and file operations will be enabled after integration.'
   },
   desktopLogin: {
+    legalLinksLabel: 'Login agreements',
+    legalConsentPrefix: 'By logging in, you agree to the',
+    privacyPolicy: 'Privacy Policy',
+    legalConsentConnector: 'and',
+    userAgreement: 'Terms of Service',
+    legalOpenError: 'Could not open the agreement. Please try again.',
     planUsage: {
-      restart: 'Restart the desktop app completely to update the usage query component.',
+      restart: 'Plan information is unavailable. Quit and reopen the app.',
       actualUsage: 'Plan usage',
       details: 'View details',
       subscribe: 'Subscribe',
@@ -216,11 +224,9 @@ export const en: Translations = {
       refresh: 'Refresh usage',
       refreshPlan: 'Refresh plan',
       refreshed: 'Plan information refreshed',
-      refreshFailed: 'Refresh failed. Try again.',
-      failed: 'Could not refresh. Try again.',
-      stale: 'Refresh failed. Showing the previous result.',
-      auth: 'Your sign-in has expired. Sign in again to check usage.',
-      empty: 'No usage data available',
+      refreshFailed: 'Couldn’t refresh plan information. Try again in a moment.',
+      failed: 'Couldn’t load plan information. Try again in a moment.',
+      auth: 'Your sign-in is no longer valid. Sign out and sign in again.',
       unnamed: 'Current plan',
       expired: 'Expired',
       expires: 'Expires',
@@ -253,14 +259,17 @@ export const en: Translations = {
     expired: 'Your sign-in has expired. Please sign in again.',
     expiredLabel: 'Sign-in expired',
     expiredRunning: 'Your sign-in has expired. Current tasks will continue. You can sign out and sign in again.',
-    planAuthRejected: 'MaaS rejected this sign-in credential. Sign out and sign in again.',
     resendAfter: 'Resend in {seconds}s',
-    smsSent: 'Verification code sent. Please check your messages.',
     smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',
     smsLimited: 'Too many requests. Please wait before trying again.',
-    phonePlaceholder: '11-digit phone number',
-    captchaPlaceholder: 'Enter the image code',
-    smsPlaceholder: '6-digit code',
+    phonePlaceholder: 'Enter phone number',
+    captchaPlaceholder: 'Enter captcha',
+    smsPlaceholder: 'Enter SMS code',
+    invitationCodePlaceholder: 'Invitation code (optional)',
+    invitationInvalid: 'The invitation code does not exist. Check it and try again.',
+    invitationExpired: 'This invitation code has expired and cannot be used.',
+    invitationExhausted: 'This invitation code has reached its redemption limit. Contact the issuer.',
+    invitationUsed: 'You have already used an invitation code. Each account can use one. Clear the code, then sign in.',
     captchaLoadError: 'Could not load the captcha. Refresh the image to retry.',
     title: 'Sign in to your workspace',
     subtitle: 'Use your MaaS account to access your own local workspace.',
@@ -271,9 +280,13 @@ export const en: Translations = {
     send: 'Send code',
     submit: 'Sign in',
     unavailable: 'SMS sign-in is being connected.',
-    phoneError: 'Enter an 11-digit phone number starting with 1.',
+    phoneError: 'Enter a valid 11-digit phone number.',
     captchaError: 'Enter the image code (up to 6 characters).',
+    captchaIncorrect: 'The image code is incorrect. Enter it again.',
+    captchaExpired: 'The image code has expired. Refresh the image and try again.',
     smsError: 'Enter the 6-digit SMS code.',
+    smsIncorrect: 'The SMS code is incorrect. Enter it again.',
+    smsExpired: 'The SMS code has expired. Request a new code.',
     storageError: 'Could not securely save your sign-in. Check local storage permissions and try again.',
     requestError: 'Sign-in failed. Please try again.'
   },
@@ -391,6 +404,7 @@ export const en: Translations = {
       connectAction: 'Connect',
       connected: 'Connected',
       disconnect: 'Disconnect',
+      reenable: 'Re-enable',
       tryIt: 'Try it like this',
       brand: 'UniWork',
       credentials: 'Enter connection details',
@@ -549,6 +563,11 @@ export const en: Translations = {
           description:
             'Connect Qichacha company, risk, intellectual property, operation, and executive services for enterprise data queries.',
           provider: 'Qichacha'
+        },
+        tianyancha_mcp: {
+          name: 'Tianyancha',
+          description: 'Search company registration, shareholders, risk, judicial, investment, and intellectual-property data.',
+          provider: 'Tianyancha'
         },
         eastmoney_mcp: {
           name: 'Eastmoney',
@@ -1070,6 +1089,7 @@ export const en: Translations = {
       needsAuthMessage: name => `${name} MCP needs re-authentication.`,
       errorTitle: 'MCP server unreachable',
       errorMessage: name => `${name} MCP failed its health check.`,
+      connectionFailedMessage: name => `Could not connect to ${name}. Test it in Connectors.`,
       signIn: 'Sign in',
       view: 'View',
       disable: 'Disable',
@@ -1234,7 +1254,7 @@ export const en: Translations = {
       'nav.settings': 'Open settings',
       'nav.profiles': 'Open profiles',
       'nav.capabilities': 'Open skills',
-      'nav.messaging': 'Open messaging',
+      'nav.messaging': 'Open Connect Phone',
       'nav.artifacts': 'Open library',
       'nav.cron': 'Open scheduled jobs',
       'nav.agents': 'Open agents',
@@ -3326,7 +3346,7 @@ export const en: Translations = {
       newChat: { title: 'New session', detail: 'Start a fresh session' },
       settings: { title: 'Settings', detail: 'Configure UniWork desktop' },
       capabilities: { title: 'Capabilities', detail: 'Skills, tools, MCP servers, and plugins' },
-      messaging: { title: 'Messaging', detail: 'Set up Telegram, Slack, Discord, and more' },
+      messaging: { title: 'Connect Phone', detail: 'Connect WeChat, DingTalk, Feishu and other chat apps' },
       artifacts: { title: 'Library', detail: 'Manage cloud files and local artifacts' }
     },
     sectionEntries: {
@@ -3431,6 +3451,7 @@ export const en: Translations = {
   },
 
   messaging: {
+    platformLabels: { uniagentgate: '5G Messaging' },
     connection: messagingConnectionCopy['en'],
     cards: {
       heading: 'Chat apps',
@@ -3447,12 +3468,12 @@ export const en: Translations = {
       reconnectFailed: '5G reconnect failed. Check the logs; if the gateway is stopped, fully quit and reopen the app.',
       reconnectRestartRequired:
         'The 5G component update is not active yet. Fully quit the app, including the tray, then reopen it.',
-      unavailable: 'Messaging component unavailable',
+      unavailable: 'Chat app component unavailable',
       notConnected: 'Not connected',
       unbind: 'Disconnect',
-      unbindTitle: 'Disconnect this platform?',
+      unbindTitle: 'Disconnect this chat app?',
       unbindDescription:
-        'Remove this platform’s credentials and disable it. Other platform settings, history and files are retained.',
+        'Remove this chat app’s credentials and disable it. Other chat app settings, history and files are retained.',
       titles: {
         weixin: 'WeChat ClawBot integration',
         dingtalk: 'DingTalk bot integration',
@@ -3468,9 +3489,9 @@ export const en: Translations = {
         uniagentgate: 'Connect to uniAgentGate to receive and reply to RCS messages.'
       }
     },
-    search: 'Search messaging...',
-    loading: 'Loading messaging platforms...',
-    loadFailed: 'Messaging platforms failed to load',
+    search: 'Search chat apps...',
+    loading: 'Loading chat apps...',
+    loadFailed: 'Chat apps failed to load',
     states: {
       connected: 'Connected',
       connecting: 'Connecting',
@@ -3538,7 +3559,7 @@ export const en: Translations = {
     restartNeeded: 'Saved. Restart the messaging gateway so the new settings take effect.',
     restartNow: 'Restart now',
     restarting: 'Restarting…',
-    restartFailedManual: "UniWork couldn't restart to apply your messaging settings",
+    restartFailedManual: "UniWork couldn't restart to apply your chat app settings",
     restartFailedManualDetail: 'Try Restart again; if it still fails, open the logs and send diagnostics.',
     restartAgain: 'Restart again',
     openLogs: 'Open logs',
@@ -4237,7 +4258,7 @@ export const en: Translations = {
     nav: {
       'new-session': 'New session',
       capabilities: 'Extensions',
-      messaging: 'Messaging',
+      messaging: 'Connect Phone',
       artifacts: 'Library',
       cron: 'Scheduled jobs'
     },
@@ -4419,6 +4440,8 @@ export const en: Translations = {
 
   composer: {
     message: 'Message',
+    addAttachment: 'Add attachments',
+    aiDisclaimer: 'AI responses may be inaccurate. Please verify important information.',
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting UniWork...',
     placeholderReconnecting: 'Reconnecting to UniWork…',
@@ -4505,7 +4528,7 @@ export const en: Translations = {
       '/prompt': 'Compose your next prompt in $EDITOR (markdown), then send it',
       '/undo': 'Back up N user turns and re-prompt (default 1)',
       '/title': 'Rename the current session',
-      '/handoff': 'Hand off this session to a messaging platform',
+      '/handoff': 'Hand off this session to a chat app',
       '/branch': 'Branch the latest message into a new chat',
       '/worktree': 'Show, list, create, or prune isolated git worktrees',
       '/compress': 'Compress this conversation context',
@@ -4947,9 +4970,27 @@ export const en: Translations = {
     },
     // Update-status overlay + version-details (mechanism-aware update UI).
     appName: 'UniWork',
+    aboutAppName: 'Yuanjing Digital Employee',
     version: (value: string) => `Version ${value}`,
     versionUnavailable: 'Version unavailable',
     checkNow: 'Check now',
+    checkForUpdates: 'Check for updates',
+    updateDialogTitle: 'Software Update',
+    upToDate: 'is up to date',
+    gotIt: 'Got it',
+    updateCheckFailed: "Couldn't check for updates. Please try again.",
+    currentVersion: 'Current version',
+    // Trailing space: About's card prints `aboutApp` + `aboutAppName` with no
+    // hard-coded separator, and only the Latin pair needs one.
+    aboutApp: 'About ',
+    goToWebsite: 'Visit website',
+    newVersionReady: 'New version ready',
+    newVersionReadyBody: (version: string) => `New version ${version} is ready to install.`,
+    updateLog: 'What’s new',
+    restartToUpdate: 'Restart to update',
+    launchNow: 'Launch now',
+    downloadingUpdate: 'Downloading update…',
+    downloadFailedTitle: 'Update download failed. Please try again.',
     seeWhatsNew: "See what's new",
     releaseNotes: 'Release notes',
     onLatest: "You're on the latest version.",
@@ -5318,7 +5359,7 @@ export const en: Translations = {
       connection: label => `Connection: ${label}`,
       recentActivity: 'Recent activity',
       viewAllLogs: 'View all logs →',
-      messagingPlatforms: 'Messaging platforms'
+      messagingPlatforms: 'Chat apps'
     },
     approvalMode: {
       title: 'Approval mode',
@@ -5591,9 +5632,7 @@ export const en: Translations = {
       goBack: 'Back',
       goForward: 'Forward',
       reload: 'Reload page',
-      address: 'Address',
-      addressPlaceholder: 'Enter address',
-      blankPageBody: 'Type an address above to browse, or ask UniWork to open a page.',
+      blankPageBody: 'Ask UniWork to open a page.',
       finishedRestarting: message => `UniWork finished restarting the preview server${message ? `: ${message}` : ''}`,
       failedRestarting: message => `Server restart failed: ${message}`,
       unknownError: 'unknown error',
@@ -6293,13 +6332,13 @@ export const en: Translations = {
     clipboardPasteFailed: 'Clipboard paste failed',
     dropFiles: 'Drop files',
     handoff: {
-      pickPlatform: 'Choose a destination',
+      pickPlatform: 'Choose a chat app',
       success: platform => `Handed off to ${platform}. Resume here anytime.`,
       systemNote: platform => `↻ Handed off to ${platform} — resume here anytime.`,
       failed: error => `Handoff failed: ${error}`,
       timedOut:
-        "UniWork couldn't reach your messaging connection. Start it from Settings → Messaging, then try the handoff again.",
-      startMessaging: 'Start messaging'
+        "UniWork couldn't reach your chat app. Check the connection in Connect Phone or start the message gateway, then try the handoff again.",
+      startMessaging: 'Start message gateway'
     }
   },
 

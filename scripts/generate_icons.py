@@ -31,6 +31,9 @@ and a seven-character SHA badge. The girl and tile geometry do not change.
 Only apps/desktop outputs use this identity. Website, bootstrap, dashboard,
 and the shared master SVGs retain the default brand.
 
+Fixed-identity UniWork bundled builds instead preserve the committed desktop
+brand assets. Their source revision remains in the install stamp, not the logo.
+
 The girl's position and uniform scale are registered to the reference artwork.
 She renders in front of the border, clipped only to the outer rounded silhouette.
 Only nodes near her bottom edge extend to the border; the fitted face and hair stay fixed.
@@ -521,6 +524,16 @@ def build_art(source: Path) -> tuple[IconArt, IconArt]:
     return art, art
 
 
+def output_bytes(source: Path, rel: str, art: IconArt, kind: str, arg: object) -> bytes:
+    if (
+        rel.startswith("apps/desktop/")
+        and os.environ.get("UNIWORK_FIXED_IDENTITY") == "1"
+        and os.environ.get("HERMES_DESKTOP_VARIANT") == "bundled"
+    ):
+        return (source / rel).read_bytes()
+    return target_bytes(art, kind, arg)
+
+
 def cmd_write(source: Path, out: Path) -> int:
     """Return failure when any target cannot be generated or verified."""
     art, desktop_art = build_art(source)
@@ -531,7 +544,7 @@ def cmd_write(source: Path, out: Path) -> int:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             selected = desktop_art if rel.startswith("apps/desktop/") else art
-            path.write_bytes(target_bytes(selected, kind, arg))
+            path.write_bytes(output_bytes(source, rel, selected, kind, arg))
             written += 1
         except Exception as exc:  # noqa: BLE001 - report all, then fail
             failures += 1
@@ -567,9 +580,7 @@ def cmd_write(source: Path, out: Path) -> int:
 
 
 def cmd_check(source: Path, out: Path) -> int:
-    """Structural verification: regenerate every target in memory and assert
-    the invariants that actually matter (there are no committed bytes to
-    byte-compare — outputs are generated on demand)."""
+    """Resolve every target's rendered or committed bytes, then check structure."""
     art, desktop_art = build_art(source)
     problems: list[str] = []
 
@@ -577,7 +588,7 @@ def cmd_check(source: Path, out: Path) -> int:
     for rel, kind, arg in TARGETS:
         try:
             selected = desktop_art if rel.startswith("apps/desktop/") else art
-            target_bytes(selected, kind, arg)
+            output_bytes(source, rel, selected, kind, arg)
         except Exception as exc:  # noqa: BLE001
             problems.append(f"{rel}: REGENERATE FAILED ({exc})")
 

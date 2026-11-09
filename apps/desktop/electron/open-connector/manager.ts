@@ -13,6 +13,7 @@ import { WecomQrSessions } from './wecom-qr'
 
 interface ConnectorManagerOptions extends Omit<ConnectorRuntimeOptions, 'directory'> {
   home: string
+  profiles: () => string[]
   active: () => boolean
   api: (request: {
     connectionId: string
@@ -58,9 +59,10 @@ export function backendUnavailable(error: unknown, profile: string): Error | nul
   return new Error(`${who}的后台正在重新打开，请稍后再点一次。`)
 }
 
-/** Credentials stay in OpenConnector; Hermes owns the corresponding MCP settings. */
+/** 同一账号共用连接器授权，各助手仍由 Hermes 保存自己的 MCP 配置。 */
 export class ConnectorManager {
-  private runtimes = new Map<string, ConnectorRuntime>()
+  private sharedRuntime: ConnectorRuntime | null = null
+  private mailStartup: { start: Promise<void>; result: Promise<void> } | null = null
   private queues = new Map<string, Promise<unknown>>()
   private authorizationWatches = new Map<string, { generation: number; timer: NodeJS.Timeout }>()
   private authorizationGeneration = 0
@@ -77,7 +79,7 @@ export class ConnectorManager {
     const current = this.options.identity()
 
     return Boolean(
-      current &&
+      !this.closed && this.options.active() && current &&
         current.uid === expected.uid &&
         current.token === expected.token &&
         current.phone === expected.phone &&
@@ -85,44 +87,133 @@ export class ConnectorManager {
     )
   }
 
-  private runtime(profile: string): ConnectorRuntime {
+  /** 连接器固定落在账号主助手目录，专家不再创建或读取自己的授权库。 */
+  private runtime(): ConnectorRuntime {
     if (this.closed || !this.options.active()) {
       throw new Error('Connector account is no longer active')
     }
 
-    const home = connectorHome(this.options.home, profile)
-    let runtime = this.runtimes.get(profile)
+    const home = connectorHome(this.options.home, 'default')
+    this.sharedRuntime ??= new ConnectorRuntime({ ...this.options, directory: path.join(home, 'open-connector') })
 
-    if (!runtime) {
-      runtime = new ConnectorRuntime({ ...this.options, directory: path.join(home, 'open-connector') })
-      this.runtimes.set(profile, runtime)
-    }
-
-    return runtime
+    return this.sharedRuntime
   }
 
+  /** 只预热连接器，不写任何正在运行的助手配置。 */
+  async start(): Promise<void> {
+    await this.runtime().start()
+  }
+
+  /** 专家后端尚未启动时，刷新它的受管条目并指向账号共享连接器。 */
   async prepare(profile: string): Promise<void> {
     const home = connectorHome(this.options.home, profile)
-    const runtime = this.runtime(profile)
+    const runtime = this.runtime()
     const rows = await runtime.rows()
     await prepareConnectorConfig(
       home,
       rows.filter(row => row.connected).map(row => row.id),
       id => runtime.config(id)
     )
-    await this.syncAgentMail(home, runtime)
+    const mail = await this.agentMailConfig(runtime)
+
+    if (mail) {
+      await prepareAgentMailConfig(home, true, async () => mail, mail.enabled)
+    }
   }
 
-  private async syncAgentMail(home: string, runtime: ConnectorRuntime): Promise<void> {
+  /** 后端就绪后走正式配置接口，连接器和邮箱均不直接回写运行中的 YAML。 */
+  async refresh(profile: string): Promise<void> {
+    await this.request({ operation: 'list', profile })
+    await this.enqueue(profile, async () => {
+      const mail = await this.agentMailConfig(this.runtime())
+
+      if (!mail || this.closed || !this.options.active()) {return}
+
+      // 固定走当前助手的后台配置接口，不接受页面提供的服务地址。
+      const api = (method: string, route: string, body?: unknown) =>
+        this.options.api({ connectionId: 'local', profile, method, path: route, body, priority: 'background' })
+
+      const saved = await api('GET', '/api/config?include_defaults=false')
+      const entry = saved.mcp_servers?.connector_wo_mail
+
+      if (entry && entry.desktop_agent_mail !== true) {return}
+
+      if (Object.entries(mail).some(([key, value]) => JSON.stringify(entry?.[key]) !== JSON.stringify(value))) {
+        if (this.closed || !this.options.active()) {return}
+
+        await api('PUT', '/api/config', { config: { mcp_servers: { connector_wo_mail: mail } } })
+      }
+    })
+  }
+
+  /** 按助手串行刷新共享授权，不因一个档案失败中断其余助手，也不启动额外进程。 */
+  async refreshAll(skip?: string): Promise<void> {
+    for (const profile of this.options.profiles()) {
+      if (this.closed || !this.options.active()) {
+        return
+      }
+
+      if (profile === skip) {
+        continue
+      }
+
+      try {
+        await this.refresh(profile)
+      } catch {
+        this.options.log(`[connectors] config refresh failed profile=${profile}`)
+      }
+    }
+  }
+
+  /** 页面操作后先刷新当前助手再返回，其余助手放到后台刷新，不让用户等全部助手。 */
+  private async refreshAfterChange(profile: string): Promise<void> {
+    try {
+      await this.refresh(profile)
+    } catch {
+      this.options.log(`[connectors] config refresh failed profile=${profile}`)
+    }
+
+    void this.refreshAll(profile).catch(() => this.options.log('[connectors] background config refresh failed'))
+  }
+
+  /** 同一运行期只自动恢复一次邮箱；失败也记住，避免每开一个专家就重复申请专属码。 */
+  private async agentMailConfig(runtime: ConnectorRuntime): Promise<(Record<string, unknown> & { enabled: boolean }) | null> {
+    const start = runtime.start()
+
+    if (this.mailStartup?.start !== start) {
+      this.mailStartup = {
+        start,
+        result: start.then(() => this.initializeAgentMail(runtime).catch(() => {
+          this.logAgentMail('startup sync failed; no further automatic attempt for this runtime')
+        }))
+      }
+    }
+
+    await this.mailStartup.result
+    const identity = this.options.identity()
+
+    if (this.closed || !this.options.active() || !identity || !/^1\d{10}$/.test(identity.phone?.trim() ?? '')) {return null}
+
+    const connection = await runtime.connection('wo_mail')
+
+    const enabled = connection?.displayName.trim().toLowerCase() === `${identity.phone.trim()}@wo.cn` &&
+      this.options.mailState.get(identity)?.enabled !== false
+
+    return { ...(await runtime.config('wo_mail')), desktop_agent_mail: true, enabled }
+  }
+
+  /** 只维护共享授权库和账号邮箱偏好；各助手随后分别保存自己的 MCP 条目。 */
+  private async initializeAgentMail(runtime: ConnectorRuntime): Promise<void> {
     const identity = this.options.identity()
     const phone = identity?.phone?.trim() ?? ''
 
     if (!identity || !/^1\d{10}$/.test(phone)) {
       this.logAgentMail('startup sync skipped because no valid phone identity is available')
+
       return
     }
 
-    this.logAgentMail(`startup sync started profile=${home === this.options.home ? 'default' : 'named-profile'}`)
+    this.logAgentMail('startup sync started for the shared account runtime')
     let connection = await runtime.connection('wo_mail')
     const expectedEmail = `${phone}@wo.cn`
 
@@ -130,7 +221,6 @@ export class ConnectorManager {
       this.logAgentMail('startup sync removed a connection owned by a different phone')
       await runtime.request('/api/connections/wo_mail', 'DELETE')
       connection = null
-      await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), false)
     }
 
     const saved = this.options.mailState.get(identity)
@@ -138,51 +228,83 @@ export class ConnectorManager {
 
     if (saved && !saved.enabled) {
       this.logAgentMail('startup sync kept the mailbox disabled by local preference')
-      if (connection) {
-        await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), false)
-      }
 
       return
     }
 
     if (!connection) {
-      const authorizationCode = saved?.authorizationCode
-      const code = authorizationCode
-        ? authorizationCode
-        : await this.fetchAgentMailCode(phone)
+      const created = await this.createAgentMailConnection(runtime, identity, phone, expectedEmail, saved?.authorizationCode)
 
-      this.logAgentMail(`creating local Wo Mail connection authorization-source=${authorizationCode ? 'local-state' : 'Wo-Mail'}`)
+      if (!this.isCurrentIdentity(identity)) {throw new Error('登录账号已经变更，请重试。')}
 
-      if (!this.isCurrentIdentity(identity)) {
-        return
-      }
-
-      await runtime.request('/api/connections/wo_mail', 'PUT', {
-        authType: 'custom_credential',
-        connectionName: 'default',
-        values: { authorizationCode: code, email: expectedEmail }
-      })
-      connection = await runtime.connection('wo_mail')
-
-      if (!connection) {
-        throw new Error('沃邮箱连接没有保存成功。')
-      }
-
-      this.options.mailState.save(identity, { authorizationCode: code, email: expectedEmail, enabled: true })
+      this.options.mailState.save(identity, { authorizationCode: created.authorizationCode, email: expectedEmail, enabled: true })
       this.logAgentMail('local Wo Mail connection saved and authorization code persisted')
     }
 
-    await prepareAgentMailConfig(home, true, () => runtime.config('wo_mail'), true)
-    this.logAgentMail('startup sync completed with mailbox enabled')
+    this.logAgentMail('startup sync completed')
   }
 
   private fetchAgentMailCode(phone: string): Promise<string> {
     if (this.options.exclusiveCode) {
       this.logAgentMail('requesting a new exclusive code through the configured test/provider callback')
+
       return this.options.exclusiveCode(phone)
     }
 
     return fetchWoMailExclusiveCode(phone, fetch, message => this.options.log(message))
+  }
+
+  /**
+   * The Wo Mail exclusive code is short-lived. It is cached only to restore a
+   * local mailbox after restart, so a failed cached-code connection gets one
+   * fresh code and one retry. A newly fetched code is never retried here.
+   */
+  private async createAgentMailConnection(
+    runtime: ConnectorRuntime,
+    identity: LoginIdentity,
+    phone: string,
+    email: string,
+    cachedAuthorizationCode?: string
+  ): Promise<{ authorizationCode: string; connection: NonNullable<Awaited<ReturnType<ConnectorRuntime['connection']>>> }> {
+    const connect = async (authorizationCode: string) => {
+      await runtime.request('/api/connections/wo_mail', 'PUT', {
+        authType: 'custom_credential',
+        connectionName: 'default',
+        values: { authorizationCode, email }
+      })
+      const connection = await runtime.connection('wo_mail')
+
+      if (!connection) {
+        throw new Error('沃邮箱连接没有保存成功。')
+      }
+
+      return connection
+    }
+
+    const authorizationCode = cachedAuthorizationCode || await this.fetchAgentMailCode(phone)
+    this.logAgentMail(`creating local Wo Mail connection authorization-source=${cachedAuthorizationCode ? 'local-state' : 'Wo-Mail'}`)
+
+    if (!this.isCurrentIdentity(identity)) {
+      throw new Error('登录账号已经变更，请重试。')
+    }
+
+    try {
+      return { authorizationCode, connection: await connect(authorizationCode) }
+    } catch (error) {
+      if (!cachedAuthorizationCode) {
+        throw error
+      }
+
+      this.logAgentMail('cached exclusive code was rejected; requesting a fresh code and retrying once')
+      this.options.mailState.save(identity, { email, enabled: true })
+      const refreshedAuthorizationCode = await this.fetchAgentMailCode(phone)
+
+      if (!this.isCurrentIdentity(identity)) {
+        throw new Error('登录账号已经变更，请重试。')
+      }
+
+      return { authorizationCode: refreshedAuthorizationCode, connection: await connect(refreshedAuthorizationCode) }
+    }
   }
 
   private authorizationKey(profile: string, id: string): string {
@@ -259,20 +381,17 @@ export class ConnectorManager {
       return Promise.reject(new Error('Invalid connector request'))
     }
 
-    const run = (this.queues.get(input.profile) ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => this.execute(input))
+    return this.enqueue(input.profile, () => this.execute(input)).then(async result => {
+      if (
+        input.operation === 'disconnect' ||
+        (['connect', 'enable', 'qr.poll'].includes(input.operation) &&
+          result.connectors.some(row => row.id === input.id && row.connected))
+      ) {
+        await this.refreshAfterChange(input.profile)
+      }
 
-    this.queues.set(input.profile, run)
-    void run
-      .finally(() => {
-        if (this.queues.get(input.profile) === run) {
-          this.queues.delete(input.profile)
-        }
-      })
-      .catch(() => undefined)
-
-    return run
+      return result
+    })
   }
 
   agentMail(input: AgentMailRequest): Promise<AgentMailResult> {
@@ -284,15 +403,26 @@ export class ConnectorManager {
       return Promise.reject(new Error('Invalid Agent Mail request'))
     }
 
-    const run = (this.queues.get(input.profile) ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => this.executeAgentMail(input))
+    return this.enqueue(input.profile, () => this.executeAgentMail(input)).then(async result => {
+      if (input.operation === 'enable' || input.operation === 'disable') {
+        await this.refreshAfterChange(input.profile)
+      }
 
-    this.queues.set(input.profile, run)
+      return result
+    })
+  }
+
+  /** 同一助手的页面操作与后台刷新串行，避免用旧快照盖过刚保存的配置。 */
+  private enqueue<T>(profile: string, action: () => Promise<T>): Promise<T> {
+    const run = (this.queues.get(profile) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(action)
+
+    this.queues.set(profile, run)
     void run
       .finally(() => {
-        if (this.queues.get(input.profile) === run) {
-          this.queues.delete(input.profile)
+        if (this.queues.get(profile) === run) {
+          this.queues.delete(profile)
         }
       })
       .catch(() => undefined)
@@ -301,7 +431,8 @@ export class ConnectorManager {
   }
 
   private async executeAgentMail(input: AgentMailRequest): Promise<AgentMailResult> {
-    const runtime = this.runtime(input.profile)
+    connectorHome(this.options.home, input.profile)
+    const runtime = this.runtime()
     const identity = this.options.identity()
     const phone = identity?.phone?.trim() ?? ''
     this.logAgentMail(`IPC operation started operation=${input.operation}${input.action ? ` action=${input.action}` : ''}`)
@@ -322,7 +453,7 @@ export class ConnectorManager {
 
     const status = (): AgentMailStatus => ({
       ...readAgentMailQuotaStatus(
-        path.join(connectorHome(this.options.home, input.profile), 'open-connector'),
+        path.join(connectorHome(this.options.home, 'default'), 'open-connector'),
         connection?.displayName ?? expectedEmail
       ),
       email: connection?.displayName ?? '',
@@ -331,6 +462,7 @@ export class ConnectorManager {
 
     if (input.operation === 'status') {
       this.logAgentMail(`IPC status completed enabled=${status().enabled}`)
+
       return { status: status() }
     }
 
@@ -348,6 +480,7 @@ export class ConnectorManager {
       }
 
       const connectorAction = input.action === 'stage_attachment' ? 'download_attachment' : input.action
+
       const result = await runtime.request(`/v1/actions/wo_mail.${connectorAction}`, 'POST', {
         connectionName: 'default',
         input: input.input
@@ -366,6 +499,7 @@ export class ConnectorManager {
 
         const saved = await this.options.saveAttachment(file.name, () => runtime.download(file.downloadUrl))
         this.logAgentMail(`IPC mailbox attachment save completed saved=${saved.saved} cancelled=${saved.canceled}`)
+
         return { data: saved, status: status() }
       }
 
@@ -378,10 +512,12 @@ export class ConnectorManager {
 
         const staged = await this.options.stageAttachment(file.name, () => runtime.download(file.downloadUrl))
         this.logAgentMail(`IPC mailbox attachment staged name=${staged.name}`)
+
         return { data: { file: staged }, status: status() }
       }
 
       this.logAgentMail(`IPC mailbox action completed action=${input.action}`)
+
       return { data: result.data, status: status() }
     }
 
@@ -415,26 +551,10 @@ export class ConnectorManager {
       }
 
       const saved = this.options.mailState.get(identity)
-      const authorizationCode = saved?.authorizationCode || await this.fetchAgentMailCode(phone)
       const email = `${phone}@wo.cn`
-      this.logAgentMail(`IPC enable is creating a connection authorization-source=${saved?.authorizationCode ? 'local-state' : 'Wo-Mail'}`)
-
-      if (!this.isCurrentIdentity(identity)) {
-        throw new Error('登录账号已经变更，请重试。')
-      }
-
-      await runtime.request('/api/connections/wo_mail', 'PUT', {
-        authType: 'custom_credential',
-        connectionName: 'default',
-        values: { authorizationCode, email }
-      })
-      activeConnection = await runtime.connection('wo_mail')
-
-      if (!activeConnection) {
-        throw new Error('沃邮箱连接没有保存成功。')
-      }
-
-      this.options.mailState.save(identity, { authorizationCode, email, enabled: true })
+      const created = await this.createAgentMailConnection(runtime, identity, phone, email, saved?.authorizationCode)
+      activeConnection = created.connection
+      this.options.mailState.save(identity, { authorizationCode: created.authorizationCode, email, enabled: true })
       this.logAgentMail('IPC enable persisted the local authorization code')
     }
 
@@ -454,7 +574,7 @@ export class ConnectorManager {
     return {
       status: {
         ...readAgentMailQuotaStatus(
-          path.join(connectorHome(this.options.home, input.profile), 'open-connector'),
+          path.join(connectorHome(this.options.home, 'default'), 'open-connector'),
           activeConnection?.displayName ?? expectedEmail
         ),
         email: activeConnection?.displayName ?? `${phone}@wo.cn`,
@@ -465,7 +585,8 @@ export class ConnectorManager {
 
   private async execute(input: LocalConnectorRequest): Promise<LocalConnectorResult> {
     const { profile, operation, id } = input
-    const runtime = this.runtime(profile)
+    connectorHome(this.options.home, profile)
+    const runtime = this.runtime()
 
     // 「连接」「授权」「启用」「断开」是用户点的，要马上写配置：按前台去开这个档案的后端，刚被收掉也会重新拉起来。
     // 连接器页每隔一会儿的 list 只是看状态，按后台走，不跟用户正在打开的专家抢名额。
@@ -519,14 +640,20 @@ export class ConnectorManager {
     }
 
     if (operation === 'authorize') {
-      if (CONNECTOR_SPECS[id!].auth !== 'oauth2') {
+      const authorization = CONNECTOR_SPECS[id!].auth
+
+      if (authorization !== 'oauth2' && authorization !== 'browser_poll') {
         throw new Error('This connector uses credentials')
       }
 
-      const result = await runtime.request('/api/oauth/authorizations', 'POST', {
+      const result = await runtime.request(
+        authorization === 'oauth2' ? '/api/oauth/authorizations' : `/api/browser-authorizations/${id}`,
+        'POST',
+        {
         service: id,
         connectionName: 'default'
-      })
+        }
+      )
 
       const url = new URL(result.authorizationUrl)
 
@@ -550,6 +677,7 @@ export class ConnectorManager {
 
       if (
         spec.auth === 'oauth2' ||
+        spec.auth === 'browser_poll' ||
         !values ||
         typeof values !== 'object' ||
         Array.isArray(values) ||
@@ -619,8 +747,6 @@ export class ConnectorManager {
 
     this.authorizationWatches.clear()
 
-    await Promise.all([...this.runtimes.values()].map(runtime => runtime.close()))
-
-    this.runtimes.clear()
+    await this.sharedRuntime?.close()
   }
 }

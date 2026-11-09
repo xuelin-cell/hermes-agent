@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { parse } from 'yaml'
 
 import type { AgentMailLocalStateStore } from '../agent-mail/local-state'
 import type { LoginIdentity } from '../login/session'
@@ -10,6 +11,16 @@ import type { LoginIdentity } from '../login/session'
 import { CONNECTOR_SPECS } from './contract'
 import { ConnectorManager } from './manager'
 import { ConnectorRuntime } from './runtime'
+
+beforeEach(() => {
+  const starts = new WeakMap<ConnectorRuntime, Promise<void>>()
+  // 与真实运行时相同：同一次启动返回同一个 Promise，防止邮箱初始化重复。
+  vi.spyOn(ConnectorRuntime.prototype, 'start').mockImplementation(function (this: ConnectorRuntime) {
+    if (!starts.has(this)) {starts.set(this, Promise.resolve())}
+
+    return starts.get(this)!
+  })
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -24,20 +35,29 @@ function makeManager(
     mailState?: Pick<AgentMailLocalStateStore, 'get' | 'save'>
     exclusiveCode?: (phone: string) => Promise<string>
     identity?: () => LoginIdentity | null
+    api?: ConstructorParameters<typeof ConnectorManager>[0]['api']
+    profiles?: () => string[]
     saveAttachment?: (name: string, download: () => Promise<Response>) => Promise<{ canceled: boolean; saved: boolean }>
     stageAttachment?: (name: string, download: () => Promise<Response>) => Promise<{ name: string; path: string }>
   } = {}
 ) {
   return new ConnectorManager({
     home,
+    profiles: overrides.profiles ?? (() => ['default']),
     active: () => true,
-    api: async request => {
+    api: overrides.api ?? (async request => {
       if (request.method === 'PUT') {
         writes.push(request.body)
+        // 模拟配置 API 的持久合并，后续刷新应读到上一次写入的结果。
+        saved.mcp_servers ??= {}
+
+        for (const [name, patch] of Object.entries((request.body as any).config.mcp_servers ?? {})) {
+          saved.mcp_servers[name] = { ...saved.mcp_servers[name], ...(patch as object) }
+        }
       }
 
       return saved
-    },
+    }),
     openExternal: vi.fn(async () => undefined),
     saveAttachment: overrides.saveAttachment ?? vi.fn(async () => ({ canceled: false, saved: true })),
     stageAttachment: overrides.stageAttachment ?? vi.fn(async name => ({ name, path: `/tmp/${name}` })),
@@ -59,6 +79,251 @@ function makeManager(
     decrypt: value => value.toString()
   })
 }
+
+it('多个助手共用连接器和邮箱授权；配置仍按助手写入，旧授权目录保持原样', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-shared-connector-'))
+  const profiles = ['default', 'expert-a', 'expert-b']
+  const instances = new Set<ConnectorRuntime>()
+  let mailbox = false
+
+  const rows = vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async function (this: ConnectorRuntime) {
+    instances.add(this)
+
+    return [{ id: 'eastmoney_mcp', connected: true }]
+  })
+
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockImplementation(async () =>
+    mailbox ? { configured: true, displayName: '13800000000@wo.cn' } : null)
+  vi.spyOn(ConnectorRuntime.prototype, 'request').mockImplementation(async () => { mailbox = true })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockImplementation(async function (this: ConnectorRuntime, id) {
+    instances.add(this)
+
+    return { url: `http://127.0.0.1:${12000 + [...instances].indexOf(this)}/mcp`,
+      headers: { 'X-OpenConnector-Allowed-Services': id }, desktop_connector: id }
+  })
+  const close = vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const api = vi.fn(async () => ({ mcp_servers: {} }))
+  const exclusiveCode = vi.fn(async () => 'fixture-code')
+  const manager = makeManager(home, {}, [], { exclusiveCode, api })
+
+  try {
+    for (const profile of profiles) {
+      const target = profile === 'default' ? home : path.join(home, 'profiles', profile)
+      fs.mkdirSync(path.join(target, 'open-connector'), { recursive: true })
+      fs.writeFileSync(path.join(target, 'open-connector', 'old-data'), profile)
+      fs.writeFileSync(path.join(target, 'config.yaml'), 'model: personal-model\n')
+    }
+
+    await Promise.all(profiles.map(profile => manager.prepare(profile)))
+    expect(exclusiveCode).toHaveBeenCalledOnce()
+    expect(instances.size).toBe(1)
+
+    for (const profile of profiles) {
+      const target = profile === 'default' ? home : path.join(home, 'profiles', profile)
+      const saved = parse(fs.readFileSync(path.join(target, 'config.yaml'), 'utf8'))
+      expect(saved.model).toBe('personal-model')
+      expect(saved.mcp_servers.connector_eastmoney_mcp.url).toBe('http://127.0.0.1:12000/mcp')
+      expect(saved.mcp_servers.connector_wo_mail.enabled).toBe(true)
+      expect(fs.readFileSync(path.join(target, 'open-connector', 'old-data'), 'utf8')).toBe(profile)
+    }
+
+    await manager.request({ operation: 'list', profile: 'expert-a' })
+    expect(rows).toHaveBeenCalledTimes(4)
+    expect(instances.size).toBe(1)
+    expect(api).toHaveBeenCalledWith(expect.objectContaining({ profile: 'expert-a', method: 'PUT' }))
+  } finally {
+    await manager.close()
+    expect(close).toHaveBeenCalledOnce()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('自动申请失败不随专家重复；重启可再申请，手动开通后各专家读取新授权', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-mail-once-'))
+  fs.mkdirSync(path.join(home, 'profiles', 'expert'), { recursive: true })
+  fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
+  fs.writeFileSync(path.join(home, 'profiles', 'expert', 'config.yaml'), '{}\n')
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  let mailbox = false
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockImplementation(async () =>
+    mailbox ? { configured: true, displayName: '13800000000@wo.cn' } : null)
+  vi.spyOn(ConnectorRuntime.prototype, 'request').mockImplementation(async () => { mailbox = true })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({ url: 'http://127.0.0.1:1234/mcp' })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const exclusiveCode = vi.fn(async (): Promise<string> => { throw new Error('fixture rejection') })
+  const manager = makeManager(home, {}, [], { exclusiveCode })
+
+  try {
+    for (const profile of ['default', 'expert', 'default']) {
+      await expect(manager.prepare(profile)).resolves.toBeUndefined()
+    }
+
+    expect(exclusiveCode).toHaveBeenCalledOnce()
+    const file = path.join(home, 'profiles', 'expert', 'config.yaml')
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers.connector_wo_mail.enabled).toBe(false)
+    vi.mocked(ConnectorRuntime.prototype.start).mockReturnValue(Promise.resolve())
+    await expect(manager.prepare('expert')).resolves.toBeUndefined()
+    expect(exclusiveCode).toHaveBeenCalledTimes(2)
+
+    exclusiveCode.mockResolvedValue('fixture-manual-code')
+    await manager.agentMail({ operation: 'enable', profile: 'default' })
+    await manager.prepare('expert')
+    expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers.connector_wo_mail.enabled).toBe(true)
+    expect(exclusiveCode).toHaveBeenCalledTimes(3)
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('运行中刷新连接器和邮箱只走配置接口，保留自定义邮箱条目和关闭偏好', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-refresh-'))
+  const file = path.join(home, 'config.yaml')
+  fs.writeFileSync(file, '# running backend owns this file\n')
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([{ id: 'amap', connected: true }])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({ configured: true, displayName: '13800000000@wo.cn' })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockImplementation(async id => ({
+    url: 'http://127.0.0.1:1234/mcp', desktop_connector: id
+  }))
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const writes: any[] = []
+  const saved: any = { mcp_servers: {} }
+  const mailState = { get: vi.fn(() => ({ email: '13800000000@wo.cn', enabled: false })), save: vi.fn() }
+  const manager = makeManager(home, saved, writes, { mailState })
+
+  try {
+    await manager.refresh('default')
+    expect(writes).toHaveLength(2)
+    expect(writes[1].config.mcp_servers.connector_wo_mail).toMatchObject({ enabled: false, desktop_agent_mail: true })
+    writes.length = 0
+    saved.mcp_servers.connector_wo_mail = { url: 'https://personal.example/mcp' }
+    await manager.refresh('default')
+    expect(writes).toHaveLength(0)
+    expect(saved.mcp_servers.connector_wo_mail).toEqual({ url: 'https://personal.example/mcp' })
+    expect(fs.readFileSync(file, 'utf8')).toBe('# running backend owns this file\n')
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('连接后只等当前助手刷新，其余助手挂起也不拖住页面操作', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-bg-'))
+  fs.mkdirSync(path.join(home, 'profiles', 'expert-a'), { recursive: true })
+  let release!: () => void
+
+  const blocked = new Promise<void>(resolve => {
+    release = resolve
+  })
+
+  const seen: string[] = []
+
+  vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({})
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([{ id: 'amap', connected: true }] as never)
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue(null)
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({ url: 'http://127.0.0.1:1234/mcp', desktop_connector: 'amap' })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const manager = makeManager(home, {}, [], {
+    profiles: () => ['default', 'expert-a'], identity: () => null,
+    api: async input => {
+      seen.push(input.profile)
+
+      if (input.profile === 'expert-a') { await blocked }
+
+      return { mcp_servers: {} }
+    }
+  })
+
+  try {
+    await manager.request({ operation: 'connect', profile: 'default', id: 'amap', values: { apiKey: 'fixture-key' } })
+    expect(seen.every(profile => profile === 'default' || profile === 'expert-a')).toBe(true)
+    await vi.waitFor(() => expect(seen).toContain('expert-a'))
+  } finally {
+    release()
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('连接和断开后刷新全部本机助手，单个失败不挡后续助手且不改个人条目', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-all-'))
+  const profiles = ['default', 'broken', 'expert-a', 'expert-b']
+
+  for (const profile of profiles.slice(1)) {
+    fs.mkdirSync(path.join(home, 'profiles', profile), { recursive: true })
+  }
+
+  const saved: Record<string, any> = Object.fromEntries(profiles.map(profile => [profile, {
+    mcp_servers: { personal: { url: `https://personal.invalid/${profile}` } }
+  }]))
+
+  const writes: string[] = []
+  let connected = false
+  const instances = new Set<ConnectorRuntime>()
+
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockImplementation(async (_route, method) => {
+    connected = method !== 'DELETE'
+
+    return {}
+  })
+
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async function (this: ConnectorRuntime) {
+    instances.add(this)
+
+    return [{ id: 'amap', connected }]
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue(null)
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({ url: 'http://127.0.0.1:1234/mcp', desktop_connector: 'amap' })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const manager = makeManager(home, {}, [], {
+    profiles: () => profiles, identity: () => null,
+    api: async input => {
+      expect(input.connectionId).toBe('local')
+
+      if (input.profile === 'broken') { throw new Error('fixture unreadable profile') }
+      const config = saved[input.profile]
+
+      if (input.method === 'PUT') {
+        writes.push(input.profile)
+
+        for (const [name, patch] of Object.entries((input.body as any).config.mcp_servers)) {
+          config.mcp_servers[name] = { ...config.mcp_servers[name], ...(patch as object) }
+        }
+      }
+
+      return structuredClone(config)
+    }
+  })
+
+  try {
+    // 当前助手在返回前已刷新，其余助手随后在后台跟上。
+    await manager.request({ operation: 'connect', profile: 'default', id: 'amap', values: { apiKey: 'fixture-key' } })
+    expect(writes[0]).toBe('default')
+    await vi.waitFor(() => expect(writes).toEqual(['default', 'expert-a', 'expert-b']))
+    await manager.request({ operation: 'disconnect', profile: 'default', id: 'amap' })
+    expect(writes[3]).toBe('default')
+    await vi.waitFor(() => expect(writes.slice(3)).toEqual(['default', 'expert-a', 'expert-b']))
+
+    for (const profile of ['default', 'expert-a', 'expert-b']) {
+      expect(saved[profile].mcp_servers).toEqual({
+        personal: { url: `https://personal.invalid/${profile}` },
+        connector_amap: { url: 'http://127.0.0.1:1234/mcp', desktop_connector: 'amap', enabled: false }
+      })
+    }
+
+    expect(instances.size).toBe(1)
+    writes.length = 0
+    request.mockRejectedValue(new Error('fixture connect failed'))
+    await expect(manager.request({ operation: 'connect', profile: 'default', id: 'amap', values: { apiKey: 'fixture-key' } }))
+      .rejects.toThrow('fixture connect failed')
+    expect(writes).toEqual([])
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
 
 it('mounts an OAuth connector after browser authorization completes', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connector-manager-'))
@@ -109,6 +374,41 @@ it('mounts an OAuth connector after browser authorization completes', async () =
   }
 })
 
+it('starts WPS browser-poll authorization and mounts it after the local runtime connects', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-wps-browser-auth-'))
+  const writes: unknown[] = []
+  let connected = false
+
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request').mockResolvedValue({
+    authorizationUrl: 'https://mcp-center.wps.cn/kdocs-auth/auth-guide?auth_code=test'
+  })
+
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockImplementation(async () => [{ id: 'wps_mcp', connected }])
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' },
+    desktop_connector: 'wps_mcp',
+    timeout: 600
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+  const manager = makeManager(home, { mcp_servers: {} }, writes)
+
+  try {
+    vi.useFakeTimers()
+    await manager.request({ operation: 'authorize', profile: 'default', id: 'wps_mcp' })
+    expect(request).toHaveBeenCalledWith('/api/browser-authorizations/wps_mcp', 'POST', {
+      service: 'wps_mcp',
+      connectionName: 'default'
+    })
+    connected = true
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(writes).toHaveLength(1)
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 it('automatically provisions Agent Mail for a newly logged-in phone account', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-auto-'))
   fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
@@ -117,7 +417,7 @@ it('automatically provisions Agent Mail for a newly logged-in phone account', as
   vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
   vi.spyOn(ConnectorRuntime.prototype, 'connection')
     .mockResolvedValueOnce(null)
-    .mockResolvedValueOnce({ configured: true, displayName: '13800000000@wo.cn' })
+    .mockResolvedValue({ configured: true, displayName: '13800000000@wo.cn' })
   vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
     url: 'http://127.0.0.1:1234/mcp',
     headers: { Authorization: 'Bearer runtime' }
@@ -225,7 +525,7 @@ it('rebuilds a missing mailbox connection from local state without contacting Wo
   vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
   vi.spyOn(ConnectorRuntime.prototype, 'connection')
     .mockResolvedValueOnce(null)
-    .mockResolvedValueOnce({ configured: true, displayName: '13800000000@wo.cn' })
+    .mockResolvedValue({ configured: true, displayName: '13800000000@wo.cn' })
   vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
     url: 'http://127.0.0.1:1234/mcp',
     headers: { Authorization: 'Bearer runtime' }
@@ -249,6 +549,62 @@ it('rebuilds a missing mailbox connection from local state without contacting Wo
       connectionName: 'default',
       values: { authorizationCode: 'saved-mail-code', email: '13800000000@wo.cn' }
     })
+  } finally {
+    await manager.close()
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
+it('refreshes an expired cached exclusive code before rebuilding the mailbox connection', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-refresh-'))
+  fs.writeFileSync(path.join(home, 'config.yaml'), '{}\n')
+  const writes: unknown[] = []
+
+  const request = vi.spyOn(ConnectorRuntime.prototype, 'request')
+    .mockRejectedValueOnce(new Error('credential verification failed'))
+    .mockResolvedValueOnce({})
+
+  vi.spyOn(ConnectorRuntime.prototype, 'rows').mockResolvedValue([])
+  vi.spyOn(ConnectorRuntime.prototype, 'connection')
+    .mockResolvedValueOnce(null)
+    .mockResolvedValue({ configured: true, displayName: '13800000000@wo.cn' })
+  vi.spyOn(ConnectorRuntime.prototype, 'config').mockResolvedValue({
+    url: 'http://127.0.0.1:1234/mcp',
+    headers: { Authorization: 'Bearer runtime' }
+  })
+  vi.spyOn(ConnectorRuntime.prototype, 'close').mockResolvedValue()
+
+  const mailState = {
+    get: vi.fn(() => ({ authorizationCode: 'expired-mail-code', email: '13800000000@wo.cn', enabled: true })),
+    save: vi.fn()
+  }
+
+  const exclusiveCode = vi.fn(async () => 'fresh-mail-code')
+  const manager = makeManager(home, { mcp_servers: {} }, writes, { mailState, exclusiveCode })
+
+  try {
+    await manager.prepare('default')
+
+    expect(exclusiveCode).toHaveBeenCalledOnce()
+    expect(request).toHaveBeenNthCalledWith(1, '/api/connections/wo_mail', 'PUT', {
+      authType: 'custom_credential',
+      connectionName: 'default',
+      values: { authorizationCode: 'expired-mail-code', email: '13800000000@wo.cn' }
+    })
+    expect(request).toHaveBeenNthCalledWith(2, '/api/connections/wo_mail', 'PUT', {
+      authType: 'custom_credential',
+      connectionName: 'default',
+      values: { authorizationCode: 'fresh-mail-code', email: '13800000000@wo.cn' }
+    })
+    expect(mailState.save).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ uid: 'account-a', phone: '13800000000' }),
+      { email: '13800000000@wo.cn', enabled: true }
+    )
+    expect(mailState.save).toHaveBeenCalledWith(
+      expect.objectContaining({ uid: 'account-a', phone: '13800000000' }),
+      expect.objectContaining({ authorizationCode: 'fresh-mail-code', enabled: true, email: '13800000000@wo.cn' })
+    )
   } finally {
     await manager.close()
     fs.rmSync(home, { recursive: true, force: true })
@@ -357,9 +713,11 @@ it('keeps attachment download URLs in the main process and delegates the save to
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-save-'))
   const writes: unknown[] = []
   const saved = { mcp_servers: { connector_wo_mail: { desktop_agent_mail: true, enabled: true } } }
+
   const saveAttachment = vi.fn(async (_name: string, download: () => Promise<Response>) => {
     const response = await download()
     expect(await response.text()).toBe('attachment body')
+
     return { canceled: false, saved: true }
   })
 
@@ -395,9 +753,11 @@ it('stages a mail attachment through the main-process owner for the composer', a
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-agent-mail-stage-'))
   const writes: unknown[] = []
   const saved = { mcp_servers: { connector_wo_mail: { desktop_agent_mail: true, enabled: true } } }
+
   const stageAttachment = vi.fn(async (name: string, download: () => Promise<Response>) => {
     const response = await download()
     expect(await response.text()).toBe('attachment body')
+
     return { name, path: `/tmp/${name}` }
   })
 
@@ -405,6 +765,7 @@ it('stages a mail attachment through the main-process owner for the composer', a
     success: true,
     data: { file: { downloadUrl: 'http://127.0.0.1:1234/api/files/a', name: 'report.md' } }
   })
+
   vi.spyOn(ConnectorRuntime.prototype, 'download').mockResolvedValue(new Response('attachment body'))
   vi.spyOn(ConnectorRuntime.prototype, 'connection').mockResolvedValue({
     configured: true,

@@ -3,6 +3,25 @@ import path from 'node:path'
 
 import { nativeImage } from 'electron'
 
+/** Menu-bar images use the brand's alpha silhouette and retain Retina detail. */
+export function createTrayIcon(filePath: string | undefined) {
+  const source = filePath ? nativeImage.createFromPath(filePath) : nativeImage.createEmpty()
+
+  if (source.isEmpty()) {
+    throw new Error('No usable tray icon')
+  }
+
+  const size = process.platform === 'darwin' ? 18 : 24
+  const icon = source.resize({ width: size, height: size })
+
+  if (process.platform === 'darwin') {
+    icon.addRepresentation({ scaleFactor: 2, buffer: source.resize({ width: size * 2, height: size * 2 }).toPNG() })
+    icon.setTemplateImage(true)
+  }
+
+  return icon
+}
+
 /**
  * Validate that a candidate app-icon file exists and decodes as an image.
  *

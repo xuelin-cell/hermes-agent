@@ -230,15 +230,23 @@ export class DesktopMessaging {
   /** 原版插件负责准备和可信复用；有动作才等待动作，随后核对全部受管配置。 */
   private async restoreGateway(input: MessagingTask, restart = false): Promise<MessagingSetupResult> {
     this.publish(input, 'applying', true)
-    let state = await this.requestRestore(restart)
 
+    return this.continueGateway(input, await this.requestRestore(restart))
+  }
+
+  /** 恢复与保存共用先停后起流程；只等待停止动作，常驻启动通过平台状态确认。 */
+  private async continueGateway(input: MessagingTask, state: any, patience = RESTORE_PATIENCE): Promise<MessagingSetupResult> {
     // 账号退出会中断等待，这不是连接失败：不留下失败记录。
-    if (!state) {return {}}
+    if (!state || this.closed) {return {}}
 
     if (state.name === 'gateway-stop') {
-      this.publish(input, 'stopping', true)
+      this.publish(input, input.operation === 'restore' ? 'stopping' : 'restarting', true)
 
-      if (!(await this.watch('default', 'gateway-stop')) || this.closed) {
+      const stopped = await this.watch('default', 'gateway-stop')
+
+      if (this.closed) {return {}}
+
+      if (!stopped) {
         this.publish(input, 'failed', true, 'apply_failed')
 
         return { actionFailed: true }
@@ -246,7 +254,7 @@ export class DesktopMessaging {
 
       state = await this.requestRestore(false)
 
-      if (!state) {return {}}
+      if (!state || this.closed) {return {}}
     }
 
     if (state.configured === false) {
@@ -262,8 +270,9 @@ export class DesktopMessaging {
 
     if (state.name && state.name !== 'gateway-start') {throw new Error('restore_response_invalid')}
 
-    // gateway-start 是原版常驻 run 进程，不能等待它退出才判断启动完成。
-    const ok = await this.checkPlatforms(input, false, state.profiles, RESTORE_PATIENCE)
+    // gateway-start 是常驻网关进程，不能等待它退出才判断启动完成。
+    const profiles = input.operation === 'restore' ? state.profiles : [input.profile || 'default']
+    const ok = await this.checkPlatforms(input, false, profiles, patience)
 
     // 账号退出会中断等待，这不是连接失败：不留下失败记录，也不让调用方写失败日志。
     if (!ok && this.closed) {
@@ -375,28 +384,36 @@ export class DesktopMessaging {
     return { saved: true, changed: result.changed, actionFailed: result.changed ? !(await this.apply(input)) : false }
   }
 
-  /** 原版动作完成后继续确认平台状态，不把启动辅助命令退出当成连接成功。 */
+  /** 有配置时先停后起，无配置只停止；保留本次操作的平台与解绑确认规则。 */
   private async apply(input: MessagingSetupRequest): Promise<boolean> {
     this.publish(input, 'applying', true)
     let ok = false
     let applied = false
 
     try {
-      if (this.closed) {
-        return false
-      }
+      if (this.closed) {throw new Error('messaging_account_closed')}
 
       const action = await this.deps.request('default', `${BASE}/apply`, 'POST', {})
-      this.publish(input, action.name === 'gateway-stop' ? 'stopping' : 'restarting', true)
-      applied = await this.watch('default', action.name)
-      ok = applied && await this.checkPlatforms(input, action.name === 'gateway-stop')
 
-      return ok
+      if (action.configured === true) {
+        this.publish(input, 'restarting', true)
+        const result = await this.continueGateway(input, action, CHECK_PATIENCE)
+
+        return !result.actionFailed
+      }
+
+      if (action.name !== 'gateway-stop') {throw new Error('apply_response_invalid')}
+
+      this.publish(input, 'stopping', true)
+      applied = await this.watch('default', action.name)
+      ok = applied && await this.checkPlatforms(input, true)
     } catch {
-      return false
-    } finally {
-      this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : applied ? 'connection_timeout' : 'apply_failed')
+      // 配置已保存，动作或恢复请求失败只报告连接操作失败。
     }
+
+    this.publish(input, ok ? 'completed' : 'failed', true, ok ? undefined : applied ? 'connection_timeout' : 'apply_failed')
+
+    return ok
   }
 
   /** 有界确认连接或解绑结果；解绑不等待其它渠道连接，但保留网关启停检查。 */

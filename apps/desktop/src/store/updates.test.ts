@@ -93,6 +93,7 @@ const {
   REQUIRED_BACKEND_CONTRACT,
   reportBackendContract,
   applyUpdates,
+  cancelActiveUpdate,
   applyEverythingUpdate,
   hasMultipleUpdateTargets,
   openUpdatesWindow,
@@ -106,6 +107,16 @@ const {
   startUpdatePoller,
   stopUpdatePoller,
   $updateStatus,
+  $updateReady,
+  $updateReadyDismissed,
+  $updateDownloadFailure,
+  $updateDownloadRetrying,
+  dismissUpdateDownloadFailure,
+  retryUpdateDownload,
+  dismissUpdateReady,
+  prepareClientUpdate,
+  startClientUpdateDownload,
+  isClientUpdateRunning,
   BACKGROUND_UPDATE_CHECK_MS
 } = await import('./updates')
 
@@ -288,6 +299,30 @@ describe('maybeNotifyUpdateAvailable', () => {
     )
 
     expect(notifySpy).toHaveBeenCalledTimes(1)
+  })
+
+  // On installs that can download in the background, the toast would interrupt
+  // the user mid-download and duplicate the ambient "new version ready" prompt.
+  it('defers to the ambient ready prompt on background-download installs', () => {
+    const previous = window.hermesDesktop
+    window.hermesDesktop = { updates: { prepare: vi.fn() } } as never
+
+    try {
+      maybeNotifyUpdateAvailable(
+        status({
+          behind: null,
+          currentVersion: '0.19.0',
+          latestTag: 'v0.20.0',
+          mechanism: 'electron-updater',
+          targetSha: undefined,
+          updateAvailable: true
+        })
+      )
+
+      expect(notifySpy).not.toHaveBeenCalled()
+    } finally {
+      window.hermesDesktop = previous
+    }
   })
 
   // Eligibility stays mechanism-specific: a git-style check must still prove
@@ -980,6 +1015,7 @@ describe('applyUpdates terminal state', () => {
     dismissSpy.mockClear()
     applyMock.mockReset()
     resetUpdateApplyState()
+    $updateDownloadFailure.set(null)
     $updateOverlayOpen.set(true)
     ;(globalThis as unknown as { window: unknown }).window = {
       hermesDesktop: { updates: { apply: applyMock } }
@@ -1025,14 +1061,36 @@ describe('applyUpdates terminal state', () => {
     expect(notifySpy.mock.calls[0]?.[0]).toMatchObject({ kind: 'success' })
   })
 
+  it('treats an aborted download as a user decision, not a failed update', async () => {
+    applyMock.mockResolvedValue({ ok: false, cancelled: true })
+
+    const result = await applyUpdates()
+
+    expect(result.cancelled).toBe(true)
+    expect($updateApply.get().applying).toBe(false)
+    expect($updateApply.get().stage).toBe('idle')
+    expect($updateApply.get().error).toBeNull()
+    expect(notifySpy).not.toHaveBeenCalled()
+  })
+
   it('lands on a closeable error state when the apply resolves not-ok', async () => {
     applyMock.mockResolvedValue({ ok: false, error: 'rebuild-failed', message: 'rebuild failed' })
 
     await applyUpdates()
 
+    expect($updateDownloadFailure.get()).toMatchObject({ message: 'rebuild failed', source: 'apply' })
     expect($updateApply.get().applying).toBe(false)
-    expect($updateApply.get().stage).toBe('error')
-    expect($updateApply.get().error).toBe('rebuild-failed')
+    expect($updateOverlayOpen.get()).toBe(false)
+  })
+
+  it('routes a thrown apply into the failure dialog instead of a stuck overlay', async () => {
+    applyMock.mockRejectedValue(new Error('ipc broke'))
+
+    await applyUpdates()
+
+    expect($updateDownloadFailure.get()).toMatchObject({ message: 'ipc broke', source: 'apply' })
+    expect($updateApply.get().applying).toBe(false)
+    expect($updateOverlayOpen.get()).toBe(false)
   })
 
   it('keeps the manual command state for CLI installs with no staged updater', async () => {
@@ -1515,6 +1573,7 @@ describe('startUpdatePoller', () => {
     }
     vi.useFakeTimers()
     stopUpdatePoller()
+    resetUpdateApplyState()
   })
 
   afterEach(() => {
@@ -1531,6 +1590,23 @@ describe('startUpdatePoller', () => {
 
     expect(checkMock).toHaveBeenCalled()
     expect($updateStatus.get()?.behind).toBe(5)
+  })
+
+  // The progress stream is the only way a background transfer could reach the
+  // apply surface: the ambient prefetch is silent by design, and a cancelled
+  // apply must not resurrect the progress view it just cleared.
+  it('ignores streamed progress nobody is watching', async () => {
+    startUpdatePoller()
+    await vi.advanceTimersByTimeAsync(0)
+
+    const progress = onProgressMock.mock.calls[0][0] as (payload: unknown) => void
+
+    progress({ at: 1, message: 'Downloading the update.', percent: 12, stage: 'fetch' })
+    expect($updateApply.get().applying).toBe(false)
+
+    $updateApply.set({ ...$updateApply.get(), applying: true, stage: 'prepare' })
+    progress({ at: 2, message: 'Downloading the update.', percent: 12, stage: 'fetch' })
+    expect($updateApply.get()).toMatchObject({ applying: true, percent: 12, stage: 'fetch' })
   })
 
   it('polls once per day and never forces past the caches', async () => {
@@ -1792,5 +1868,408 @@ describe('discontinued retirement notice', () => {
     await checkUpdates({ force: true })
 
     expect(notifySpy.mock.calls.filter(call => call[0]?.id === 'desktop-build-discontinued')).toHaveLength(0)
+  })
+})
+
+describe('prepareClientUpdate', () => {
+  const prepareMock = vi.fn()
+
+  beforeEach(() => {
+    prepareMock.mockReset()
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    $updateDownloadRetrying.set(false)
+    $updateStatus.set(null)
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { check: vi.fn(), prepare: prepareMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    $updateDownloadRetrying.set(false)
+  })
+
+  it('downloads an offered update in the background and publishes the ready version', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    prepareMock.mockResolvedValue({ ok: true, supported: true, ready: true, version: '1.2.4' })
+
+    await prepareClientUpdate()
+
+    expect(prepareMock).toHaveBeenCalledTimes(1)
+    expect($updateReady.get()).toEqual({ version: '1.2.4' })
+  })
+
+  it('never downloads when the check found nothing, failed, or is unsupported', async () => {
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
+
+    $updateStatus.set({ supported: true, updateAvailable: false, behind: 0 })
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
+
+    $updateStatus.set({ supported: false, updateAvailable: true })
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
+  })
+
+  it('surfaces a failed prefetch so the user can retry the transfer', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    prepareMock.mockResolvedValue({ ok: false, supported: true, ready: false, message: 'blockmap mismatch' })
+
+    expect(await prepareClientUpdate()).toBe(true)
+
+    expect($updateDownloadFailure.get()).toMatchObject({ message: 'blockmap mismatch', source: 'prepare' })
+    expect($updateReady.get()).toBeNull()
+  })
+
+  // A prefetch that produced no package is not a failed download: the strategy
+  // reports "nothing ready" when the feed moved on or the user aborted the
+  // transfer, and a cancel must never pop the failure dialog.
+  it('stays quiet when the prefetch reports nothing ready', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    prepareMock.mockResolvedValue({ ok: true, supported: true, ready: false, version: null })
+
+    expect(await prepareClientUpdate()).toBe(true)
+
+    expect($updateDownloadFailure.get()).toBeNull()
+    expect($updateReady.get()).toBeNull()
+  })
+
+  it('keeps prefetch failures silent when the update owner downloads it itself', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true })
+    prepareMock.mockResolvedValue({ ok: false, supported: false, ready: false })
+
+    await prepareClientUpdate()
+
+    expect($updateDownloadFailure.get()).toBeNull()
+  })
+
+  it('stops auto-prefetching after a surfaced failure until the user retries', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true })
+    $updateDownloadFailure.set({ message: 'boom', source: 'prepare' })
+
+    expect(await prepareClientUpdate()).toBe(false)
+    expect(prepareMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps the prompt hidden when the update owner downloads it itself', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true })
+    prepareMock.mockResolvedValue({ ok: false, supported: false, ready: false })
+
+    await prepareClientUpdate()
+
+    expect($updateReady.get()).toBeNull()
+  })
+
+  it('hides the prompt on dismiss and skips further prefetch this session', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: true })
+    $updateReady.set({ version: '1.2.4' })
+
+    dismissUpdateReady()
+
+    expect($updateReady.get()).toBeNull()
+
+    await prepareClientUpdate()
+    expect(prepareMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('startClientUpdateDownload', () => {
+  const prepareMock = vi.fn()
+  let releasePrepare: (value: unknown) => void = () => {}
+
+  /** Holds the transfer open so the states between "started" and "ready" are observable. */
+  const holdPrepare = () =>
+    new Promise(resolve => {
+      releasePrepare = resolve
+    })
+
+  beforeEach(() => {
+    prepareMock.mockReset()
+    resetUpdateApplyState()
+    $updateOverlayOpen.set(false)
+    $updateOverlayTarget.set('client')
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.0.0' })
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { check: vi.fn(), prepare: prepareMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    $updateOverlayOpen.set(false)
+    $updateReady.set(null)
+    $updateStatus.set(null)
+    resetUpdateApplyState()
+  })
+
+  // The manual check's only job is to get the download on screen: the dialog
+  // opens on the transfer, and the install still waits for the launch click.
+  it('opens the overlay on the download and publishes the ready package', async () => {
+    prepareMock.mockImplementation(holdPrepare)
+
+    const started = startClientUpdateDownload()
+
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateOverlayTarget.get()).toBe('client')
+    expect($updateApply.get()).toMatchObject({ applying: true, stage: 'fetch' })
+    expect(isClientUpdateRunning()).toBe(true)
+
+    releasePrepare({ ok: true, supported: true, ready: true, version: '1.0.0' })
+    await started
+
+    expect($updateReady.get()).toEqual({ version: '1.0.0' })
+    expect($updateApply.get().applying).toBe(false)
+    expect(isClientUpdateRunning()).toBe(false)
+  })
+
+  // The ready dialog's launch action reuses the package: a second explicit
+  // check must not start another transfer.
+  it('does not transfer again once the package is ready', async () => {
+    $updateReady.set({ version: '1.0.0' })
+
+    await startClientUpdateDownload()
+
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect($updateOverlayOpen.get()).toBe(true)
+  })
+
+  // Installs whose owner downloads it itself (App Installer / Store / handoff /
+  // checkout) have nothing to transfer: keep the overlay so its install pitch
+  // can start that flow.
+  it('falls back to the install pitch when the owner does its own download', async () => {
+    $updateStatus.set({ supported: false, updateAvailable: true })
+
+    await startClientUpdateDownload()
+
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateApply.get().applying).toBe(false)
+  })
+
+  // A failed transfer belongs to the download-failure dialog, which only shows
+  // once the overlay steps aside.
+  it('hands a failed transfer back to the failure dialog', async () => {
+    prepareMock.mockRejectedValue(new Error('blockmap mismatch'))
+
+    await startClientUpdateDownload()
+
+    expect($updateOverlayOpen.get()).toBe(false)
+    expect($updateDownloadFailure.get()).toMatchObject({ message: 'blockmap mismatch', source: 'prepare' })
+    expect($updateApply.get().applying).toBe(false)
+  })
+
+  // A passive prefetch may already own the transfer. Joining it must not
+  // start a second one (the main process rejects concurrent prepares).
+  it('joins a transfer already on the wire', async () => {
+    prepareMock.mockImplementation(holdPrepare)
+
+    const background = prepareClientUpdate()
+    const manual = startClientUpdateDownload()
+
+    expect(prepareMock).toHaveBeenCalledTimes(1)
+
+    releasePrepare({ ok: true, supported: true, ready: true, version: '1.0.0' })
+    await Promise.all([background, manual])
+
+    expect($updateReady.get()).toEqual({ version: '1.0.0' })
+  })
+})
+
+describe('startActiveUpdate', () => {
+  const applyMock = vi.fn()
+  const prepareMock = vi.fn()
+
+  beforeEach(() => {
+    applyMock.mockReset()
+    prepareMock.mockReset()
+    resetUpdateApplyState()
+    $updateOverlayOpen.set(false)
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    $updateStatus.set(null)
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { apply: applyMock, check: vi.fn(), prepare: prepareMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    $updateOverlayOpen.set(false)
+    $updateReady.set(null)
+    $updateStatus.set(null)
+  })
+
+  // The ready prompt's only action is "restart": it must go straight to the
+  // install and reuse the package already on disk, never start a transfer.
+  it('installs a downloaded package without transferring it again', async () => {
+    applyMock.mockResolvedValue({ ok: true, handedOff: true })
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.0.0' })
+    $updateReady.set({ version: '1.0.0' })
+
+    startActiveUpdate('client')
+
+    await vi.waitFor(() => expect(applyMock).toHaveBeenCalledTimes(1))
+
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateApply.get().applying).toBe(true)
+  })
+})
+
+describe('cancelActiveUpdate', () => {
+  const cancelMock = vi.fn()
+
+  const downloading = {
+    applying: true,
+    stage: 'fetch' as const,
+    message: '',
+    percent: 40,
+    error: null,
+    command: null,
+    log: []
+  }
+
+  beforeEach(() => {
+    cancelMock.mockReset()
+    resetUpdateApplyState()
+    $updateReadyDismissed.set(false)
+    $updateOverlayOpen.set(true)
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { cancel: cancelMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+  })
+
+  it('clears the progress surface once the main process confirms the abort', async () => {
+    cancelMock.mockResolvedValue({ cancelled: true })
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(true)
+
+    expect($updateOverlayOpen.get()).toBe(false)
+    expect($updateApply.get().applying).toBe(false)
+    expect($updateApply.get().stage).toBe('idle')
+    // The user said "not now": the ambient prefetch must not immediately
+    // restart the download that was just stopped.
+    expect($updateReadyDismissed.get()).toBe(true)
+  })
+
+  it('keeps the surface honest when the installer already took over', async () => {
+    cancelMock.mockResolvedValue({ cancelled: false })
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(false)
+
+    expect($updateOverlayOpen.get()).toBe(true)
+    expect($updateApply.get().applying).toBe(true)
+  })
+
+  it('is a no-op on preloads without the cancel bridge', async () => {
+    ;(globalThis as unknown as { window: unknown }).window = { hermesDesktop: { updates: {} } }
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(false)
+
+    expect($updateOverlayOpen.get()).toBe(true)
+  })
+
+  // The latch a cancel sets may only silence the AMBIENT prefetch. An explicit
+  // "update now" never consults it, so cancelling once must not strand the user
+  // on a build they can no longer install without relaunching.
+  it('keeps the ambient prefetch off after a cancel without blocking an explicit update', async () => {
+    const prepareMock = vi.fn().mockResolvedValue({ ok: true, supported: true, ready: true, version: '1.2.4' })
+
+    const applyMock = vi.fn().mockResolvedValue({ ok: true, handedOff: false })
+
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { apply: applyMock, cancel: cancelMock, check: vi.fn(), prepare: prepareMock } }
+    }
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    cancelMock.mockResolvedValue({ cancelled: true })
+    $updateApply.set(downloading)
+
+    await expect(cancelActiveUpdate()).resolves.toBe(true)
+
+    // A later passive check would prefetch again; the latch keeps it off.
+    expect(await prepareClientUpdate()).toBe(false)
+    expect(prepareMock).not.toHaveBeenCalled()
+
+    await applyUpdates()
+    expect(applyMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('retryUpdateDownload', () => {
+  const applyMock = vi.fn()
+  const prepareMock = vi.fn()
+
+  beforeEach(() => {
+    applyMock.mockReset()
+    prepareMock.mockReset()
+    $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.2.4' })
+    $updateReady.set(null)
+    $updateReadyDismissed.set(false)
+    $updateDownloadFailure.set(null)
+    $updateDownloadRetrying.set(false)
+    $updateOverlayOpen.set(false)
+    ;(globalThis as unknown as { window: unknown }).window = {
+      hermesDesktop: { updates: { apply: applyMock, prepare: prepareMock } }
+    }
+  })
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window
+    $updateStatus.set(null)
+  })
+
+  // The retry belongs to the transfer, never to the install: it must not call
+  // apply(), which is what would download AND restart the app.
+  it('re-downloads instead of re-checking and never installs on its own', async () => {
+    prepareMock.mockResolvedValue({ ok: true, supported: true, ready: true, version: '1.2.4' })
+    $updateDownloadFailure.set({ message: 'boom', source: 'apply' })
+
+    await retryUpdateDownload()
+
+    expect(prepareMock).toHaveBeenCalledTimes(1)
+    expect(applyMock).not.toHaveBeenCalled()
+    expect($updateDownloadFailure.get()).toBeNull()
+    expect($updateReady.get()).toEqual({ version: '1.2.4' })
+    expect($updateDownloadRetrying.get()).toBe(false)
+  })
+
+  it('restores the failure when the retry has nothing to download', async () => {
+    $updateStatus.set({ supported: true, updateAvailable: false })
+    $updateDownloadFailure.set({ message: 'boom', source: 'prepare' })
+
+    await retryUpdateDownload()
+
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect($updateDownloadFailure.get()).toMatchObject({ message: 'boom', source: 'prepare' })
+  })
+
+  it('dismissing clears the failure without starting anything', () => {
+    $updateDownloadFailure.set({ message: 'boom', source: 'prepare' })
+
+    dismissUpdateDownloadFailure()
+
+    expect($updateDownloadFailure.get()).toBeNull()
+    expect(prepareMock).not.toHaveBeenCalled()
+    expect(applyMock).not.toHaveBeenCalled()
   })
 })

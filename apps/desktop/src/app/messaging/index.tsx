@@ -10,7 +10,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-state'
 import { getMessagingPlatforms, getStatus, type MessagingPlatformInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
-import { AlertTriangle, CheckCircle2, Loader2, MessageCircle, RefreshCw, X } from '@/lib/icons'
+import { AlertTriangle, Loader2, MessageCircle, RefreshCw, X } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
 import { $platformsChangeTick } from '@/store/live-sync'
 import { notify } from '@/store/notifications'
@@ -268,7 +268,6 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
 
   const operationFailed = (phase === 'failed' && !slowRestore && !failureDismissed) || requestFailed
   const failed = operationFailed || disconnected
-  const progress = applying || (!failed && reconnecting)
   const recovery = operationFailed || disconnected || reconnecting
 
   const phaseMessages = {
@@ -276,7 +275,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     applying: operation.operation === 'restore' ? m.connection.restoring : m.connection.connecting,
     restarting: m.connection.restarting, stopping: m.connection.stopping,
     checking: m.connection.checking,
-    completed: m.connection.applied,
+    completed: '',
     failed: operation.error === 'gateway_identity_unverified' ? m.connection.ownership
       : operation.operation === 'restore' ? m.connection.restoreFailed
       : operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
@@ -331,8 +330,8 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     <PageSearchShell {...props} onSearchChange={setQuery} searchPlaceholder={m.search} searchValue={query}>
       <div className={'h-full overflow-y-auto pb-8 pt-4 ' + PAGE_INSET_X}>
         <div className="mx-auto grid w-full max-w-3xl gap-4">
-          <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <header className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 className="flex shrink-0 items-center gap-2 text-sm font-semibold leading-5">
               <MessageCircle className="size-4 text-(--ui-text-tertiary)" />
               {m.cards.heading}
             </h2>
@@ -347,8 +346,8 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
             </ErrorBanner>
           )}
           {message && (
-            <Alert role="status" variant={failed ? 'warning' : progress ? 'default' : 'success'}>
-              {failed ? <AlertTriangle /> : progress ? <Loader2 className="animate-spin" /> : <CheckCircle2 />}
+            <Alert role="status" variant={failed ? 'warning' : 'default'}>
+              {failed ? <AlertTriangle /> : <Loader2 className="animate-spin" />}
               <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
                 <span>{message}</span>
                 {recovery && (operation.saved || requestFailed || disconnected || reconnecting) && (

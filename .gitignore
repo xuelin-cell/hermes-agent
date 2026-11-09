@@ -164,6 +164,8 @@ models-dev-upstream/
 .gemini/
 .zed/
 .qoder/
+# Screenshots/scratch files an agent session drops here (previews, probes).
+.qoder-tmp/
 .mcp.json
 opencode.json
 config/mcporter.json

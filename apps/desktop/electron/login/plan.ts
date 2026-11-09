@@ -1,3 +1,5 @@
+import { normalizePlanUsage, type PlanUsage } from '../uniwork-usage/contract'
+
 import { parseUniAgentGate, type UniAgentGateUpdate } from './uniagentgate'
 
 export interface MaasModel {
@@ -121,7 +123,8 @@ export async function fetchPlan(
   request: typeof fetch,
   token: string,
   cancellation: AbortSignal,
-  onBinding?: (update: UniAgentGateUpdate) => void
+  onBinding?: (update: UniAgentGateUpdate) => void,
+  onUsage?: (usage: PlanUsage) => void
 ): Promise<FetchedPlan> {
   try {
     const response = await request('https://maas.ai-yuanjing.com/app/gateway/uniwork/my-plan', {
@@ -147,7 +150,10 @@ export async function fetchPlan(
       onBinding?.(parseUniAgentGate(body.data === undefined ? body : body.data))
     }
 
-    return parsePlan(body)
+    const plan = parsePlan(body)
+    onUsage?.(normalizePlanUsage(body, Date.now()))
+
+    return plan
   } catch {
     return { status: 'failed' }
   }

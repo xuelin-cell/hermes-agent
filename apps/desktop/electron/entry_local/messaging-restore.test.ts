@@ -217,7 +217,9 @@ it('恢复与连续保存、解绑串行；最后一次解绑决定停止，不�
       return { changed: true }
     }
 
-    if (url.endsWith('/apply')) {return { name: enabled ? 'gateway-restart' : 'gateway-stop' }}
+    if (url.endsWith('/apply')) {return enabled
+      ? { configured: true, profiles: ['default'], name: 'gateway-start' }
+      : { name: 'gateway-stop' }}
 
     if (url.startsWith('/api/plugins/desktop-messaging/platforms?')) {return { platforms: [connection(enabled)] }}
 
@@ -257,4 +259,39 @@ it('恢复中退出等待在途动作且拒绝新启动，排队保存不会越�
   await stop
   expect(request.mock.calls.some(([, url]) => url.includes('/platforms/feishu') || url.endsWith('/apply'))).toBe(false)
   expect(request.mock.calls.filter(([, url]) => url.endsWith('/restore'))).toHaveLength(1)
+})
+
+it('保存后的停止期间退出，等停止完成但不再恢复或检查平台', async () => {
+  const { service, request } = fixture()
+  let release!: (value: unknown) => void
+  request.mockImplementation(async (_profile, url) => {
+    if (url.endsWith('/apply')) {return { configured: true, profiles: ['default'], name: 'gateway-stop' }}
+
+    if (url.includes('/actions/gateway-stop/')) {return await new Promise(resolve => { release = resolve })}
+
+    throw new Error('unexpected request')
+  })
+  const pending = service.run({ operation: 'retry' })
+  await vi.waitFor(() => expect(request.mock.calls.some(([, url]) => url.includes('/actions/gateway-stop/'))).toBe(true))
+  service.seal()
+  release({ running: false, exit_code: 0 })
+  await pending
+  await service.settle()
+  expect(request).toHaveBeenCalledTimes(2)
+  expect(service.status().phase).not.toBe('failed')
+})
+
+it('保存后停止成功但恢复被拒绝，不假报完成也不重试启动', async () => {
+  const { service, request } = fixture()
+  request.mockImplementation(async (_profile, url) => {
+    if (url.endsWith('/apply')) {return { configured: true, profiles: ['default'], name: 'gateway-stop' }}
+
+    if (url.includes('/actions/gateway-stop/')) {return { running: false, exit_code: 0 }}
+
+    throw new Error('gateway_identity_unverified')
+  })
+  expect(await service.run({ operation: 'retry', platform: 'dingtalk' })).toEqual({ actionFailed: true })
+  expect(service.status()).toMatchObject({ phase: 'failed', saved: true, error: 'apply_failed' })
+  expect(request.mock.calls.filter(([, url]) => url.endsWith('/restore'))).toHaveLength(1)
+  expect(request.mock.calls.some(([, url]) => url.includes('/platforms?'))).toBe(false)
 })

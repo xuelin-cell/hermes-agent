@@ -31,7 +31,7 @@ import { ArchiveOff } from '@/lib/icons'
 import { isSubmitEnter } from '@/lib/ime'
 import { PROFILE_SWATCHES } from '@/lib/profile-color'
 import { exportSession } from '@/lib/session-export'
-import { openConversationShare } from '@/store/conversation-share'
+import { notifyConversationShareError, openConversationShare } from '@/store/conversation-share'
 import { $developerMode } from '@/store/developer-mode'
 import { activeGateway } from '@/store/gateway'
 import { notify, notifyError } from '@/store/notifications'
@@ -114,6 +114,7 @@ interface SessionActions {
   /** The row is already archived (the sidebar's Archived view): the shared
    *  archive verb becomes Unarchive and restores the session (#98813). */
   archived?: boolean
+  connectionId?: string
   profile?: string
   onPin?: () => void
   /** Toggle the persisted read-state watermark for this row. */
@@ -207,6 +208,7 @@ function useSessionActions({
   unread = false,
   archived = false,
   profile,
+  connectionId,
   onPin,
   onToggleUnread,
   onBranch,
@@ -313,10 +315,8 @@ function useSessionActions({
       key: 'conversation-share',
       label: t.conversationShare.sessionShare,
       onSelect: () => {
-        try {
-          suppressCloseFocusRef.current = true
-          openConversationShare(sessionId)
-        } catch (error) {notifyError(error, t.conversationShare.unavailable)}
+        suppressCloseFocusRef.current = true
+        void openConversationShare(sessionId).catch(error => notifyConversationShareError(error, t.conversationShare))
       }
     }),
     ...(renameable
@@ -567,6 +567,7 @@ function useSessionActions({
 
   const renameDialog = renameable ? (
     <RenameSessionDialog
+      connectionId={connectionId}
       currentTitle={title}
       onOpenChange={setRenameOpen}
       open={renameOpen}
@@ -681,6 +682,7 @@ export function SessionContextMenu({ children, ...actions }: SessionContextMenuP
 }
 
 interface RenameSessionDialogProps {
+  connectionId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   sessionId: string
@@ -688,7 +690,7 @@ interface RenameSessionDialogProps {
   profile?: string
 }
 
-function RenameSessionDialog({ open, onOpenChange, sessionId, currentTitle, profile }: RenameSessionDialogProps) {
+function RenameSessionDialog({ open, onOpenChange, sessionId, currentTitle, profile, connectionId }: RenameSessionDialogProps) {
   const { t } = useI18n()
   const r = t.sidebar.row
   const [value, setValue] = useState(currentTitle)
@@ -724,7 +726,7 @@ function RenameSessionDialog({ open, onOpenChange, sessionId, currentTitle, prof
       // Bare-id patching only the recents slice left project-scoped rows
       // (overview previews, entered-project lanes) on the stale title until a
       // profile switch forced a refetch (#123337).
-      applySessionTitle(sessionId, finalTitle || null)
+      applySessionTitle(sessionId, finalTitle || null, { profile, connectionId })
       applyRenamedSessionTitle(sessionId, finalTitle || null)
       notify({ durationMs: 2_000, kind: 'success', message: r.renamed })
       onOpenChange(false)

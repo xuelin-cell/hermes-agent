@@ -333,7 +333,7 @@ def stop_gateways(homes, saved):
             continue
         if Path(record["hermes_home"]).resolve() != home:
             raise RuntimeError("网关 PID 记录归属不符")
-        target = status._live_pid_from_record(record)
+        target = record.get("pid")
         row = next((item for item in runtime if item["pid"] == target), None)
         if row is None:
             raise RuntimeError("网关尚未发布可信运行身份")
@@ -343,7 +343,20 @@ def stop_gateways(homes, saved):
                 raise RuntimeError("无法重新确认账号网关归属")
             force_stop(row)
             continue
-        if record["start_time"] != int(round(row["created"] * 100)):
+        current_start = status.get_process_start_time(row["pid"])
+        recorded_start = record["start_time"]
+        valid_start = (
+            isinstance(recorded_start, int)
+            and not isinstance(recorded_start, bool)
+            and recorded_start > 0
+        )
+        same_start = valid_start and recorded_start == current_start
+        # macOS 启动时钟可能漂移；复用原生比较器，仍须通过前面的命令、Home 与 PID 核对。
+        if sys.platform == "darwin" and valid_start and current_start is not None:
+            same_start = status.start_time_fingerprints_match(
+                recorded_start, current_start
+            )
+        if not same_start:
             raise RuntimeError("网关尚未发布可信运行身份")
         marker = home / status._PLANNED_STOP_MARKER_FILENAME
         if not status._write_marker(

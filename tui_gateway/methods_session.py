@@ -644,6 +644,25 @@ class _Resume:
         return _lazy_resume_info(cwd, model=(overrides.get("model_override") or {}).get("model") or "",
                                  provider=overrides.get("provider_override") or "", profile=self.profile)
 
+    def runtime_overrides(self) -> dict:
+        from tui_gateway.messaging_model_switch import messaging_model_route
+
+        overrides = _stored_session_runtime_overrides(self.found)
+        try:
+            route = messaging_model_route(self.target, self.profile_home, self.db,
+                                          source=(self.found or {}).get("source") or "")
+        except Exception:
+            logger.debug("Could not read the session's messaging model on resume", exc_info=True)
+            return overrides
+        if route is not None and (pick := route[1].get("model_override")) and pick.get("model"):
+            code_mode = (overrides.get("model_override") or {}).get("code_mode")
+            overrides["model_override"] = {
+                **pick, **({"code_mode": True} if code_mode else {}),
+            }
+            if provider := pick.get("provider"):
+                overrides["provider_override"] = provider
+        return overrides
+
     def child_history(self, repair: bool) -> list:
         """The child's OWN conversation (no ancestors), row ids included."""
         return self.db.get_messages_as_conversation(self.target, repair_alternation=repair, include_row_ids=True)
@@ -863,7 +882,7 @@ def _resume_deferred(ctx: _Resume) -> dict:
     """Bounded ack; the transcript hydrates in the background (the ONE history read) and pages over REST."""
     sid, source, cwd = ctx.mint()
     with _profile_build_scope(ctx.profile_home):
-        overrides = _stored_session_runtime_overrides(ctx.found)
+        overrides = ctx.runtime_overrides()
     record = ctx.record(source, cwd, [], overrides,
                         todo_state=_todo_state_from_db(ctx.db, ctx.target))
     record.update(resume_history_ready=threading.Event(), resume_hydrating=True,
@@ -890,7 +909,7 @@ def _resume_cold(ctx: _Resume) -> dict:
     except Exception as e:
         return _err(ctx.rid, 5000, resume_failed_message(e))
     with _profile_build_scope(ctx.profile_home):
-        overrides = _stored_session_runtime_overrides(ctx.found)
+        overrides = ctx.runtime_overrides()
     record = ctx.record(source, cwd, history, overrides, display_history_prefix=ctx.display_prefix(),
                         todo_state=_todo_state_from_history(history))
     if (reused := ctx.claim(sid, record)) is not None:
@@ -911,7 +930,7 @@ def _resume_eager(ctx: _Resume) -> dict:
             display_history_prefix = ctx.display_prefix()
             # Profile db so turns persist to the right state.db; stored runtime identity so switching chats does
             # not inherit another chat's global model.
-            stored_runtime_overrides = _stored_session_runtime_overrides(ctx.found)
+            stored_runtime_overrides = ctx.runtime_overrides()
             agent = _make_agent_in_context(
                 sid, ctx.target, session_db=ctx.db, platform_override=source,
                 cwd_override=ctx.profile_resume_cwd or None,

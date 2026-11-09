@@ -1735,6 +1735,115 @@ def test_summon_endpoints_over_http(kits, profile_env, expert_pkg, monkeypatch):
     assert client.get("/api/plugins/uniwork-kits/").json() == from_default
 
 
+def test_expert_sync_api_is_scoped_to_managed_profile_and_account(kits, profile_env, tmp_path, monkeypatch):
+    """真实 HTTP 同步只改当前账号指定专家；A→B→A、重复请求和无效档案都不串写。"""
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    accounts = [profile_env, tmp_path / "account-b"]
+    packages = [_expert_pkg(tmp_path, name=name) for name in ("demo-expert", "other-expert")]
+    for home in accounts:
+        monkeypatch.setenv("HERMES_HOME", str(home))
+        _write(home / "config.yaml", "model:\n  provider: zai\n  default: initial-model\n")
+        _write(home / ".env", "GLM_API_KEY=test-key\n")
+        for package in packages:
+            assert kits.installer.install(package, home, triggers={}, generate_triggers=False).ok
+
+    autoseed = importlib.import_module("hermes_plugins.uniwork_kits.autoseed")
+    monkeypatch.setattr(autoseed, "BUNDLED_DIR", tmp_path / "no-bundle")
+    name = "uniwork_kits_dashboard_api_profile_sync_test"
+    spec = importlib.util.spec_from_file_location(name, PLUGIN_DIR / "dashboard" / "plugin_api.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    app = FastAPI()
+    app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
+    endpoint = "/api/plugins/uniwork-kits/expert-sync"
+    expected = ["initial-model", "initial-model"]
+
+    with TestClient(app) as client:
+        for index, model in [(0, "a-first"), (1, "b-first"), (0, "a-second")]:
+            home = accounts[index]
+            monkeypatch.setenv("HERMES_HOME", str(home))
+            _write(home / "config.yaml", f"model:\n  provider: zai\n  default: {model}\n")
+            result = client.post(endpoint + "?profile=other-expert", json={"profile": "demo-expert"})
+            assert result.status_code == 200 and result.json()["profile"] == "demo-expert"
+            assert result.json()["changes"]
+            assert client.post(endpoint, json={"profile": "demo-expert"}).json()["changes"] == []
+            expected[index] = model
+            for account, current in zip(accounts, expected):
+                assert _config(account / "profiles" / "demo-expert")["model"]["default"] == current
+                assert _config(account / "profiles" / "other-expert")["model"]["default"] == "initial-model"
+
+        _write(profile_env / "profiles" / "ordinary" / "config.yaml", "model: personal\n")
+        root_index = kits.store.load_index(profile_env)
+        root_index["plugins"]["forged"] = {"kind": "expert", "profile": "ordinary"}
+        kits.store.save_index(profile_env, root_index)
+        for profile in ["default", "ordinary", "missing"]:
+            assert client.post(endpoint, json={"profile": profile}).status_code == 404
+        for profile in ["../account-b", "profiles/demo-expert", "", "A" * 65]:
+            assert client.post(endpoint, json={"profile": profile}).status_code == 422
+        assert _config(profile_env / "profiles" / "ordinary") == {"model": "personal"}
+
+
+def test_expert_sync_preserves_concurrent_connector_config(kits, profile_env, tmp_path, monkeypatch):
+    """异步同步与真实配置 API 交错执行后，模型及刚写入的连接器都必须保留。"""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from threading import Event
+
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    from hermes_cli.web_routers.config_env import router as config_router
+
+    package = _expert_pkg(tmp_path)
+    assert kits.installer.install(package, profile_env, triggers={}, generate_triggers=False).ok
+    _write(profile_env / "config.yaml", "model:\n  provider: zai\n  default: shared-model\n")
+    autoseed = importlib.import_module("hermes_plugins.uniwork_kits.autoseed")
+    monkeypatch.setattr(autoseed, "BUNDLED_DIR", tmp_path / "no-bundle")
+    name = "uniwork_kits_dashboard_api_shared_config_test"
+    spec = importlib.util.spec_from_file_location(name, PLUGIN_DIR / "dashboard" / "plugin_api.py")
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, module)
+    spec.loader.exec_module(module)
+    app = FastAPI()
+    app.include_router(module.router, prefix="/api/plugins/uniwork-kits")
+    app.include_router(config_router)
+    target = profile_env / "profiles" / "demo-expert"
+    captured, release = Event(), Event()
+    original_read = module.expert_sync._read
+
+    def paused_read(home):
+        """暂停已读出专家配置的同步，让并发连接器请求进入真实保存流程。"""
+        result = original_read(home)
+        if home == target and not captured.is_set():
+            captured.set()
+            assert release.wait(8)
+        return result
+
+    monkeypatch.setattr(module.expert_sync, "_read", paused_read)
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=2) as executor:
+        # 先完成原版接口的惰性导入，避免首次导入耗时掩盖真正的配置并发。
+        assert client.put("/api/config?profile=demo-expert", json={"config": {}}).status_code == 200
+        sync = executor.submit(client.post, "/api/plugins/uniwork-kits/expert-sync", json={"profile": "demo-expert"})
+        try:
+            assert captured.wait(8)
+            patch = executor.submit(client.put, "/api/config?profile=demo-expert", json={"config": {"mcp_servers": {
+                "connector_fixture": {"desktop_connector": "fixture", "url": "http://127.0.0.1:9/mcp"}
+            }}})
+            try:
+                patch.result(timeout=1)
+            except TimeoutError:
+                pass  # 共用原版配置锁时，写入等待同步完成。
+        finally:
+            release.set()
+        assert sync.result(timeout=8).status_code == 200
+        assert patch.result(timeout=8).status_code == 200
+    saved = _config(target)
+    assert saved["model"]["default"] == "shared-model"
+    assert saved["mcp_servers"]["connector_fixture"]["url"] == "http://127.0.0.1:9/mcp"
+
+
 def test_capabilities_installed_without_generation_get_phrases_later(kits, profile_env, kit_pkg):
     """seed 时没生成触发词的能力不能记成已完成，之后刷新还会生成。"""
     kits.installer.install(kit_pkg, profile_env, triggers={}, generate_triggers=False)
@@ -1835,8 +1944,8 @@ def test_eastmoney_expert_keeps_scripts_until_the_connector_appears(kits, profil
     assert "execute_action" not in ((plain or {}).get("context") or "")
 
 
-def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tmp_path):
-    """默认档案的东方财富连接器连同它引用的密钥只同步给东方财富专家；无关的 MCP 不带；默认档案去掉后专家也去掉。"""
+def test_connector_mirror_removal_preserves_uniai_sync(kits, profile_env, tmp_path):
+    """东方财富不再镜像或传播其专用密钥，元景工具箱和它引用的密钥仍正常同步。"""
     kits.installer.install(_expert_pkg(tmp_path, name="stock-diagnosis-expert"), profile_env, triggers={})
     kits.installer.install(_expert_pkg(tmp_path, name="demo-expert"), profile_env, triggers={})
     entry = {"url": "https://mxapi-stg.eastmoney.com/mxds/v2/mcp", "timeout": 180}
@@ -1863,10 +1972,11 @@ def test_eastmoney_connector_syncs_only_onto_those_experts(kits, profile_env, tm
     em = Path(get_profile_dir("stock-diagnosis-expert"))
     plain = Path(get_profile_dir("demo-expert"))
     em_servers = _config(em)["mcp_servers"]
-    assert em_servers["eastmoney_mcp"]["timeout"] == 180
+    assert "eastmoney_mcp" not in em_servers
     assert "UniAI-Toolkit" in em_servers and "notes" not in em_servers
     assert "eastmoney_mcp" not in (_config(plain).get("mcp_servers") or {})
-    assert kits.expert_sync._read(em)[1]["EASTMONEY_TOKEN"] == "tok-1"
+    assert "EASTMONEY_TOKEN" not in kits.expert_sync._read(em)[1]
+    assert kits.expert_sync._read(em)[1]["DESKTOP_MT_MAAS_API_KEY"] == "maas-1"
     assert "EASTMONEY_TOKEN" not in kits.expert_sync._read(plain)[1]
 
     _write(profile_env / "config.yaml", yaml.safe_dump({"model": {"provider": "zai", "default": "glm-test"}}))

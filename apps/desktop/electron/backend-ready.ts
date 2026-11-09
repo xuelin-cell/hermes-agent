@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import path from 'node:path'
 
 // `hermes serve` announces HERMES_BACKEND_READY; the legacy `hermes dashboard`
 // backend announces HERMES_DASHBOARD_READY. Accept either so the desktop spawn
@@ -38,6 +39,18 @@ function resolvePortAnnounceTimeoutMs(env = process.env) {
   }
 
   return DEFAULT_PORT_ANNOUNCE_TIMEOUT_MS
+}
+
+/**
+ * 首次同步安装专家发生在监听端口前，按同一安装记录放宽本次等待，保留更长的用户设置。
+ * 只有发行包确实带内置套件时才放宽；没带套件的包永远不会写安装记录，不能每次都多等。
+ */
+export function accountPortAnnounceTimeoutMs(home: string, env = process.env): number {
+  const plugins = env.HERMES_BUNDLED_PLUGINS
+  const bundled = Boolean(plugins) && fs.existsSync(path.join(plugins!, 'uniwork-kits', 'bundled'))
+  const seeded = fs.existsSync(path.join(home, 'imported-plugins', '.bundled-seeded.json'))
+
+  return Math.max(resolvePortAnnounceTimeoutMs(env), bundled && !seeded ? 210_000 : 0)
 }
 
 /**

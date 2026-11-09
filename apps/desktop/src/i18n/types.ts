@@ -75,13 +75,13 @@ export interface Translations {
     sessionShare: string
     responseShare: string
     disclosure: string
-    includeProcess: string
     readonly: string
     user: string
     assistant: string
     process: string
     resourceError: string
     unavailable: string
+    ownerUnknown: string
     preview: string
     preparing: string
     retry: string
@@ -165,6 +165,7 @@ export interface Translations {
     officePreviewFailed: string
     artifactSensitive: string
     uploadArtifact: string
+    uploadToLibrary: string
     uploadHere: string
     chooseUploadFolder: string
     artifactRemote: string
@@ -214,6 +215,12 @@ export interface Translations {
     unavailableDescription: string
   }
   desktopLogin: {
+    legalLinksLabel: string
+    legalConsentPrefix: string
+    privacyPolicy: string
+    legalConsentConnector: string
+    userAgreement: string
+    legalOpenError: string
     planUsage: {
       restart: string
       actualUsage: string
@@ -232,9 +239,7 @@ export interface Translations {
       refreshed: string
       refreshFailed: string
       failed: string
-      stale: string
       auth: string
-      empty: string
       unnamed: string
       expired: string
       expires: string
@@ -262,9 +267,7 @@ export interface Translations {
     expired: string
     expiredLabel: string
     expiredRunning: string
-    planAuthRejected: string
     resendAfter: string
-    smsSent: string
     smsSendError: string
     smsLimited: string
     title: string
@@ -278,11 +281,20 @@ export interface Translations {
     unavailable: string
     phoneError: string
     captchaError: string
+    captchaIncorrect: string
+    captchaExpired: string
     captchaLoadError: string
     phonePlaceholder: string
     captchaPlaceholder: string
     smsPlaceholder: string
+    invitationCodePlaceholder: string
+    invitationInvalid: string
+    invitationExpired: string
+    invitationExhausted: string
+    invitationUsed: string
     smsError: string
+    smsIncorrect: string
+    smsExpired: string
     storageError: string
     requestError: string
   }
@@ -883,6 +895,7 @@ export interface Translations {
       needsAuthMessage: (name: string) => string
       errorTitle: string
       errorMessage: (name: string) => string
+      connectionFailedMessage: (name: string) => string
       signIn: string
       view: string
       disable: string
@@ -2792,6 +2805,7 @@ export interface Translations {
   }
 
   messaging: {
+    platformLabels: Record<string, string>
     connection: MessagingConnectionCopy
     cards: {
       heading: string
@@ -3601,6 +3615,8 @@ export interface Translations {
 
   composer: {
     message: string
+    addAttachment: string
+    aiDisclaimer: string
     wakingProfile: (profile: string) => string
     placeholderStarting: string
     placeholderReconnecting: string
@@ -3992,9 +4008,28 @@ export interface Translations {
     /** Update-status overlay + version-details (mechanism-aware update UI):
      * the overlay reads these off t.updates directly. */
     appName: string
+    /** The wordmark About's update card pairs with `aboutApp`. `appName` stays
+     *  the branding name for the updates overlay and version details. */
+    aboutAppName: string
     version: (value: string) => string
     versionUnavailable: string
     checkNow: string
+    checkForUpdates: string
+    updateDialogTitle: string
+    upToDate: string
+    gotIt: string
+    updateCheckFailed: string
+    currentVersion: string
+    aboutApp: string
+    goToWebsite: string
+    newVersionReady: string
+    newVersionReadyBody: (version: string) => string
+    updateLog: string
+    restartToUpdate: string
+    /** Primary action of the "package ready" state: install + relaunch. */
+    launchNow: string
+    downloadingUpdate: string
+    downloadFailedTitle: string
     seeWhatsNew: string
     releaseNotes: string
     onLatest: string
@@ -4604,8 +4639,6 @@ export interface Translations {
       goBack: string
       goForward: string
       reload: string
-      address: string
-      addressPlaceholder: string
       blankPageBody: string
       finishedRestarting: (message?: string) => string
       failedRestarting: (message: string) => string

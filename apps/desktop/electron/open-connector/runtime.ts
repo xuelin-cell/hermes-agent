@@ -29,6 +29,9 @@ export interface ConnectorRuntimeOptions {
   decrypt: (value: Buffer) => string
 }
 
+/** Covers two sequential 90-second mailbox credential checks, plus startup and response overhead. */
+export const connectorRequestTimeoutMs = 240_000
+
 /** 凭据验证因超时失败时连接器同样回 400；只读错误码和文字判断是否超时，原文不外传，免得把网络慢说成凭据错。 */
 export async function isValidationTimeout(response: Response): Promise<boolean> {
   const body = (await response.json().catch(() => null)) as null | { error?: { code?: unknown; message?: unknown } }
@@ -41,7 +44,7 @@ export async function isValidationTimeout(response: Response): Promise<boolean> 
   )
 }
 
-/** 独立 Node 服务持有第三方凭据；每个 Profile 单独启动、加密和退出。 */
+/** 独立 Node 服务持有第三方凭据；每个账号单独启动、加密和退出。 */
 export class ConnectorRuntime {
   private child: ChildProcess | null = null
   private starting: Promise<void> | null = null
@@ -52,7 +55,7 @@ export class ConnectorRuntime {
 
   constructor(private readonly options: ConnectorRuntimeOptions) {}
 
-  /** 只发布绑定本 Profile 的运行时令牌，管理令牌始终留在主进程。 */
+  /** 只发布绑定本账号的运行时令牌，管理令牌始终留在主进程。 */
   async config(id: ConnectorService): Promise<Record<string, unknown>> {
     await this.start()
 
@@ -243,7 +246,7 @@ export class ConnectorRuntime {
       method,
       headers: { Authorization: `Bearer ${this.secrets!.admin}`, 'Content-Type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      signal: AbortSignal.timeout(60_000)
+      signal: AbortSignal.timeout(connectorRequestTimeoutMs)
     })
 
     if (!response.ok) {

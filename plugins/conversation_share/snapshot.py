@@ -10,6 +10,17 @@ import time
 MAX_MESSAGES = 10000
 MAX_SOURCE_BYTES = 8 * 1024 * 1024
 _BACKGROUND = re.compile(r"^\[IMPORTANT: Background process [\s\S]*\]$", re.I)
+# 与桌面版 hydration 的 NOTICE_DISPLAY_KINDS 一致：系统写入的通知不是用户提问，不开启新的一轮。
+_NOTICE_KINDS = {"model_switch", "async_delegation_complete", "process_complete", "auto_continue",
+                 "personality_switch", "failed_turn"}
+
+
+def _is_background(message: dict) -> bool:
+    """后台进程消息与系统通知只作为过程中的一行活动，内部提示文字不进入公开页面。"""
+    role, kind = message.get("role"), message.get("display_kind")
+    return (kind in _NOTICE_KINDS
+            or (role == "system" and kind in {"process", "process_notification"})
+            or (role == "user" and bool(_BACKGROUND.match(message.get("text", "")))))
 
 
 class SnapshotError(ValueError):
@@ -30,11 +41,11 @@ def _assert_idle(db, sid: str) -> None:
         raise SnapshotError("会话正在生成或压缩，请完成后再分享。")
 
 
-def _public_blocks(message: dict, include_process: bool) -> list[dict]:
+def _public_blocks(message: dict) -> list[dict]:
     """只投影明确可展示的正文和过程字段，附件及原始工具参数不进入快照。"""
     role = message.get("role")
     if role == "tool":
-        return [{"type": "tool", "name": str(message.get("name") or "tool")[:100]}] if include_process else []
+        return [{"type": "tool", "name": str(message.get("name") or "tool")[:100]}]
     blocks = []
     text = message.get("display_content", message.get("text"))
     if role == "assistant" and not text and message.get("codex_message_items"):
@@ -58,7 +69,7 @@ def _public_blocks(message: dict, include_process: bool) -> list[dict]:
     if isinstance(text, str) and text.strip():
         # 原生展示投影在 image_urls=False 时不会携带上传图片或附件 URL。
         blocks.append({"type": "markdown", "text": text})
-    if include_process and role == "assistant":
+    if role == "assistant":
         reasoning = message.get("display_reasoning", message.get("reasoning") or message.get("reasoning_content"))
         if isinstance(reasoning, str) and reasoning.strip():
             blocks.insert(0, {"type": "reasoning", "text": reasoning})
@@ -66,6 +77,45 @@ def _public_blocks(message: dict, include_process: bool) -> list[dict]:
         if isinstance(commentary, str) and commentary.strip() and commentary not in (text or ""):
             blocks.insert(0, {"type": "markdown", "text": commentary})
     return blocks
+
+
+_DEFAULT_TITLES = {
+    "zh": {"session": "分享的会话", "response": "分享的回复"},
+    "zh-hant": {"session": "分享的對話", "response": "分享的回覆"},
+    "en": {"session": "Shared conversation", "response": "Shared response"},
+}
+
+
+def _default_title(locale: str, scope: str) -> str:
+    """快照没有会话标题或只分享单条回复时，按分享者界面语言给出标题，未覆盖的语言用英文。"""
+    titles = _DEFAULT_TITLES.get(str(locale).lower()) or _DEFAULT_TITLES.get(str(locale).split("-")[0].lower())
+    return (titles or _DEFAULT_TITLES["en"])[scope]
+
+
+def _turn_messages(group: list[dict]) -> list[dict]:
+    """按桌面版的折叠规则投影一轮：最后一段助手正文是答案，其余旁白、思考和工具都属于过程。"""
+    result = []
+    user = group[0] if group and group[0]["kind"] == "user" else None
+    if user and user["blocks"]:
+        result.append({"rows": [user["row"]], "message": {"role": "user", "blocks": user["blocks"]}})
+    replies = [entry for entry in group if entry is not user]
+    answer_at = next((index for index in range(len(replies) - 1, -1, -1) if replies[index]["kind"] == "assistant"
+                      and any(block["type"] == "markdown" for block in replies[index]["blocks"])), None)
+    answer, process = [], []
+    for index, entry in enumerate(replies):
+        if index == answer_at:
+            # 桌面版同一消息中最后一段文字之前的评论同样折叠为过程。
+            final = [block for block in entry["blocks"] if block["type"] == "markdown"][-1]
+            answer = [final]
+            process += [block for block in entry["blocks"] if block is not final]
+        else:
+            process += entry["blocks"]
+    message = {"role": "assistant", "blocks": answer}
+    if process:
+        message["process"] = process
+    if answer or process:
+        result.append({"rows": [entry["row"] for entry in replies], "message": message})
+    return result
 
 
 def build_snapshot(db, request: dict, *, owner: str | None, profile_home=None) -> dict:
@@ -92,7 +142,7 @@ def build_snapshot(db, request: dict, *, owner: str | None, profile_home=None) -
     messages = _history_to_messages(history, profile_home=profile_home, image_urls=False)
     # 回复身份来自持久历史，不能随「包含过程」开关或正文投影的过滤而消失。
     visible_users = {item.get("row_id") for item in messages if item.get("role") == "user"
-                     and not _BACKGROUND.match(item.get("text", ""))}
+                     and not _is_background(item)}
     visible_assistants = {item.get("row_id") for item in messages if item.get("role") == "assistant"}
     anchors = {}
     turn = None
@@ -106,49 +156,40 @@ def build_snapshot(db, request: dict, *, owner: str | None, profile_home=None) -
     selected = []
     groups = [selected]
     turns = {None: selected}
-    include_process = bool(request.get("includeProcess"))
     for message in messages:
         role = message.get("role")
-        kind = message.get("display_kind")
-        background = role == "system" and kind in {"process", "process_notification"}
-        background |= role == "user" and bool(_BACKGROUND.match(message.get("text", "")))
+        background = _is_background(message)
         if role == "user" and not background:
             selected = []
             groups.append(selected)
             turns[message.get("row_id")] = selected
         if role not in {"user", "assistant", "tool"} and not background:
             continue
-        blocks = ([{"type": "tool", "name": "Background process"}] if include_process else []) if background else _public_blocks(message, include_process)
-        if not blocks:
-            continue
-        row = message.get("row_id")
-        item = {"role": "assistant" if role == "tool" or background else role, "blocks": blocks}
-        entry = {"row": row, "message": item}
-        selected.append(entry)
+        blocks = [{"type": "tool", "name": "Background process"}] if background else _public_blocks(message)
+        selected.append({"row": message.get("row_id"), "kind": "background" if background else role, "blocks": blocks})
     scope = request.get("scope", "session")
     if scope == "response":
         row_id = request.get("responseRowId")
         if row_id not in anchors:
             raise SnapshotError("无法在完整活动分支中定位该回复，请刷新后重试。")
-        selection = [item for item in turns[anchors[row_id]] if item["message"]["role"] == "assistant"]
+        selection = [item for item in _turn_messages(turns[anchors[row_id]])
+                     if item["message"]["role"] == "assistant"]
     else:
-        selection = [item for group in groups for item in group]
+        selection = [item for group in groups for item in _turn_messages(group)]
     if not selection:
         raise SnapshotError("没有可分享的完整内容。")
     document = {
         "schemaVersion": 1, "scope": scope,
-        "title": "分享的回复" if scope == "response" else str(session.get("title") or "分享的会话"),
+        "title": _default_title(request.get("locale", "zh"), "response") if scope == "response"
+        else str(session.get("title") or _default_title(request.get("locale", "zh"), "session")),
         "locale": request.get("locale", "zh"), "theme": request.get("theme", "light"),
-        "messages": [item["message"] for item in selection], "rendererVersion": 1,
+        "messages": [item["message"] for item in selection], "rendererVersion": 2,
     }
-    from plugins.conversation_share.resources import ResourceError, snapshot_images
-    try:
-        document["assets"] = snapshot_images(document["messages"], session.get("cwd"))
-    except ResourceError as error:
-        raise SnapshotError(str(error)) from error
+    from plugins.conversation_share.resources import snapshot_images
+    document["assets"] = snapshot_images(document["messages"], session.get("cwd"))
     identity = {"session": requested, "scope": scope, "selection": selection, "document": {key: value for key, value in document.items() if key != "rendererVersion"}}
     document["snapshotId"] = _digest(identity)
     if scope == "response":
-        document["responseId"] = _digest([item["row"] for item in selection])
+        document["responseId"] = _digest([row for item in selection for row in item["rows"]])
     _assert_idle(db, sid)
     return {"document": document, "revision": revision, "sessionId": sid}

@@ -8,6 +8,8 @@ export const controlVariants = cva(
       size: {
         xs: 'px-2 py-0.5 text-[0.6875rem] leading-4',
         sm: 'px-2 py-1',
+        // 与 sm 按钮外高一致，边框包含在高度内。
+        toolbar: 'h-[calc(var(--control-line-height,1rem)+0.5rem)] px-2 py-0',
         default: 'px-2.5 py-1.5',
         lg: 'px-3 py-2 text-sm leading-5',
         auth: 'min-h-11 rounded-[0.625rem] px-3.5 py-2.5 text-sm leading-5'

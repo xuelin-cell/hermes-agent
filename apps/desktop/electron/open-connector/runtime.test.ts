@@ -4,10 +4,64 @@ import os from 'node:os'
 import path from 'node:path'
 
 import { expect, it } from 'vitest'
+import { parse } from 'yaml'
 
 import { createLocalSecretStorage } from '../local-secret-storage'
 
-import { ConnectorRuntime } from './runtime'
+import { ConnectorManager } from './manager'
+import { ConnectorRuntime, connectorRequestTimeoutMs } from './runtime'
+
+it('provides the four-minute mailbox credential-validation request budget', () => {
+  expect(connectorRequestTimeoutMs).toBe(240_000)
+})
+
+it('真实共享进程为多个助手提供同一端点，关闭账号后端点不可访问', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-shared-runtime-'))
+  const storage = createLocalSecretStorage(path.join(home, 'app-secret.key'))
+
+  const manager = new ConnectorManager({
+    home, profiles: () => ['default', 'expert-a', 'expert-b'], active: () => true, identity: () => null,
+    runtimeDirectory: path.resolve('services/open-connector'),
+    executable: createRequire(import.meta.url)('electron'),
+    encrypt: value => storage.encryptString(value), decrypt: value => storage.decryptString(value),
+    api: async () => ({ mcp_servers: {} }), openExternal: async () => undefined, log: () => undefined,
+    mailState: { get: () => null, save: () => undefined },
+    saveAttachment: async () => ({ canceled: true, saved: false }),
+    stageAttachment: async () => { throw new Error('unused') }
+  })
+
+  const endpoints: string[] = []
+
+  try {
+    for (const profile of ['default', 'expert-a', 'expert-b']) {
+      const target = profile === 'default' ? home : path.join(home, 'profiles', profile)
+      fs.mkdirSync(target, { recursive: true })
+      fs.writeFileSync(path.join(target, 'config.yaml'),
+        'mcp_servers:\n  connector_amap:\n    desktop_connector: amap\n    enabled: true\n')
+    }
+
+    await manager.start()
+    await Promise.all(['default', 'expert-a', 'expert-b'].map(profile => manager.prepare(profile)))
+
+    for (const profile of ['default', 'expert-a', 'expert-b']) {
+      const target = profile === 'default' ? home : path.join(home, 'profiles', profile)
+      const entry = parse(fs.readFileSync(path.join(target, 'config.yaml'), 'utf8')).mcp_servers.connector_amap
+      endpoints.push(entry.url)
+      expect(entry.enabled).toBe(false)
+      expect(fs.existsSync(path.join(target, 'open-connector'))).toBe(profile === 'default')
+      await manager.request({ operation: 'list', profile })
+    }
+
+    expect(new Set(endpoints).size).toBe(1)
+    expect((await fetch(endpoints[0].replace('/mcp', '/health'))).ok).toBe(true)
+  } finally {
+    await manager.close()
+
+    if (endpoints.length) {await expect(fetch(endpoints[0])).rejects.toThrow()}
+
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+}, 60_000)
 
 it('runs isolated services A → B → A with authenticated, service-filtered MCP discovery', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-connectors-'))

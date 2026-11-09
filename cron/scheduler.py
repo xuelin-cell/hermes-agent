@@ -2063,7 +2063,10 @@ def _final_response_from_result(result: dict, job_id: str, job_name: str, AIAgen
     return final_response
 
 
-def _finalize_cron_session(session_db, agent, job_id: str, job_name: str, cron_session_id: str) -> None:
+def _finalize_cron_session(
+    session_db, agent, job_id: str, job_name: str, cron_session_id: str,
+    *, reply_metadata: Optional[tuple[int, dict]] = None,
+) -> None:
     """Title, classify, end and release the cron session after the agent turn has returned."""
     # Bound every DB op so storage failure cannot hold the dispatch guard.
     _session_db = _BoundedCronSessionDB(session_db, job_id)
@@ -2087,6 +2090,12 @@ def _finalize_cron_session(session_db, agent, job_id: str, job_name: str, cron_s
             if _agent_session_id:
                 _final_cron_session_id = _agent_session_id
         logger.debug("Job '%s': failed to resolve cron compression tip: %s", job_id, e)
+    if reply_metadata is not None:
+        row_id, metadata = reply_metadata
+        try:
+            _session_db.merge_message_display_metadata(_final_cron_session_id, row_id, metadata)
+        except (Exception, KeyboardInterrupt):
+            logger.warning("Job '%s': failed to persist reply display metadata", job_id, exc_info=True)
     # Title must persist BEFORE end_session()/close(). Run-time suffix keeps it unique against the
     # sessions.title index; the fallbacks below guarantee a non-blank title.
     try:
@@ -2491,7 +2500,9 @@ def run_job(
     early, prompt = _prepare_job_prompt(job, job_id, job_name, extra_prompt, cancel_event)
     if early is not None:
         return early
+    from cron.scheduler_reply_metadata import snapshot_cron_reply_metadata
     from run_agent import AIAgent
+    from tui_gateway.turn_token_usage import token_usage_snapshot
 
     _cron_session_id = f"cron_{job_id}_{_hermes_now().strftime('%Y%m%d_%H%M%S')}"
     logger.info("Running job '%s' (ID: %s)", job_name, job_id)
@@ -2500,6 +2511,7 @@ def run_job(
     agent = None
     model = ""
     _session_db = None
+    reply_metadata = None
     _audit: Optional[_FireAudit] = None
     _worker_state: dict = {}
     scope = _CronRunScope(job, job_id, execution_id)
@@ -2524,10 +2536,15 @@ def run_job(
             session_db=_session_db)
         _audit = _FireAudit(job, job_id, model)
 
+        usage_before = token_usage_snapshot(agent)
         result = _run_agent_with_watchdog(
             agent, prompt, job, job_id, job_name, scope.task_id, cancel_event,
             worker_state=_worker_state)
+        completed_at = time.time()
         final_response = _final_response_from_result(result, job_id, job_name, AIAgent)
+        if (_session_db is not None and final_response.strip() and not result.get("interrupted")
+                and _cron_failure_marker_error(final_response) is None):
+            reply_metadata = snapshot_cron_reply_metadata(agent, result, usage_before, completed_at)
         if (setup.fallback_notice and final_response.strip() and not _is_cron_silence_response(final_response)
                 and _cron_failure_marker_error(final_response) is None):
             # Pre-agent provider switch (#74349) rides with the delivered report; silence and the
@@ -2574,7 +2591,8 @@ def run_job(
             _worker_state.get("future"), _session_db, agent, job_id, job_name, _cron_session_id)
         scope.exit()
         if _session_db and not _worker_teardown_deferred:
-            _finalize_cron_session(_session_db, agent, job_id, job_name, _cron_session_id)
+            _finalize_cron_session(
+                _session_db, agent, job_id, job_name, _cron_session_id, reply_metadata=reply_metadata)
         # Tear down the ephemeral agent or the gateway leaks fds per tick (EMFILE). With deferred
         # teardown, hand the live agent back: delivery needs a live async client.
         # Release subprocesses, terminal sandboxes, browser daemons, and the main OpenAI/httpx client held

@@ -44,46 +44,62 @@ def _connect_in_default(home: Path, entry: dict) -> None:
     }))
 
 
-def test_the_default_profiles_connector_reaches_only_the_eastmoney_experts(kits, profile_env, experts, monkeypatch):
-    """默认档案授权后，东方财富专家拿到同一条连接（换键名、去掉桌面标记），取数说明指向它；别的专家拿不到。"""
+def test_sync_does_not_create_connector_mirrors(kits, profile_env, experts):
+    """连接器由 Electron 准备，插件同步不再给任何专家创建东方财富镜像。"""
     em, plain = experts
     _connect_in_default(profile_env, CONNECTOR)
 
     kits.expert_sync.sync_all(profile_env)
 
-    mirrored = _config(em)["mcp_servers"][kits.eastmoney_slot.MIRROR_NAME]
-    assert mirrored["url"] == CONNECTOR["url"] and mirrored["headers"] == CONNECTOR["headers"]
-    # 带着这个标记，专家后端启动前会被桌面改写成专家自己那份还没授权的连接器。
-    assert "desktop_connector" not in mirrored
-    assert "connector_eastmoney_mcp" not in _config(em)["mcp_servers"]
+    assert not (_config(em).get("mcp_servers") or {})
     assert not (_config(plain).get("mcp_servers") or {})
 
-    monkeypatch.setenv("HERMES_HOME", str(em))
-    note = kits.eastmoney_slot.turn_note(em)
-    assert "mcp__eastmoney_mcp__execute_action" in note and "eastmoney_mcp.list_tools" in note
 
-
-def test_an_earlier_copy_under_the_desktop_key_is_replaced(kits, profile_env, experts):
-    """以前原样同步过去的 connector_eastmoney_mcp（已被桌面改写、连不上）会被清掉，换成新键名那条。"""
+@pytest.mark.parametrize("recorded", [True, False])
+def test_retired_mirror_is_removed_without_deleting_shared_connector(kits, profile_env, experts, recorded):
+    """旧镜像无论是否留下同步记录都会删除，已由 Electron 接管的条目不受旧记录影响。"""
     em, _plain = experts
     _connect_in_default(profile_env, CONNECTOR)
-    stale = {**CONNECTOR, "url": "http://127.0.0.1:60001/mcp", "headers": {"Authorization": "Bearer expert-own"}}
-    _write(em / "config.yaml", yaml.safe_dump({**_config(em), "mcp_servers": {"connector_eastmoney_mcp": stale}}))
+    _write(em / "config.yaml", yaml.safe_dump({**_config(em), "mcp_servers": {
+        "connector_eastmoney_mcp": CONNECTOR,
+        kits.eastmoney_slot.MIRROR_NAME: {"url": "http://127.0.0.1:60001/mcp"},
+        "personal": {"command": "custom-server"},
+    }}))
     index = kits.store.load_index(em)
     name, entry = kits.store.self_expert(index)
-    entry["sync"] = {"synced_mcp": ["connector_eastmoney_mcp"]}
+    entry["sync"] = {"synced_mcp": ["connector_eastmoney_mcp", kits.eastmoney_slot.MIRROR_NAME] if recorded else []}
     index["plugins"][name] = entry
     kits.store.save_index(em, index)
 
     kits.expert_sync.sync_all(profile_env)
 
     servers = _config(em)["mcp_servers"]
-    assert "connector_eastmoney_mcp" not in servers
-    assert servers[kits.eastmoney_slot.MIRROR_NAME]["url"] == CONNECTOR["url"]
+    assert servers["connector_eastmoney_mcp"] == CONNECTOR
+    assert kits.eastmoney_slot.MIRROR_NAME not in servers
+    assert servers["personal"] == {"command": "custom-server"}
+    assert kits.store.self_expert(kits.store.load_index(em))[1]["sync"]["synced_mcp"] == []
 
 
-def test_an_expert_authorized_on_its_own_keeps_its_own_connection(kits, profile_env, experts, monkeypatch):
-    """用户在专家档案里自己授权过（带桌面标记、不是同步来的），就用专家自己的，不再同步默认档案那条。"""
+@pytest.mark.parametrize("own", [
+    {"url": "https://mcp.eastmoney.com/mxds/mcp", "headers": {"Authorization": "Bearer user"}},
+    {"command": "eastmoney-local-server"},
+    {**CONNECTOR, "url": "http://127.0.0.1:60003/mcp"},
+])
+def test_user_owned_entry_under_the_retired_mirror_name_is_kept(kits, profile_env, experts, own):
+    """同名但不是旧镜像（远程地址、本地命令或带桌面标记）的条目属于用户或桌面，不删除。"""
+    em, _plain = experts
+    _connect_in_default(profile_env, CONNECTOR)
+    _write(em / "config.yaml", yaml.safe_dump({**_config(em), "mcp_servers": {
+        kits.eastmoney_slot.MIRROR_NAME: own,
+    }}))
+
+    kits.expert_sync.sync_all(profile_env)
+
+    assert _config(em)["mcp_servers"][kits.eastmoney_slot.MIRROR_NAME] == own
+
+
+def test_shared_managed_connection_drives_the_expert_turn_note(kits, profile_env, experts, monkeypatch):
+    """只剩桌面受管条目时，取数说明仍指向同一条工具，不依赖旧镜像。"""
     em, _plain = experts
     _connect_in_default(profile_env, CONNECTOR)
     own = {**CONNECTOR, "url": "http://127.0.0.1:60002/mcp"}
@@ -98,14 +114,13 @@ def test_an_expert_authorized_on_its_own_keeps_its_own_connection(kits, profile_
     assert "mcp__connector_eastmoney_mcp__execute_action" in kits.eastmoney_slot.turn_note(em)
 
 
-def test_disconnecting_in_the_default_profile_takes_it_back_from_the_experts(kits, profile_env, experts, monkeypatch):
-    """在默认档案断开（桌面把那条设成 enabled: false）后，下次同步从专家里去掉，专家回到包里的脚本取数。"""
+def test_sync_preserves_desktop_disabled_state(kits, profile_env, experts, monkeypatch):
+    """桌面禁用连接器后，插件同步不重新启用它，也不靠镜像绕过禁用。"""
     em, _plain = experts
     _connect_in_default(profile_env, CONNECTOR)
-    kits.expert_sync.sync_all(profile_env)
-    assert kits.eastmoney_slot.MIRROR_NAME in _config(em)["mcp_servers"]
-
-    _connect_in_default(profile_env, {**CONNECTOR, "enabled": False})
+    _write(em / "config.yaml", yaml.safe_dump({**_config(em), "mcp_servers": {
+        "connector_eastmoney_mcp": {**CONNECTOR, "enabled": False},
+    }}))
     kits.expert_sync.sync_all(profile_env)
 
     assert kits.eastmoney_slot.MIRROR_NAME not in (_config(em).get("mcp_servers") or {})
@@ -125,18 +140,20 @@ def test_the_connector_is_recognised_by_its_marker_or_header_under_any_key(kits)
     assert slot.server_name({"connector_eastmoney_mcp": {**CONNECTOR, "enabled": False}}) == ""
 
 
-def test_an_expert_backend_refreshes_its_own_copy_when_it_starts(kits, profile_env, experts, monkeypatch):
-    """连接器端口每次开桌面都会变：专家后端自己加载插件时从默认档案拉一次，不等默认档案先同步，也不碰别的专家。"""
+def test_expert_plugin_load_keeps_the_endpoint_prepared_by_electron(kits, profile_env, experts, monkeypatch):
+    """专家插件加载只同步模型等配置，不用主助手磁盘上的旧地址盖过 Electron 刚准备的地址。"""
     em, plain = experts
     _connect_in_default(profile_env, CONNECTOR)
     kits.expert_sync.sync_all(profile_env)
 
-    # 下一次打开桌面：默认档案的连接器换了端口，专家后端抢在默认档案同步之前启动。
-    _connect_in_default(profile_env, {**CONNECTOR, "url": "http://127.0.0.1:52990/mcp"})
+    _write(em / "config.yaml", yaml.safe_dump({**_config(em), "mcp_servers": {
+        "connector_eastmoney_mcp": {**CONNECTOR, "url": "http://127.0.0.1:52990/mcp"},
+    }}))
     monkeypatch.setattr(kits.expert_sync, "_synced_homes", set())
     monkeypatch.setattr(kits.expert_sync, "sync_all", lambda home: pytest.fail("an expert backend synced everyone"))
 
     kits.expert_sync.sync_on_load(em)
 
-    assert _config(em)["mcp_servers"][kits.eastmoney_slot.MIRROR_NAME]["url"] == "http://127.0.0.1:52990/mcp"
+    assert _config(em)["mcp_servers"]["connector_eastmoney_mcp"]["url"] == "http://127.0.0.1:52990/mcp"
+    assert kits.eastmoney_slot.MIRROR_NAME not in _config(em)["mcp_servers"]
     assert not (_config(plain).get("mcp_servers") or {})

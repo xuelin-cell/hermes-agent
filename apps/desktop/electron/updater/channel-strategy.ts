@@ -1,7 +1,7 @@
 import type { ChannelResolver, ChannelTarget } from './channel'
 import type { ChannelBuild } from './channel-protocol'
 
-import type { UpdaterApplyResultWire, UpdaterStatusWire, UpdaterStrategy } from './index'
+import type { UpdaterApplyResultWire, UpdaterPrepareResult, UpdaterStatusWire, UpdaterStrategy } from './index'
 
 export interface ChannelRetirementStatus {
   state: 'discontinued'
@@ -131,6 +131,37 @@ export class ChannelStrategy implements UpdaterStrategy {
     }
   }
 
+  /**
+   * Download the selected native build without installing it. Selection runs
+   * exactly as check() does, so the prompt can only appear for a build the
+   * channel has already accepted.
+   */
+  async prepare(): Promise<UpdaterPrepareResult> {
+    this.enter()
+
+    try {
+      if (!this.selection) {
+        await this.select()
+      }
+
+      const selected = this.selection
+
+      if (selected?.kind !== 'native' || !selected.available) {
+        return { ready: false, version: null }
+      }
+
+      const prepare = selected.strategy.prepare
+
+      if (!prepare) {
+        return { ready: false, version: null }
+      }
+
+      return await prepare.call(selected.strategy)
+    } finally {
+      this.busy = false
+    }
+  }
+
   async apply(): Promise<UpdaterApplyResultWire> {
     this.enter()
 
@@ -153,5 +184,17 @@ export class ChannelStrategy implements UpdaterStrategy {
     } finally {
       this.busy = false
     }
+  }
+
+  /** Forward to the selected native build; false before a selection exists
+   *  and once that build's transfer has already settled. */
+  cancel(): boolean {
+    const selected = this.selection
+
+    if (selected?.kind !== 'native') {
+      return false
+    }
+
+    return selected.strategy.cancel?.() ?? false
   }
 }

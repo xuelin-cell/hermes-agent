@@ -1,0 +1,177 @@
+{
+  "service": "tianyancha_mcp",
+  "displayName": "天眼查",
+  "description": "通过天眼查 MCP 查询企业工商、股权、风险、司法、投资和知识产权数据。",
+  "categories": [
+    "Data",
+    "Business"
+  ],
+  "authTypes": [
+    "oauth2"
+  ],
+  "auth": [
+    {
+      "type": "oauth2",
+      "authorizationUrl": "https://capi.tianyancha.com/oauth/authorize",
+      "tokenUrl": "https://capi.tianyancha.com/oauth/token",
+      "refreshTokenUrl": "https://capi.tianyancha.com/oauth/token",
+      "scopes": [
+        "mcp:tools.call",
+        "mcp:quota.read"
+      ],
+      "tokenEndpointAuthMethod": "none",
+      "pkce": {
+        "method": "S256"
+      },
+      "authorizationParams": {
+        "resource": "https://mcp.tianyancha.com/mcp"
+      },
+      "tokenParams": {
+        "resource": "https://mcp.tianyancha.com/mcp"
+      },
+      "dynamicClientRegistration": {
+        "registrationUrl": "https://capi.tianyancha.com/oauth/register",
+        "clientName": "联通数智",
+        "tokenEndpointAuthMethod": "none"
+      },
+      "clientSetup": {
+        "docsUrl": "https://capi.tianyancha.com/oauth/.well-known/oauth-authorization-server",
+        "steps": [
+          "天眼查 MCP 使用 OAuth 2.0 和 PKCE S256。",
+          "运行时会动态注册名为“联通数智”的客户端，并打开天眼查返回的授权页。",
+          "完成登录授权后，凭据仅保存在本地并用于天眼查 MCP。"
+        ]
+      }
+    }
+  ],
+  "homepageUrl": "https://www.tianyancha.com/ai/guide.md",
+  "actions": [
+    {
+      "id": "tianyancha_mcp.call_tool",
+      "service": "tianyancha_mcp",
+      "name": "call_tool",
+      "description": "Call a current Tianyancha MCP tool with JSON arguments. Discover the live schema first, then call the matching tool.",
+      "requiredScopes": [
+        "tianyancha_mcp.tools"
+      ],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "toolName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The exact tool name returned by Tianyancha MCP discovery."
+          },
+          "arguments": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": true,
+            "description": "JSON arguments matching the current inputSchema for the selected Eastmoney MCP tool."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "toolName"
+        ],
+        "description": "Input for invoking one current Tianyancha MCP tool."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "description": "The current Eastmoney MCP result after standard MCP content normalization."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The normalized result returned by the Tianyancha MCP tool."
+      },
+      "followUpActions": [
+        "tianyancha_mcp.list_tools"
+      ]
+    },
+    {
+      "id": "tianyancha_mcp.list_tools",
+      "service": "tianyancha_mcp",
+      "name": "list_tools",
+      "description": "List the current tool catalog and live input schemas exposed by Tianyancha MCP.",
+      "requiredScopes": [
+        "tianyancha_mcp.tools"
+      ],
+      "providerPermissions": [],
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "description": "Input for discovering Tianyancha MCP tools."
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The exact Tianyancha MCP tool name to pass to call_tool."
+                },
+                "description": {
+                  "type": "string",
+                  "description": "The current tool description supplied by Tianyancha."
+                },
+                "annotations": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "description": "A human-readable title for the tool."
+                    },
+                    "readOnlyHint": {
+                      "type": "boolean",
+                      "description": "Whether Eastmoney expects the tool not to modify data."
+                    },
+                    "destructiveHint": {
+                      "type": "boolean",
+                      "description": "Whether Eastmoney indicates that the tool may be destructive."
+                    },
+                    "idempotentHint": {
+                      "type": "boolean",
+                      "description": "Whether repeated calls with the same arguments are idempotent."
+                    },
+                    "openWorldHint": {
+                      "type": "boolean",
+                      "description": "Whether the tool may interact with external entities."
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "MCP behavior hints supplied by Eastmoney for a tool."
+                },
+                "inputSchema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true,
+                  "description": "The current JSON Schema for the tool arguments, supplied by Tianyancha MCP."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "inputSchema"
+              ],
+              "description": "A tool currently exposed by Tianyancha MCP."
+            },
+            "description": "Tools currently exposed by Tianyancha MCP."
+          }
+        },
+        "additionalProperties": false,
+        "description": "The current Eastmoney MCP tool catalog."
+      },
+      "followUpActions": [
+        "tianyancha_mcp.call_tool"
+      ]
+    }
+  ]
+}

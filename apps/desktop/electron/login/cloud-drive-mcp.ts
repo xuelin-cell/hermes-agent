@@ -12,7 +12,9 @@ import { CloudDriveOperationError } from './cloud-drive'
 import { driveFileName, executeDriveMcpAction } from './cloud-drive-mcp-actions'
 import { DRIVE_MCP_TOOLS, type DriveMcpInput, parseDriveMcpInput } from './cloud-drive-mcp-tools'
 import { CloudDriveTransfers } from './cloud-drive-transfers'
-import { DRIVE_MCP_SERVER } from './drive-mcp-contract'
+import { DRIVE_MCP_MANAGED, DRIVE_MCP_SERVER } from './drive-mcp-contract'
+
+export type ProfileConfigApi = (method: string, route: string, body?: unknown) => Promise<any>
 
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 // 空间和 capabilities 只返回本地元数据；必须实际读取联通目录才能发现提前作废的令牌。
@@ -59,6 +61,36 @@ export class CloudDriveMcp {
       return prepareDriveMcpConfig(this.home, profile, url, token)
     } catch {
       return false
+    }
+  }
+
+  /** 共用后端已经运行时，只通过配置 API 补齐当前助手的云盘记录，保留个人服务和开关。 */
+  async refresh(profile: string, api: ProfileConfigApi): Promise<void> {
+    const saved = await api('GET', '/api/config?include_defaults=false')
+    const entry = saved.mcp_servers?.[DRIVE_MCP_SERVER]
+
+    if (entry && entry.uniwork_managed !== DRIVE_MCP_MANAGED) {
+      return
+    }
+
+    const url = await this.start()
+
+    if (this.closed) {
+      throw new Error('Drive MCP closed')
+    }
+
+    const token = this.profileTokens.get(profile) ?? randomBytes(32).toString('base64url')
+    this.profileTokens.set(profile, token)
+
+    const patch = {
+      ...(!entry ? { uniwork_managed: DRIVE_MCP_MANAGED, timeout: 720 } : {}),
+      ...(entry?.timeout === 600 ? { timeout: 720 } : {}),
+      url,
+      headers: { Authorization: `Bearer ${token}` }
+    }
+
+    if (entry?.url !== url || entry?.headers?.Authorization !== patch.headers.Authorization || entry?.timeout === 600) {
+      await api('PUT', '/api/config', { config: { mcp_servers: { [DRIVE_MCP_SERVER]: patch } } })
     }
   }
 

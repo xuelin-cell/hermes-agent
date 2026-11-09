@@ -24,11 +24,14 @@ export function connectorHome(accountHome: string, profile: string): string {
     }
   }
 
-  const directory = path.join(home, 'open-connector')
-  const stat = fs.lstatSync(directory, { throwIfNoEntry: false })
+  // 只有主助手目录仍存放授权库；专家的旧目录不再读取或依赖。
+  if (profile === 'default') {
+    const directory = path.join(home, 'open-connector')
+    const stat = fs.lstatSync(directory, { throwIfNoEntry: false })
 
-  if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
-    throw new Error('Invalid connector data directory')
+    if (stat && (!stat.isDirectory() || stat.isSymbolicLink())) {
+      throw new Error('Invalid connector data directory')
+    }
   }
 
   return home
@@ -120,9 +123,7 @@ export async function prepareConnectorConfig(
     entry.set('url', next.url)
     entry.set('headers', doc.createNode(next.headers))
 
-    if (connectedIds.has(id)) {
-      entry.set('enabled', true)
-    }
+    entry.set('enabled', connectedIds.has(id))
   }
 
   if (updates.length) {

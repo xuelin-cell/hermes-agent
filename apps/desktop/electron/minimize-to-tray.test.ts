@@ -19,7 +19,12 @@ vi.mock('electron', () => ({
   ipcMain: { handle: (name: string, fn: (...args: any[]) => any) => native.ipc.set(name, fn) },
   BrowserWindow: { getAllWindows: () => native.windows },
   Menu: { buildFromTemplate: (items: unknown[]) => items },
-  nativeImage: { createFromPath: () => ({ isEmpty: () => false, resize: () => ({}) }) },
+  nativeImage: {
+    createFromPath: () => ({
+      isEmpty: () => false,
+      resize: () => ({ addRepresentation() {}, setTemplateImage() {}, toPNG: () => Buffer.alloc(0) })
+    })
+  },
   Tray: class extends EventEmitter {
     destroyed = false
     menu: any[] = []

@@ -1,9 +1,11 @@
+import type { BrowserAuthorizationRuntime } from "../browser-authorization-service.ts";
 import type { ActionExecutor, CredentialValidators, ProviderExecutors, ProviderProxyExecutor } from "../core/types.ts";
 import type { ProviderOAuthRuntime } from "../oauth/oauth-token.ts";
 
 import { withProviderFallbackMessage } from "./provider-runtime.ts";
 
 export interface ExecutorModule {
+  browserAuthorization?: BrowserAuthorizationRuntime;
   credentialValidators?: CredentialValidators;
   executors: ProviderExecutors;
   oauth?: ProviderOAuthRuntime;
@@ -44,6 +46,7 @@ export interface IProviderLoader {
 
   /** Load provider-specific OAuth operations when the provider defines them. */
   loadProviderOAuthRuntime?(service: string): Promise<ProviderOAuthRuntime | undefined>;
+  loadBrowserAuthorizationRuntime?(service: string): Promise<BrowserAuthorizationRuntime | undefined>;
 }
 
 /**
@@ -98,6 +101,10 @@ export class ProviderLoader implements IProviderLoader {
     }
 
     return (await loadRuntime()).oauth;
+  }
+
+  async loadBrowserAuthorizationRuntime(service: string): Promise<BrowserAuthorizationRuntime | undefined> {
+    return (await this.executorModules[service]?.())?.browserAuthorization;
   }
 
   private _findActionExecutor(

@@ -9,8 +9,8 @@ import { copyAppTree } from './copy-app-tree'
 
 const NAME = 'desktop-artifact-share'
 
-/** 账号后端启动前安装定制发行附带的分享插件并启用其工具。 */
-export function installArtifactSharePlugin(home: string, appRoot: string): void {
+/** 复制发行包中的分享插件文件；运行时启用配置交给后端接口处理。 */
+export function copyArtifactSharePlugin(home: string, appRoot: string): void {
   const source = path.join(appRoot, 'assets', 'artifact-share-plugin')
   const destination = path.join(home, 'plugins', NAME)
   const sourceInfo = fs.statSync(path.join(source, 'plugin.yaml'))
@@ -27,7 +27,11 @@ export function installArtifactSharePlugin(home: string, appRoot: string): void 
 
   fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 })
   copyAppTree(source, destination)
+}
 
+/** 账号后端启动前安装定制发行附带的分享插件并启用其工具。 */
+export function installArtifactSharePlugin(home: string, appRoot: string): void {
+  copyArtifactSharePlugin(home, appRoot)
   const config = path.join(home, 'config.yaml')
   const existing = fs.lstatSync(config, { throwIfNoEntry: false })
 

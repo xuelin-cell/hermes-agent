@@ -9,9 +9,10 @@ export function useSms(bridge?: Pick<DesktopLoginBridge, 'sendSms'>) {
   const [seconds, setSeconds] = useState(0)
   const busy = useRef(false)
   const deadline = useRef(0)
+  const countingDown = seconds > 0
 
   useEffect(() => {
-    if (!result || !('retryAt' in result)) {
+    if (!countingDown) {
       return
     }
 
@@ -28,10 +29,10 @@ export function useSms(bridge?: Pick<DesktopLoginBridge, 'sendSms'>) {
     const timer = setInterval(tick, 1000)
 
     return () => clearInterval(timer)
-  }, [result])
+  }, [countingDown])
 
   /** 即时锁阻止同一帧内重复点击；未知错误仅显示安全提示。 */
-  async function send(input: SmsRequest): Promise<void> {
+  async function send(input: SmsRequest): Promise<SmsResult | undefined> {
     if (!bridge || busy.current || Date.now() < deadline.current) {
       return
     }
@@ -45,6 +46,8 @@ export function useSms(bridge?: Pick<DesktopLoginBridge, 'sendSms'>) {
       deadline.current = 'retryAt' in response ? response.retryAt : 0
       setSeconds(Math.max(0, Math.ceil((deadline.current - Date.now()) / 1000)))
       setResult(response)
+
+      return response
     } catch {
       setResult({ ok: false, error: 'failed' })
     } finally {
@@ -53,5 +56,5 @@ export function useSms(bridge?: Pick<DesktopLoginBridge, 'sendSms'>) {
     }
   }
 
-  return { pending, seconds, result, send }
+  return { pending, seconds, result, send, clearResult: () => setResult(null) }
 }
