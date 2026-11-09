@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from urllib.parse import urldefrag, urljoin, urlsplit
+from .urls import document_base, web_reference, discovery_url
 
 from bs4 import BeautifulSoup
 
@@ -16,19 +16,20 @@ def extract_links(html: str, base_url: str) -> tuple[str, ...]:
         base_url: Final page URL used to resolve relative links.
 
     Returns:
-        Absolute HTTP(S) URLs without fragments.
+        Absolute HTTP(S) URLs, preserving explicit application routes.
     """
     soup = BeautifulSoup(html, "lxml")
+    base_url = document_base(soup, base_url)
     discovered: list[str] = []
     seen: set[str] = set()
     for anchor in soup.find_all("a", href=True):
         href = anchor.get("href")
         if not isinstance(href, str) or not href.strip():
             continue
-        absolute, _ = urldefrag(urljoin(base_url, href.strip()))
-        parsed = urlsplit(absolute)
-        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        absolute = web_reference(base_url, href)
+        if absolute is None:
             continue
+        absolute = discovery_url(absolute)
         if absolute not in seen:
             seen.add(absolute)
             discovered.append(absolute)

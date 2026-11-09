@@ -367,7 +367,14 @@ def test_native_tavily_search_and_builtin_fetch_keep_native_search_cache(
 
         # 以合成页面替代外部抓取传输。
         async def local_fetch(url, key):
-            return {"url": url, "title": "builtin", "content": "local content"}
+            return {
+                "url": url,
+                "title": "builtin",
+                "content": "local content",
+                "fetch_status": "usable",
+                "engine": "http",
+                "reasons": [],
+            }
 
         provider._fetch = local_fetch
     for _ in range(2):
@@ -537,7 +544,14 @@ def test_extract_partial_failure_and_timeout(homes, service):
                 raise ValueError("synthetic failure")
             if url.endswith("/slow"):
                 await asyncio.sleep(1)
-            return {"url": url, "title": "ok", "content": "ok"}
+            return {
+                "url": url,
+                "title": "ok",
+                "content": "ok",
+                "fetch_status": "usable",
+                "engine": "http",
+                "reasons": [],
+            }
 
         get_provider("builtin_parse")._fetch = fetch
     result = invoke(
@@ -794,7 +808,14 @@ def test_brave_search_and_builtin_fetch_mix_preserves_brave_native_cache(
     with active(home):
         # 以合成页面替代外部抓取传输。
         async def local_fetch(url, key):
-            return {"url": url, "title": "local", "content": "local"}
+            return {
+                "url": url,
+                "title": "local",
+                "content": "local",
+                "fetch_status": "usable",
+                "engine": "http",
+                "reasons": [],
+            }
 
         get_provider("builtin_parse")._fetch = local_fetch
     for _ in range(2):
@@ -1042,3 +1063,167 @@ def test_owned_and_native_cache_settings_are_independent(
             current["plugins"]["entries"]["unisearch"]["settings"]["cache_enabled"]
             is owned_cache
         )
+
+
+# 相同URL的不同结果按位置回传；原生截断、落盘和二进制拒绝后状态仍真实。
+def test_builtin_status_survives_native_output_processing(homes, service):
+    from agent.web_search_registry import get_provider
+
+    home = homes(extract="builtin_parse")
+    calls = []
+    text = "Useful article with many details.\n" * 200
+    with active(home):
+        # 模拟worker协议，原生工具注册、合并、截断和状态恢复执行真实路径。
+        async def fetch(url, key):
+            calls.append(url)
+            if url.endswith("/denied"):
+                return {
+                    "url": url,
+                    "content": "",
+                    "error": "No usable body",
+                    "fetch_status": "unavailable",
+                    "reasons": ["access_page"],
+                }
+            return {
+                "url": url,
+                "title": "Article",
+                "content": "SQLite format 3\0binary"
+                if url.endswith("/binary")
+                else text,
+                "fetch_status": "partial" if len(calls) == 1 else "usable",
+                "engine": "http" if len(calls) == 1 else "chromium",
+                "reasons": ["render_timeout"] if len(calls) == 1 else [],
+            }
+
+        get_provider("builtin_parse")._fetch = fetch
+    same = "https://example.com/same"
+    result = invoke(
+        home,
+        "web_extract",
+        {
+            "urls": [
+                same,
+                same,
+                "https://example.com/binary",
+                "https://example.com/denied",
+                "not-a-url",
+            ],
+            "char_limit": 2000,
+        },
+    )
+    partial, usable, binary, denied, invalid = result["results"]
+    assert partial["url"] == usable["url"] == same
+    assert (
+        partial["fetch_status"] == "partial"
+        and partial["engine"] == "http"
+        and partial["reasons"] == ["render_timeout"]
+    )
+    assert usable["fetch_status"] == "usable" and usable["engine"] == "chromium"
+    assert all("TRUNCATED" in row["content"] for row in (partial, usable))
+    assert any(p.read_text() == text for p in (home / "cache/web").glob("*.md"))
+    assert binary["fetch_status"] == "unavailable" and binary["reasons"] == [
+        "output_unavailable"
+    ]
+    assert denied["fetch_status"] == "unavailable" and denied["reasons"] == [
+        "access_page"
+    ]
+    assert invalid["fetch_status"] == "unavailable" and invalid["error"]
+    assert not service.rescues
+
+
+# 在真实插件启停与抓取前后，其他已注册工具的schema、handler和调度结果保持一致。
+def test_builtin_followup_leaves_unrelated_tool_registration_and_calls_intact(
+    homes, service, tmp_path
+):
+    from agent.web_search_registry import get_provider
+    from tools.mcp_tool_schema import _convert_mcp_schema
+    from tools import file_tools
+
+    name = "mcp__reading_fixture__echo"
+    schema = _convert_mcp_schema(
+        "reading_fixture",
+        SimpleNamespace(
+            name="echo",
+            description="Return the supplied text",
+            inputSchema={
+                "type": "object",
+                "properties": {"text": {"type": "string"}},
+                "required": ["text"],
+            },
+        ),
+    )
+    calls = []
+
+    # 外部工具传输边界替身；注册、schema解析和原生调度走真实路径。
+    def echo(args, **kwargs):
+        calls.append(args.copy())
+        return json.dumps({"echo": args["text"]})
+
+    assert registry.get_entry(name) is None
+    registry.register(
+        name=name,
+        toolset="mcp-reading_fixture",
+        schema=schema,
+        handler=echo,
+        check_fn=lambda: True,
+    )
+    original = registry.get_entry(name)
+    ordinary = registry.get_entry("read_file")
+    source = tmp_path / "ordinary.txt"
+    source.write_text("UNCHANGED_FILE_TOOL")
+    before_schema = deepcopy(registry.get_schema(name))
+    before_read = registry.dispatch("read_file", {"path": str(source)})
+    assert "UNCHANGED_FILE_TOOL" in json.loads(before_read)["content"]
+    try:
+        home = homes()
+        with active(home):
+            # 合成worker响应触发新增提示，随后继续调用外部及文件工具。
+            async def fetch(url, key):
+                return {
+                    "url": url,
+                    "content": "Partial article body",
+                    "fetch_status": "partial",
+                    "engine": "chromium",
+                    "reasons": ["interaction_scope_limited"],
+                }
+
+            get_provider("builtin_parse")._fetch = fetch
+        result = invoke(home, "web_extract", {"urls": ["https://example.com/reading"]})
+        assert result["results"][0]["browser_followup"]["needed"] is True
+        for loaded in (True, False):
+            with active(home):
+                if not loaded:
+                    get_plugin_manager().unload()
+                assert registry.get_entry(name) is original
+                assert registry.get_entry("read_file") is ordinary
+                assert registry.get_schema(name) == before_schema
+                assert json.loads(
+                    registry.dispatch(name, {"text": "UNCHANGED_MCP"})
+                ) == {"echo": "UNCHANGED_MCP"}
+                # 文件更新后应重新读取；不把原生重复读取去重误判为插件影响。
+                marker = f"UNCHANGED_FILE_TOOL_{loaded}"
+                source.write_text(marker)
+                assert (
+                    marker
+                    in json.loads(
+                        registry.dispatch("read_file", {"path": str(source)})
+                    )["content"]
+                )
+        assert calls == [{"text": "UNCHANGED_MCP"}] * 2
+    finally:
+        registry.deregister(name)
+
+
+# 实际注册工具保留新正文缺口原因和按需续读提示，不触发原生救援。
+@pytest.mark.parametrize("reason", ["main_content_missing", "repository_overview_unverified"])
+def test_builtin_article_reason_survives_registered_tool(homes, service, reason):
+    from agent.web_search_registry import get_provider
+    home = homes(extract="builtin_parse")
+    with active(home):
+        async def fetch(url, key):
+            return {"url":url,"content":"Repository files are available; overview is not verified.","fetch_status":"partial","engine":"http","reasons":[reason]}
+        get_provider("builtin_parse")._fetch = fetch
+    row = invoke(home,"web_extract",{"urls":["https://github.com/example/project"]})["results"][0]
+    assert row["fetch_status"] == "partial" and reason in row["reasons"]
+    assert row["browser_followup"]["needed"]
+    assert not service.rescues

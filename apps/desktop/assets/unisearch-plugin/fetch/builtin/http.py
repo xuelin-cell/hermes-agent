@@ -13,7 +13,8 @@ import httpx
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from .security import NetworkPolicy
+    from .evidence import PageEvidence
+from .security import NetworkPolicy
 
 DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 _REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
@@ -24,6 +25,8 @@ _SUPPORTED_CONTENT_TYPES = (
     "application/json",
 )
 _META_CHARSET = re.compile(rb"<meta[^>]+charset=[\"']?\s*([\w.-]+)", re.IGNORECASE)
+
+
 
 
 class ResponseTooLargeError(ValueError):
@@ -38,6 +41,9 @@ class RawPage:
     url: str
     status_code: int
     headers: Mapping[str, str]
+    snapshots: tuple[str, ...] = ()
+    interaction_reasons: tuple[str, ...] = ()
+    evidence: tuple[PageEvidence, ...] = ()
 
 
 class HttpEngine:
