@@ -56,6 +56,7 @@ export type SurvivorUserRowIds = readonly (null | number)[] | Map<number, null |
 
 interface PromptSubmitResult {
   status?: string
+  user_row_id?: unknown
   survivor_user_row_ids?: unknown
   survivor_row_id_map?: unknown
 }
@@ -92,15 +93,15 @@ export function survivorRowIdsFrom(result: PromptSubmitResult | undefined): Surv
 
 /**
  * Rebind the surviving visible user turns to their authoritative post-rewind
- * row ids (positional, same visible-user filter `visibleUserOrdinal` uses —
- * the exact parity truncate ordinals already rely on). Turns past the end of
- * the survivor list — the resubmitted turn itself, whose durable id doesn't
- * exist yet — and `null` entries get their cached rowId cleared instead: a
- * stale id now addresses an archived row and would be refused with 4018.
+ * row ids. The explicit map also binds the resubmitted prompt when its new
+ * row id is acknowledged. Null entries (or turns past the positional survivor
+ * list) have their archived row identity cleared instead.
  */
 export function rebindSurvivorRowIds(messages: ChatMessage[], survivorRowIds: SurvivorUserRowIds): ChatMessage[] {
   if (survivorRowIds instanceof Map) {
-    return messages.map(message => {
+    const persistedUsers = new Set(messages.filter(message => message.role === 'user').map(message => message.rowId))
+
+    return messages.flatMap(message => {
       if (message.rowId === undefined) {
         return message
       }
@@ -113,11 +114,22 @@ export function rebindSurvivorRowIds(messages: ChatMessage[], survivorRowIds: Su
 
       const next = survivorRowIds.get(message.rowId)
 
-      return next === null || next === undefined
-        ? { ...message, rowId: undefined }
-        : message.rowId === next
-          ? message
-          : { ...message, rowId: next }
+      // 回执晚于历史刷新时，新记录已在界面中；仅移除映射确认的旧提问。
+      if (message.role === 'user' && typeof next === 'number' && next !== message.rowId && persistedUsers.has(next)) {
+        return []
+      }
+
+      if (message.rowId === next) {
+        return message
+      }
+
+      return {
+        ...message,
+        rowId: next ?? undefined,
+        parts: message.parts.map(part =>
+          part.sourceRowId === message.rowId ? { ...part, sourceRowId: next ?? undefined } : part
+        )
+      }
     })
   }
 
@@ -462,7 +474,22 @@ export async function runRewindSubmit(
 
     liveSessionId = usedId
 
-    return survivorRowIdsFrom(result)
+    const rebound = survivorRowIdsFrom(result)
+    const userRowId = result?.user_row_id
+
+    // 后端已确认旧提问被替换，将新提问编号并入现有回填流程。
+    if (
+      rebound instanceof Map &&
+      resolvedRowId !== undefined &&
+      rebound.get(resolvedRowId) === null &&
+      typeof userRowId === 'number' &&
+      Number.isSafeInteger(userRowId) &&
+      userRowId > 0
+    ) {
+      rebound.set(resolvedRowId, userRowId)
+    }
+
+    return rebound
   }
 
   if (interruptFirst) {

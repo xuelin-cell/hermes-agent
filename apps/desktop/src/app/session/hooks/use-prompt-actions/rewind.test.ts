@@ -1,3 +1,4 @@
+import { fromThreadMessageLike } from '@assistant-ui/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
@@ -5,6 +6,7 @@ import { createClientSessionState } from '@/lib/chat-runtime'
 
 import {
   appendMidTurnUserMessage,
+  applyBranchVisibility,
   applyReloadOptimistic,
   applyRewindOptimistic,
   finalizeInterruptedMessages,
@@ -278,6 +280,57 @@ describe('survivorRowIdsFrom', () => {
         [31, null]
       ])
     )
+  })
+})
+
+describe('恢复提交的消息编号回填', () => {
+  it.each([undefined, 0, -1, 1.5, '43'])('不采用缺失或无效的新编号：%s', async userRowId => {
+    const request = vi.fn(async () => ({ user_row_id: userRowId, survivor_row_id_map: { '41': null } }) as never)
+    const rebound = await runRewindSubmit(request, 'sid', '你好', 0, undefined, false, undefined, 41)
+    expect(rebound).toEqual(new Map([[41, null]]))
+  })
+
+  it('仅映射本次被替换的提问，保留重新生成的回答组和版本切换', async () => {
+    const request = vi.fn(
+      async () =>
+        ({
+          user_row_id: 43,
+          survivor_row_id_map: { '31': 31, '41': null, '42': null }
+        }) as never
+    )
+
+    const rebound = await runRewindSubmit(request, 'sid', '你好', 1, undefined, false, undefined, 41)
+    expect(rebound).toEqual(
+      new Map([
+        [31, 31],
+        [41, 43],
+        [42, null]
+      ])
+    )
+
+    const state = createClientSessionState(null, [
+      row('earlier', 'user', '你好', { rowId: 31 }),
+      row('earlier-answer', 'assistant', '前文'),
+      row('source', 'user', '你好', { rowId: 41, parts: [{ type: 'text', text: '你好', sourceRowId: 41 }] }),
+      row('old-answer', 'assistant', '旧回答', { rowId: 42 })
+    ])
+
+    const plan = planReload(state.messages, 'source')!
+    const regenerated = rebindSurvivorRowIds(applyReloadOptimistic(state, plan).messages, rebound!)
+    regenerated.push(row('new-answer', 'assistant', '新回答', { branchGroupId: plan.branchGroupId }))
+    expect(regenerated.filter(message => message.role === 'user').map(message => message.rowId)).toEqual([31, 43])
+    expect(regenerated[2].parts[0].sourceRowId).toBe(43)
+    expect(regenerated.filter(message => message.branchGroupId === plan.branchGroupId)).toHaveLength(2)
+
+    const switched = applyBranchVisibility({ ...state, messages: regenerated }, [
+      fromThreadMessageLike({ role: 'assistant', content: [{ type: 'text', text: '旧回答' }] }, 'old-answer', {
+        type: 'complete',
+        reason: 'stop'
+      })
+    ])
+
+    expect(switched.messages.find(message => message.id === 'old-answer')?.hidden).toBe(false)
+    expect(switched.messages.find(message => message.id === 'new-answer')?.hidden).toBe(true)
   })
 })
 
