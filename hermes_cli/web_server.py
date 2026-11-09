@@ -779,6 +779,41 @@ async def _dashboard_health_middleware(request: Request, call_next):
     return response
 
 
+# Startup diagnostics: "backend READY → first successful API" is the honest
+# measure of when the shell can answer. The Desktop's own readiness probe hits
+# /api/health (or /api/status as its fallback) before the renderer's first real
+# request, so those must not count.
+_STARTUP_READY_MONOTONIC: Optional[float] = None
+_STARTUP_FIRST_API_LOGGED = False
+_STARTUP_PROBE_PATHS = frozenset({"/api/health", "/api/status"})
+
+
+@app.middleware("http")
+async def _startup_first_api_middleware(request: Request, call_next):
+    """Outermost middleware (registered last): log the first post-READY API success.
+
+    Logged once per boot so launch-to-first-usable-data can be measured from the
+    logs instead of inferred from a timeout.
+    """
+    global _STARTUP_FIRST_API_LOGGED
+    response = await call_next(request)
+    if (
+        _STARTUP_READY_MONOTONIC is not None
+        and not _STARTUP_FIRST_API_LOGGED
+        and response.status_code < 400
+        and request.url.path.startswith("/api/")
+        and request.url.path not in _STARTUP_PROBE_PATHS
+    ):
+        _STARTUP_FIRST_API_LOGGED = True
+        _log.info(
+            "[startup] first successful API %s %s at +%.2fs after backend READY",
+            request.method,
+            request.url.path,
+            time.monotonic() - _STARTUP_READY_MONOTONIC,
+        )
+    return response
+
+
 # Authenticated-route self-test: one in-process request per minute against a
 # cheap DB-touching route, catching "liveness fine but every authed request 500s".
 _DASHBOARD_SELFTEST_INTERVAL_SECONDS = 60.0
@@ -1310,6 +1345,7 @@ def _on_server_started(
     announcement, browser open, deferred MCP discovery, loop-noise filter,
     loop heartbeat.
     """
+    global _STARTUP_READY_MONOTONIC
     # Clear corpses from a previous unclean Desktop exit (crash/SIGKILL/update
     # handoff leaves an orphaned backend + its MCP subtree) before stacking a
     # new tree (EMFILE / missing tabs). The watchdog only protects *this*
@@ -1387,6 +1423,9 @@ def _on_server_started(
         _write_machine_sentinel_line(f"HERMES_DASHBOARD_READY port={actual_port}")
     else:
         _write_machine_sentinel_line(f"HERMES_DASHBOARD_READY port={actual_port}")
+    # Same instant as the sentinel: the /api middleware reports elapsed time
+    # from here to the first successful API response.
+    _STARTUP_READY_MONOTONIC = time.monotonic()
     if headless:
         # Auth-gated JSON-RPC/WS only — announce the bind, not a URL. flush:
         # a piped stdout otherwise surfaces this minutes after the sentinel.
