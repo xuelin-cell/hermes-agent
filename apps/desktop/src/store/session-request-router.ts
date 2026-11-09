@@ -1,3 +1,4 @@
+import { cancelPendingWebPrompts, hasWebPreRead, prepareWebPrompt } from '@/app/contrib/unisearch/prompt'
 import { requestGatewayForAgent, requestGatewayForProfile, retainGatewayForSessionTurn } from '@/store/gateway'
 
 import { resetBackgroundPollingGuardAfterRebind } from './session-gone-latch'
@@ -168,7 +169,7 @@ export function sessionRpcNeedsProfileRoute(ownerProfile: SessionOwnerScope | un
  * serves that profile (keeps the primary's reauth-aware reconnect path).
  * The route is decided at CALL time, not at swap time.
  */
-export function requestForSessionProfile<T>(
+function dispatchForSessionProfile<T>(
   ownerProfile: SessionOwnerScope | undefined,
   ambientRequest: <R>(
     method: string,
@@ -221,5 +222,35 @@ export function requestForSessionProfile<T>(
 
   return withRoutedTurnLease(null, profile, method, params, () =>
     requestGatewayForProfile<T>(profile, method, params, timeoutMs, signal)
+  )
+}
+
+/** 网址按会话所属后端处理；排队、重试、后台会话共用同一发送边界。 */
+export function requestForSessionProfile<T>(
+  ownerProfile: SessionOwnerScope | undefined,
+  ambientRequest: <R>(
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+    signal?: AbortSignal
+  ) => Promise<R>,
+  method: string,
+  params: Record<string, unknown> = {},
+  timeoutMs?: number,
+  signal?: AbortSignal
+): Promise<T> {
+  if (isRoute(ownerProfile) && (method === 'session.interrupt' || method === 'session.close')) {
+    cancelPendingWebPrompts(ownerProfile, params)
+  }
+
+  if (!isRoute(ownerProfile) || !ownerProfile.connectionId.trim() || !hasWebPreRead(method, params)) {
+    return dispatchForSessionProfile(ownerProfile, ambientRequest, method, params, timeoutMs, signal)
+  }
+
+  const owner = { ...ownerProfile }
+  const requestParams = { ...params }
+
+  return prepareWebPrompt(requestParams, owner, signal).then(prepared =>
+    dispatchForSessionProfile<T>(owner, ambientRequest, method, prepared, timeoutMs, signal)
   )
 }

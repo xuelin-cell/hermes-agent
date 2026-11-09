@@ -108,10 +108,12 @@ async def test_unicrawl_partial_errors_retry_and_private_urls(monkeypatch):
             )
             result = await provider.extract(["https://example.com/article"])
             assert result[0]["content"] == "Readable article" and len(attempts) == 3
-            result = await provider.extract([
-                "https://example.com/forbidden",
-                "http://127.0.0.1/admin",
-            ])
+            result = await provider.extract(
+                [
+                    "https://example.com/forbidden",
+                    "http://127.0.0.1/admin",
+                ]
+            )
             assert "403" in result[0]["error"] and result[1]["error"]
             assert len(attempts) == 4
             assert "fake-key" not in json.dumps(result)
@@ -160,6 +162,11 @@ def test_native_extract_dispatch_and_default_do_not_fall_into_search(
                 "url": url,
                 "title": "Article",
                 "content": "Real provider/native tool wrapper boundary works.",
+                **(
+                    {"fetch_status": "usable", "engine": "http", "reasons": []}
+                    if fetch_backend == "builtin_parse"
+                    else {}
+                ),
             }
 
         monkeypatch.setattr(selected, "_fetch", fetch)
@@ -195,7 +202,7 @@ async def test_builtin_worker_environment_uses_served_home_without_launch_creden
     async def spawn(*args, **kwargs):
         captured.append(kwargs["env"])
         # A real child proves the environment that crossed the process boundary.
-        script = "import os,json; print(json.dumps({'url':'https://example.com','content':os.environ['HERMES_HOME'],'metadata':{'key':os.environ.get('DESKTOP_MT_MAAS_API_KEY','')}}))"
+        script = "import os,json; print(json.dumps({'url':'https://example.com','content':os.environ['HERMES_HOME'],'fetch_status':'usable','engine':'http','reasons':[],'metadata':{'key':os.environ.get('DESKTOP_MT_MAAS_API_KEY','')}}))"
         return await original_spawn(sys.executable, "-c", script, **kwargs)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)

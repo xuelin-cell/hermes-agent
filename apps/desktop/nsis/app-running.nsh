@@ -18,11 +18,15 @@ Var /GLOBAL IsPowerShellAvailable
 ; 对 Electron 应用：所有子进程（main/renderer/GPU）文件名都是 ${APP_EXECUTABLE_FILENAME}，
 ; tasklist /FI "IMAGENAME eq" 能全部匹配到，效果等同模板的 PS 路径前缀匹配。
 ; NSIS 的 !undef 只能取消 !define，取消 !macro 必须用 !macroundef。
+; desktop-mt: 不能用 /B（行首匹配）——tasklist CSV 输出行首是引号（"UniWork.exe",...），
+; 但 /C:""UniWork.exe"" 经过 cmd.exe /C 解析后引号被吃掉，findstr 拿到的 pattern 不带引号，
+; 与行首的 " 不匹配，永远返回 1（未找到）。去掉 /B 即可，tasklist /FI 已经按文件名过滤过了。
+; desktop-mt: 管理员权限下 $SYSDIR 变量解析失败（cmd.exe 找不到 tasklist），必须用硬编码完整路径。
 !ifmacrodef FIND_PROCESS
   !macroundef FIND_PROCESS
 !endif
 !macro FIND_PROCESS _FILE _RETURN
-  nsExec::Exec `"$CmdPath" /C tasklist /FI "IMAGENAME eq ${_FILE}" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:""${_FILE}""`
+  nsExec::Exec `C:\Windows\System32\cmd.exe /C C:\Windows\System32\tasklist.exe /FI "IMAGENAME eq ${_FILE}" /FO CSV /NH | C:\Windows\System32\findstr.exe /I /C:""${_FILE}""`
   Pop ${_RETURN}
 !macroend
 
@@ -30,14 +34,15 @@ Var /GLOBAL IsPowerShellAvailable
 ; 不带 /F 时 taskkill 先发 WM_CLOSE（比 PS 的 Stop-Process 更温和，给了应用保存状态的机会）；
 ; _FORCE=1 时加 /F 强制终止。/FI "PID ne $pid" 排除安装器自身进程。
 ; NSIS 的 !undef 只能取消 !define，取消 !macro 必须用 !macroundef。
+; desktop-mt: 管理员权限下必须用硬编码完整路径（同 FIND_PROCESS）。
 !ifmacrodef KILL_PROCESS
   !macroundef KILL_PROCESS
 !endif
 !macro KILL_PROCESS _FILE _FORCE
   ${If} ${_FORCE} == 1
-    nsExec::Exec `"$CmdPath" /C taskkill /F /IM "${_FILE}" /FI "PID ne $pid"`
+    nsExec::Exec `C:\Windows\System32\cmd.exe /C C:\Windows\System32\taskkill.exe /F /IM "${_FILE}" /FI "PID ne $pid"`
   ${Else}
-    nsExec::Exec `"$CmdPath" /C taskkill /IM "${_FILE}" /FI "PID ne $pid"`
+    nsExec::Exec `C:\Windows\System32\cmd.exe /C C:\Windows\System32\taskkill.exe /IM "${_FILE}" /FI "PID ne $pid"`
   ${EndIf}
   Pop $0
 !macroend
@@ -73,9 +78,23 @@ Var /GLOBAL IsPowerShellAvailable
   ; FIND_PROCESS / KILL_PROCESS 已在文件顶层重定义为 tasklist / taskkill，
   ; _CHECK_APP_RUNNING 展开时会用我们的版本，不再启动 PowerShell 做进程检测。
   !insertmacro UniSay "正在检查程序运行状态..."
+  ; 检查前：记录是否检测到运行中的程序
+  !insertmacro FIND_PROCESS "${APP_EXECUTABLE_FILENAME}" $R0
+  ${If} $R0 == 0
+    !insertmacro UniSay "检测到程序正在运行，准备关闭..."
+  ${Else}
+    !insertmacro UniSay "未检测到运行中的程序"
+  ${EndIf}
   !insertmacro _CHECK_APP_RUNNING
+  ; 检查后：记录程序是否已成功关闭
+  !insertmacro FIND_PROCESS "${APP_EXECUTABLE_FILENAME}" $R0
+  ${If} $R0 == 0
+    !insertmacro UniSay "警告：程序仍在运行，可能需要手动关闭后重试"
+  ${Else}
+    !insertmacro UniSay "程序已关闭，可以继续安装"
+  ${EndIf}
   !ifndef BUILD_UNINSTALLER
-    !insertmacro UniSay "正在判断升级方式..."
+    !insertmacro UniSay "正在判断安装方式..."
     !insertmacro UNIWORK_DECIDE
   !endif
   ; The template's uninstallOldVersion uses a blocking ExecWait with no timeout.

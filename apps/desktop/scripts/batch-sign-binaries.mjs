@@ -474,9 +474,13 @@ export async function batchSignAppTree(appOutDir, productExePath, opts = {}) {
   // on dead weight and can FAIL: locally the cache may hold files that
   // were removed between pm bundle staging and the afterPack walk.
   const inCache = (file) => /(^|[\\/])uv-cache[\\/]/.test(path.resolve(file))
+  // agent-payload/tools/ holds third-party toolchains (Chromium, Python, etc.)
+  // that ship with their own signatures or don't need Authenticode. Signing
+  // them wastes time and can break Chromium's self-integrity checks.
+  const inThirdPartyTools = (file) => /(^|[\\/])agent-payload[\\/]tools[\\/]/.test(path.resolve(file))
   const binaries = getBinaries(appOutDir, {
     skip: (file) =>
-      inCache(file) || (productExe ? path.resolve(file) === productExe : false)
+      inCache(file) || inThirdPartyTools(file) || (productExe ? path.resolve(file) === productExe : false)
   })
   if (binaries.length === 0) return { signed: 0, chunks: 0, skipped: false, mode }
   const result = await batchSignBinaries(binaries, opts)

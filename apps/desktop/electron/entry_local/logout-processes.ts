@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
+import { resolvePowerShell } from '../powershell-resolver'
+
 export interface LogoutProcess {
   pid: number
   parent: number
@@ -88,7 +90,7 @@ function readLogoutProcesses(): string {
   }
 
   return execFileSync(
-    'powershell.exe',
+    resolvePowerShell(),
     [
       '-NoProfile',
       '-NonInteractive',
@@ -238,7 +240,7 @@ export function stopLogoutProcesses(owned: LogoutProcess[]): void {
   }
 
   const output = execFileSync(
-    'powershell.exe',
+    resolvePowerShell(),
     [
       '-NoProfile',
       '-NonInteractive',

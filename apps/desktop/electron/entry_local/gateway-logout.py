@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 from queue import Queue
+import shutil
 import subprocess
 import sys
 from threading import Thread
@@ -20,6 +21,18 @@ from hermes_constants import PROFILE_ID_RE, named_profile_has_identity
 
 _process_query = None
 _process_results = Queue()
+
+
+def _resolve_powershell():
+    """Resolve PowerShell path; fall back to PATH lookup when SystemRoot is missing."""
+    for var in ("SystemRoot", "windir"):
+        root = os.environ.get(var)
+        if root:
+            candidate = os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+            if os.path.isfile(candidate):
+                return candidate
+    found = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
+    return found or "powershell.exe"
 
 
 def read_process_snapshots(query):
@@ -91,7 +104,7 @@ ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Process | Select-O
 }
 """
         _process_query = subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+            [_resolve_powershell(), "-NoProfile", "-NonInteractive", "-Command", command],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -234,7 +247,7 @@ foreach ($task in $service.GetFolder('\').GetTasks(1)) {
 ConvertTo-Json -Compress -InputObject @($owned)
 """
     result = subprocess.run(
-        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+        [_resolve_powershell(), "-NoProfile", "-NonInteractive", "-Command", command],
         env=env,
         capture_output=True,
         text=True,

@@ -150,14 +150,14 @@ test('交付卡片从真实持久记录重放，关闭重开与 Renderer 重载�
     }
     for (let attempt = 0; attempt < 3; attempt++) {
       // Renderer 重载会恢复预览标签；保留它，不把原版恢复行为误报成卡片消失。
-      const card = page.getByTestId('chat').getByRole('button', { name: /^(Open preview|Hide)$/ })
+      const card = page.getByTestId('chat').getByRole('button', { name: /^(Open preview|Hide): / })
       await expect(card).toHaveCount(1)
       if (process.argv.includes('--dedupe')) {
         await expect(page.getByTestId('chat')).toContainText('再次说明')
         await expect(page.getByTestId('chat')).toContainText('临时说明')
       }
       await expect(page.getByTestId('chat')).toContainText(path.basename(receipt.path))
-      if ((await card.textContent()) === 'Open preview') await card.click()
+      if ((await card.getAttribute('aria-pressed')) !== 'true') await card.click()
       await expect(page.getByTestId('rail').getByRole('heading', { name: '交付测试', exact: true })).toBeVisible()
       if (attempt === 0) {
         await page.getByRole('button', { name: 'Close conversation', exact: true }).click()
