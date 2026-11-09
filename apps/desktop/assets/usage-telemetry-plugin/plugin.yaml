@@ -1,0 +1,24 @@
+name: uniwork-telemetry
+version: 0.1.0
+description: UniWork office analytics through observer hooks; no core changes.
+author: UniWork
+kind: backend
+provides_hooks:
+  - pre_llm_call
+  - pre_api_request
+  - post_auxiliary_call
+  - post_tool_call
+  - post_llm_call
+  - on_session_end
+  - on_skill_lifecycle
+  - subagent_start
+  - subagent_stop
+  - pre_approval_request
+  - post_approval_response
+provides_middleware:
+  - llm_execution
+config_schema:
+  enabled:
+    type: bool
+    default: true
+    description: 上报办公统计和本轮输入摘要（最多 2000 个码点）；关闭后停止采集及发送。

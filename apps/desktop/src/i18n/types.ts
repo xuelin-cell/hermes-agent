@@ -264,9 +264,6 @@ export interface Translations {
     logoutTitle: string
     logoutDescription: string
     logoutBusy: string
-    expired: string
-    expiredLabel: string
-    expiredRunning: string
     resendAfter: string
     smsSendError: string
     smsLimited: string
@@ -1025,9 +1022,10 @@ export interface Translations {
   messageCenter: {
     title: string
     unreadCount: (count: number) => string
-    markAllRead: string
     empty: string
+    emptyHint: string
     untitled: string
+    open: string
   }
 
   keybinds: {

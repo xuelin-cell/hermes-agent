@@ -13,7 +13,6 @@ import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEff
 import { useLocation, useNavigate } from 'react-router'
 
 import { getSessionMessages as getUniSearchMessages } from '@/api/sessions'
-import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { ConfirmHost } from '@/components/confirm-host'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
@@ -144,7 +143,7 @@ import { startWorkspaceSession } from '../session/workspace-session-target'
 import { PluginInstallModal } from '../settings/plugin-install-modal'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
-import { messageCenterAvailable, MessageCenterSync } from '../shell/message-center'
+import { MessageCenterSync } from '../shell/message-center'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   titlebarControlsPosition,
@@ -1176,7 +1175,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // while every handler still closes over the latest values.
   const nextActions: WiringActions = {
     onAddContextRef: composer.addContextRefAttachment,
-    onAddUrl: url => composer.addContextRefAttachment(`@url:${formatRefValue(url)}`, url),
     // The sidebar row menu reuses this verb in the Archived view too, where the
     // row is already archived — dispatch by state so the verb restores there
     // instead of re-archiving (#98813).
@@ -1230,7 +1228,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     onPasteClipboardImage: opts => composer.pasteClipboardImage(opts),
     onPickFiles: () => void composer.pickContextPaths('file'),
     onPickFolders: () => void composer.pickContextPaths('folder'),
-    onPickImages: () => void composer.pickImages(),
     onReload: reloadFromMessage,
     onRemoveAttachment: id => void composer.removeAttachment(id),
     onRestoreToMessage: restoreToMessage,
@@ -1336,12 +1333,8 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const paneToolCount = rightTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
   const leftExtraCount = leftTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
 
-  const clusters = titlebarAppActionsClusterCounts(
-    appActionsSide,
-    leftExtraCount,
-    messageCenterAvailable() ? 1 : 0,
-    interfaceMode
-  )
+  // 通知铃铛已从标题栏移到侧栏账号行，标题栏不再为它预留宽度。
+  const clusters = titlebarAppActionsClusterCounts(appActionsSide, leftExtraCount, 0, interfaceMode)
 
   const systemToolsWidth = titlebarToolsWidthCss(clusters.right)
 

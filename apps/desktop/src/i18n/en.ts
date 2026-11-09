@@ -256,9 +256,6 @@ export const en: Translations = {
     logoutDescription:
       'Stop this account’s local backends, messaging gateways and their managed work, then return to sign-in. History, files and scheduled job definitions are kept.',
     logoutBusy: 'Signing out of account…',
-    expired: 'Your sign-in has expired. Please sign in again.',
-    expiredLabel: 'Sign-in expired',
-    expiredRunning: 'Your sign-in has expired. Current tasks will continue. You can sign out and sign in again.',
     resendAfter: 'Resend in {seconds}s',
     smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',
     smsLimited: 'Too many requests. Please wait before trying again.',
@@ -1224,9 +1221,10 @@ export const en: Translations = {
   messageCenter: {
     title: 'Notifications',
     unreadCount: count => (count === 1 ? '1 unread notification' : `${count} unread notifications`),
-    markAllRead: 'Mark all read',
     empty: 'No notifications yet',
-    untitled: 'Announcement'
+    emptyHint: 'Announcements you receive will show up here.',
+    untitled: 'Announcement',
+    open: 'Open notifications'
   },
 
   keybinds: {
@@ -4441,7 +4439,8 @@ export const en: Translations = {
   composer: {
     message: 'Message',
     addAttachment: 'Add attachments',
-    aiDisclaimer: 'AI responses may be inaccurate. Please verify important information.',
+    aiDisclaimer:
+      'AI responses may be inaccurate. Please verify important information when making medical, financial, or other professional decisions.',
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting UniWork...',
     placeholderReconnecting: 'Reconnecting to UniWork…',
@@ -4637,8 +4636,8 @@ export const en: Translations = {
     themeTryPre: 'Try ',
     themeTryPost: '.',
     attachLabel: 'Attach',
-    files: 'Files…',
-    folder: 'Folder…',
+    files: 'Add files',
+    folder: 'Add folder',
     images: 'Images…',
     pasteImage: 'Paste image',
     url: 'URL…',

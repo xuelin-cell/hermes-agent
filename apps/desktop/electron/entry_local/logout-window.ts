@@ -142,7 +142,7 @@ export async function retryLogout(window: BrowserWindow, run: () => Promise<void
   for (;;) {
     const { response } = await dialog.showMessageBox(window, {
       type: 'error',
-      title: 'Hermes Desktop MT',
+      title: '元景数字员工',
       message: '退出尚未完成，已禁止切换账号。历史和进程归属记录均保留。',
       detail: '请重试。若关闭应用，下次启动仍会阻止登录，直到遗留停止意图得到处理。',
       buttons: ['重试', '关闭应用'],

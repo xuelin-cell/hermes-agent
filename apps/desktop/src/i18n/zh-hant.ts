@@ -354,9 +354,6 @@ export const zhHant = defineLocale({
     logoutTitle: '登出目前帳號？',
     logoutDescription: '將停止目前帳號的本機後端、訊息閘道及其託管工作，並返回登入頁。保留歷史、檔案與排程工作定義。',
     logoutBusy: '正在登出帳號…',
-    expired: '登入已到期，請重新登入。',
-    expiredLabel: '登入已到期',
-    expiredRunning: '登入已到期，目前工作繼續執行。您可以登出帳號後重新登入。',
     resendAfter: '{seconds} 秒後重發',
     smsSendError: '傳送失敗，請檢查輸入或重新整理圖片後重試。',
     smsLimited: '傳送過於頻繁，請稍後重試。',
@@ -745,9 +742,10 @@ export const zhHant = defineLocale({
   messageCenter: {
     title: '訊息中心',
     unreadCount: count => `${count} 則未讀通知`,
-    markAllRead: '全部已讀',
     empty: '暫無通知',
-    untitled: '公告'
+    emptyHint: '收到的新公告會顯示在這裡。',
+    untitled: '公告',
+    open: '開啟訊息中心'
   },
 
   language: {
@@ -3407,7 +3405,7 @@ export const zhHant = defineLocale({
   composer: {
     message: '訊息',
     addAttachment: '新增附件',
-    aiDisclaimer: 'AI 回覆可能不準確，請仔細核實重要資訊。',
+    aiDisclaimer: 'AI 回覆可能不準確，涉及醫療、金融等專業決策時，請仔細核實重要資訊。',
     wakingProfile: profile => `正在喚醒 ${profile}…`,
     placeholderStarting: '正在啟動 UniWork...',
     placeholderReconnecting: '正在重新連線至 UniWork…',
@@ -3584,8 +3582,8 @@ export const zhHant = defineLocale({
     themeTryPre: '試試 ',
     themeTryPost: '。',
     attachLabel: '附加',
-    files: '檔案…',
-    folder: '資料夾…',
+    files: '新增檔案',
+    folder: '新增資料夾',
     images: '圖片…',
     pasteImage: '貼上圖片',
     url: 'URL…',

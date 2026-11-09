@@ -29,7 +29,6 @@ export type SidebarActions = Pick<
 export type ChatActions = Pick<
   ComponentProps<typeof ChatView>,
   | 'onAddContextRef'
-  | 'onAddUrl'
   | 'onAttachDroppedItems'
   | 'onAttachImageBlob'
   | 'onAttachPastedText'
@@ -41,7 +40,6 @@ export type ChatActions = Pick<
   | 'onPasteClipboardImage'
   | 'onPickFiles'
   | 'onPickFolders'
-  | 'onPickImages'
   | 'onReload'
   | 'onRemoveAttachment'
   | 'onRestoreToMessage'

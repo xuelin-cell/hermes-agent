@@ -15,6 +15,9 @@ vi.mock('electron', () => ({
 // 来源校验本身另有测试，这里只控制它的结果。
 vi.mock('../desktop-renderer-sender', () => ({ isDesktopRendererSender: () => fromDesktop.value }))
 
+import { createHash } from 'node:crypto'
+
+import { currentExecutionId, interruptedExecutionId } from './interrupted-turn-identity'
 import {
   claimInterruptedTurns,
   createInterruptedTurns,
@@ -57,13 +60,24 @@ afterEach(() => {
 
 describe('后端启动前接手中断记录', () => {
   it('把写记录的进程已不在的那一轮搬过来，Hermes 那边删掉，就不会自动续跑', () => {
+    const marker = { prompt: '整理报告', started_at: 1, attempts: 0, auto_continue: true, writer_pid: 999_999 }
     writeMarkers({
-      s1: { prompt: '整理报告', started_at: 1, attempts: 0, auto_continue: true, writer_pid: 999_999 }
+      s1: marker
     })
 
-    expect(claimInterruptedTurns(home, NOW, dead)).toEqual([{ sessionId: 's1', prompt: '整理报告', detectedAt: NOW }])
+    const requestHash = createHash('sha256').update(marker.prompt).digest('hex')
+    const window = { recordedAt: 0, observedAt: 2, writerPid: marker.writer_pid }
+    const executionId = currentExecutionId(home, ['s1'], requestHash, window)
+    expect(executionId).toBe(interruptedExecutionId(home, 's1', marker))
+    expect(executionId).not.toBe(interruptedExecutionId(home, 's1', { ...marker, started_at: 2 }))
+    expect(executionId).not.toBe(interruptedExecutionId(path.join(home, 'profiles/other'), 's1', marker))
+    expect(currentExecutionId(home, ['s1'], createHash('sha256').update('other prompt').digest('hex'), window)).toBeUndefined()
+    expect(currentExecutionId(home, ['s1'], requestHash, { ...window, observedAt: 0.5 })).toBeUndefined()
+    expect(currentExecutionId(home, ['s1'], requestHash, { ...window, recordedAt: 1500 })).toBeUndefined()
+    expect(currentExecutionId(home, ['s1'], requestHash, { ...window, writerPid: 1 })).toBeUndefined()
+    expect(claimInterruptedTurns(home, NOW, dead)).toEqual([{ sessionId: 's1', prompt: '整理报告', detectedAt: NOW, executionId }])
     expect(readMarkers()).toBeNull()
-    expect(listInterruptedTurns(home, NOW + 1)).toEqual([{ sessionId: 's1', prompt: '整理报告', detectedAt: NOW }])
+    expect(listInterruptedTurns(home, NOW + 1)).toEqual([{ sessionId: 's1', prompt: '整理报告', detectedAt: NOW, executionId }])
   })
 
   it('别的后端还在跑、导入的回合、空请求都原样留给 Hermes', () => {

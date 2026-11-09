@@ -69,7 +69,7 @@ function makeManager(
         token: 'token-a',
         phone: '13800000000',
         maskedPhone: '138****0000',
-        expiresAt: Date.now() + 60_000
+        expiresAt: Date.now() - 60_000
       })),
     mailState: overrides.mailState ?? { get: vi.fn(() => null), save: vi.fn() },
     exclusiveCode: overrides.exclusiveCode,

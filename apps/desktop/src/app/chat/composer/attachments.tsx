@@ -112,7 +112,7 @@ function AttachmentPill({
 
   const showThumbnail = attachment.kind === 'image' && thumbnail && (!tile || thumbnail !== failedThumbnail)
   const filename = attachment.path?.split(/[\\/]/).at(-1) || attachment.label
-  const extension = filename.match(/\.([a-z0-9]{1,8})$/i)?.[1].toUpperCase()
+  const extension = attachment.kind === 'folder' ? undefined : filename.match(/\.([a-z0-9]{1,8})$/i)?.[1].toUpperCase()
 
   // Keep full image bytes out of composer state. New chips read their path only
   // when clicked; previewUrl remains a compatibility fallback for older drafts.

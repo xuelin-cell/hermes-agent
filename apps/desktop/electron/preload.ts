@@ -49,6 +49,8 @@ const launchFlags: { localModels?: boolean; guestOnboarding?: boolean; skipIntro
 const localSkin = ipcRenderer.sendSync('hermes:skin:local')
 
 contextBridge.exposeInMainWorld('hermesDesktop', {
+  rememberUsageInput: (input: import('./uniwork-telemetry/inputs').TelemetryInput) =>
+    ipcRenderer.invoke('hermes:usage-input', input) as Promise<void>,
   agentMail: (input: AgentMailRequest) => ipcRenderer.invoke(AGENT_MAIL_CHANNEL, input),
   localConnectors: (input: LocalConnectorRequest) => ipcRenderer.invoke(CONNECTOR_CHANNEL, input),
   // 只读脱敏账号信息，页面不能传入身份或账号路径。

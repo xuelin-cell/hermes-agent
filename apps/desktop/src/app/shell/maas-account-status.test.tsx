@@ -1,8 +1,9 @@
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { I18nProvider } from '@/i18n/context'
+import { $announcements } from '@/store/message-center'
 import { notify } from '@/store/notifications'
 
 import { MaasAccountSidebar, useMaasAccount } from './maas-account-status'
@@ -16,6 +17,7 @@ afterEach(() => {
   window.hermesDesktop = originalBridge
   vi.useRealTimers()
   vi.mocked(notify).mockClear()
+  $announcements.set([])
 })
 
 it('登录页套餐拒绝提示随账号进入桌面，重复聚焦不再次打断，退出入口仍可用', async () => {
@@ -73,6 +75,52 @@ function AccountFixture() {
   )
 }
 
+function LocationProbe() {
+  const { pathname } = useLocation()
+
+  return <span data-testid="pathname">{pathname}</span>
+}
+
+it('账号行右侧的通知入口与账号控件同一行，点击进入通知整页', async () => {
+  window.hermesDesktop = {
+    getMaasAccount: vi.fn().mockResolvedValue({ maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }),
+    ntfy: {}
+  } as never
+
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <MemoryRouter initialEntries={['/']}>
+        <MaasAccountSidebar />
+        <LocationProbe />
+      </MemoryRouter>
+    </I18nProvider>
+  )
+
+  const entry = await screen.findByRole('button', { name: '消息中心' })
+  const account = screen.getByRole('button', { name: '138****0000' })
+  const row = account.closest('[data-slot="sidebar-account"]')
+
+  // 同一水平行：两者共用一个账号行容器，且入口紧跟在账号块之后。
+  expect(row).not.toBeNull()
+  expect(entry.closest('[data-slot="sidebar-account"]')).toBe(row)
+  expect(account.parentElement?.nextElementSibling?.contains(entry)).toBe(true)
+
+  fireEvent.click(entry)
+
+  expect(screen.getByTestId('pathname').textContent).toBe('/notifications')
+})
+
+it('没有 ntfy 通道时账号行不渲染通知入口', async () => {
+  window.hermesDesktop = {
+    getMaasAccount: vi.fn().mockResolvedValue({ maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 })
+  } as never
+
+  render(<AccountFixture />)
+
+  await screen.findByRole('button', { name: '138****0000' })
+  expect(screen.queryByRole('button', { name: '消息中心' })).toBeNull()
+})
+
 /** 通过真实账号按钮展开菜单，再进入退出确认，覆盖鼠标与菜单行为。 */
 async function openLogoutMenu() {
   // 假计时器下 findByRole 的轮询不会推进；账号已渲染时直接取按钮。
@@ -126,7 +174,7 @@ it('重新聚焦获得同一展示身份时，退出确认不被组件重挂打�
   expect(window.hermesDesktop.logoutMaasAccount).toHaveBeenCalledTimes(1)
 })
 
-it.each(['timer', 'wake'])('到期 %s 只提示一次，保留已打开确认和手动退出，不自动注销', async mode => {
+it.each(['timer', 'wake'])('登录 JWT 到期 %s 不提示失效，保留已打开确认和手动退出', async mode => {
   vi.useFakeTimers()
   const expiresAt = Date.now() + 1000
   const logoutMaasAccount = vi.fn(async () => {})
@@ -146,13 +194,13 @@ it.each(['timer', 'wake'])('到期 %s 只提示一次，保留已打开确认和
     await act(async () => window.dispatchEvent(new Event('focus')))
   }
 
-  expect(screen.getByText('登录已到期')).toBeTruthy()
+  expect(screen.queryByText('登录已到期')).toBeNull()
   expect(screen.getByRole('dialog')).toBe(dialog)
-  expect(notify).toHaveBeenCalledTimes(1)
+  expect(notify).not.toHaveBeenCalled()
   expect(logoutMaasAccount).not.toHaveBeenCalled()
   await act(async () => window.dispatchEvent(new Event('focus')))
   await act(async () => vi.advanceTimersByTimeAsync(120_000))
-  expect(notify).toHaveBeenCalledTimes(1)
+  expect(notify).not.toHaveBeenCalled()
   expect(screen.getByRole('dialog')).toBe(dialog)
   fireEvent.click(within(dialog).getByRole('button', { name: '退出' }))
   expect(logoutMaasAccount).toHaveBeenCalledTimes(1)

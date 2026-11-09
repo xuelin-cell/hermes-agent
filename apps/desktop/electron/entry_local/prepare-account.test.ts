@@ -10,7 +10,7 @@ import { LoginSession } from '../login/session'
 import { prepareLocalAccount, prepareLocalEnvironment } from './prepare-account'
 import { LocalStartupError } from './startup-failure'
 
-it('目录只取 LoginSession 的有效身份，凭据变更仍复用目录，未登录、到期或关闭不能准备', async () => {
+it('目录只取 LoginSession 的身份，凭据变更和 JWT 到期仍复用目录，未登录或关闭不能准备', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-prepare-account-'))
   const roots = { data: path.join(root, 'data'), userData: path.join(root, 'desktop') }
   const expiresAt = Date.now() + 60_000
@@ -40,7 +40,7 @@ it('目录只取 LoginSession 的有效身份，凭据变更仍复用目录，�
     fs.renameSync(`${a.desktopState}-kept`, a.desktopState)
     expect(prepareLocalAccount(next, roots)).toEqual(a)
     vi.spyOn(Date, 'now').mockReturnValue(expiresAt)
-    expect(() => prepareLocalAccount(next, roots)).toThrow('请先登录')
+    expect(prepareLocalAccount(next, roots)).toEqual(a)
     expect(fs.readFileSync(path.join(a.workspace, 'marker'), 'utf8')).toBe('keep-file')
     next.dispose()
   } finally {

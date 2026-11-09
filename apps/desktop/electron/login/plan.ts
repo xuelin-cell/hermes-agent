@@ -8,6 +8,7 @@ export interface MaasModel {
   baseUrl: string
   contextWindow?: number
   vision?: boolean
+  displayName?: string
 }
 
 const CONTEXT_WINDOWS: Record<string, number> = { 'deepseek-v4-flash': 300_000, 'glm-5.2': 240_000 }
@@ -25,6 +26,8 @@ export interface MaasPlan {
   apiKey: string
   models: MaasModel[]
   mainModelIndex: number
+  productId?: string
+  productName?: string
 }
 
 export type FetchedPlan =
@@ -104,6 +107,8 @@ function parsePlan(body: unknown): FetchedPlan {
     return {
       id,
       name,
+      ...(typeof row.display_name === 'string' && row.display_name.trim()
+        ? { displayName: row.display_name.trim() } : {}),
       baseUrl: base.endsWith('/v1') ? base : `${base}/v1`,
       ...(contextWindow === undefined ? {} : { contextWindow }),
       ...(Array.isArray(row.supported_modalities) ? { vision: row.supported_modalities.includes('image') } : {})
@@ -114,7 +119,13 @@ function parsePlan(body: unknown): FetchedPlan {
 
   return {
     status: 'available',
-    plan: { apiKey: payload.apiKey.trim(), models, mainModelIndex: Math.max(0, mainModelIndex) }
+    plan: {
+      apiKey: payload.apiKey.trim(), models, mainModelIndex: Math.max(0, mainModelIndex),
+      ...(typeof payload.productId === 'string' && payload.productId.trim()
+        ? { productId: payload.productId.trim() } : {}),
+      ...(typeof payload.productName === 'string' && payload.productName.trim()
+        ? { productName: payload.productName.trim() } : {})
+    }
   }
 }
 

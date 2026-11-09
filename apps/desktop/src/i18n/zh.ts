@@ -245,9 +245,6 @@ export const zh = defineLocale({
     logoutTitle: '退出当前账号？',
     logoutDescription: '将停止当前账号的本地后端、消息网关及其托管工作，并返回登录页。历史、文件和定时任务定义保留。',
     logoutBusy: '正在退出账号…',
-    expired: '登录已到期，请重新登录。',
-    expiredLabel: '登录已到期',
-    expiredRunning: '登录已到期，当前任务继续运行。您可以退出账号后重新登录。',
     resendAfter: '{seconds} 秒后重发',
     smsSendError: '发送失败，请检查输入或刷新图片后重试。',
     smsLimited: '发送过于频繁，请稍后重试。',
@@ -917,9 +914,10 @@ export const zh = defineLocale({
   messageCenter: {
     title: '消息中心',
     unreadCount: count => `${count} 条未读消息`,
-    markAllRead: '全部已读',
     empty: '暂无通知',
-    untitled: '公告'
+    emptyHint: '收到的新公告会显示在这里。',
+    untitled: '公告',
+    open: '打开消息中心'
   },
 
   keybinds: {
@@ -4187,7 +4185,7 @@ export const zh = defineLocale({
   composer: {
     message: '消息',
     addAttachment: '添加附件',
-    aiDisclaimer: 'AI 回复可能不准确，请仔细核实重要信息。',
+    aiDisclaimer: 'AI 回复可能不准确，涉及医疗、金融等专业决策时，请仔细核实重要信息。',
     wakingProfile: profile => `正在唤醒 ${profile}…`,
     placeholderStarting: '正在启动 UniWork…',
     placeholderReconnecting: '正在重新连接 UniWork…',
@@ -4372,8 +4370,8 @@ export const zh = defineLocale({
     themeTryPre: '试试 ',
     themeTryPost: '。',
     attachLabel: '附加',
-    files: '文件…',
-    folder: '文件夹…',
+    files: '添加文件',
+    folder: '添加文件夹',
     images: '图片…',
     pasteImage: '粘贴图片',
     url: 'URL…',

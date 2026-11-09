@@ -295,10 +295,40 @@ it('只有图片数据的消息也能复制为可重新发送的附件', async (
   ])
 })
 
-it('仅文件夹引用仍保留原来的消息编辑入口，不改成文档卡片', async () => {
-  const view = renderSentFiles('', ['@folder:documents/'])
+it.each(['', '整理目录里的材料'])('文件夹与正文共用卡片区域，复制和编辑后仍保留目录引用：%s', async caption => {
+  const folder = '@folder:`documents/测试文件夹.v1/`'
+  const view = renderSentFiles(caption, [folder, `@file:${formatRefValue(pdf)}`], true)
+  const folderCard = await screen.findByRole('button', { name: '测试文件夹.v1' })
+  const documentCard = screen.getByRole('button', { name: 'Preview 示例文档.pdf' })
+  const bubble = folderCard.closest('.composer-human-message')
 
-  expect(await screen.findByRole('button', { name: 'Edit message' })).toBeTruthy()
-  expect(screen.getByTitle('documents/')).toBeTruthy()
-  expect(view.container.querySelector('[data-slot="composer-attachments"]')).toBeNull()
+  expect(bubble).toBeTruthy()
+  expect(documentCard.closest('.composer-human-message')).toBe(bubble)
+  expect(view.container.querySelector('[data-slot="aui_user-attachments"]')).toBeNull()
+  expect(view.container.querySelectorAll('[data-slot="message-attachment-tile"]')).toHaveLength(2)
+  expect(within(folderCard).queryByText('V1')).toBeNull()
+  expect(view.container.querySelector('[data-slot="aui_user-message-text"]')?.textContent ?? '').toBe(caption)
+  fireEvent.click(screen.getByRole('button', { name: 'Copy' }))
+  await waitFor(() => expect(writeClipboard).toHaveBeenCalledTimes(1))
+  const [text, html] = writeClipboard.mock.calls[0]
+  expect(text).toBe(caption)
+  expect(readCopiedMessageAttachments({ getData: () => html ?? '' } as unknown as DataTransfer)).toMatchObject([
+    { kind: 'folder', path: '/this-session/workspace/documents/测试文件夹.v1' },
+    { kind: 'file', path: pdf }
+  ])
+
+  fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
+  const editor = await screen.findByRole('textbox', { name: 'Edit message' })
+  expect(
+    editor.closest('[data-slot="aui_edit-composer-root"]')?.querySelectorAll('[data-slot="message-attachment-tile"]')
+  ).toHaveLength(2)
+  expect(editor.textContent).toBe(caption)
+  editor.textContent = '重新整理目录'
+  fireEvent.input(editor)
+  await act(async () => fireEvent.keyDown(editor, { key: 'Enter' }))
+  expect(editedPlan).toHaveBeenCalledWith(
+    expect.objectContaining({
+      text: [folder, `@file:${formatRefValue(pdf)}`].join('\n') + '\n\n重新整理目录'
+    })
+  )
 })

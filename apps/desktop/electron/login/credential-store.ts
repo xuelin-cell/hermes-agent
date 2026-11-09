@@ -89,7 +89,7 @@ export class CredentialStore {
     }
   }
 
-  /** 只读取和校验记录；坏文件原样保留，是否到期由 LoginSession 判断。 */
+  /** 只读取和校验记录；坏文件原样保留，凭证是否失效由服务端判断。 */
   load(): StoredLoginIdentity | null {
     let encrypted: Buffer
 

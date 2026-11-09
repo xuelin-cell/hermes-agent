@@ -310,7 +310,7 @@ describe('桌面登录表单', () => {
     expect(captcha).toHaveBeenCalledTimes(3)
   })
 
-  it('登录成功立即显示官方启动画面并后台查套餐；到期后要求重新登录', async () => {
+  it('登录成功立即显示官方启动画面并后台查套餐；JWT 到期不返回登录表单', async () => {
     vi.useFakeTimers()
 
     const login = vi
@@ -329,18 +329,17 @@ describe('桌面登录表单', () => {
     await act(async () => {})
     fill({ phone: '13800000000', captcha: '', sms: '123456' })
     await act(async () => fireEvent.submit(screen.getByRole('button', { name: '登录' }).closest('form')!))
-    expect(screen.getByRole('status', { name: 'CONNECTING' })).toBeTruthy()
+    expect(screen.getByRole('status')).toBeTruthy()
     expect(screen.queryByText(/138\*\*\*\*0000|MaaS 套餐/)).toBeNull()
     expect(window.hermesLogin.plan).toHaveBeenCalledTimes(1)
     expect(screen.queryByLabelText('手机号')).toBeNull()
     act(() => vi.advanceTimersByTime(60_000))
-    expect((screen.getByLabelText('手机号') as HTMLInputElement).value).toBe('')
-    expect((screen.getByLabelText('短信验证码') as HTMLInputElement).value).toBe('')
-    expect(screen.getByText('登录已到期，请重新登录。')).toBeTruthy()
+    expect(screen.queryByLabelText('手机号')).toBeNull()
+    expect(screen.getByRole('status')).toBeTruthy()
     vi.useRealTimers()
   })
 
-  it('恢复账号后进入同款启动画面且不取图或登录；到期再显示空表单', async () => {
+  it('恢复账号后进入同款启动画面且不取图或登录；JWT 到期后保持启动流程', async () => {
     let resolve!: (result: LoginResult) => void
 
     const restore = vi.fn(
@@ -367,15 +366,15 @@ describe('桌面登录表单', () => {
     await act(async () =>
       resolve({ ok: true, account: { maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 } })
     )
-    expect(screen.getByRole('status', { name: 'CONNECTING' })).toBeTruthy()
+    expect(screen.getByRole('status')).toBeTruthy()
     expect(window.hermesLogin.plan).toHaveBeenCalledTimes(1)
     expect(screen.queryByLabelText('手机号')).toBeNull()
     expect(captcha).not.toHaveBeenCalled()
     expect(login).not.toHaveBeenCalled()
     act(() => vi.advanceTimersByTime(60_000))
-    expect((screen.getByLabelText('手机号') as HTMLInputElement).value).toBe('')
-    expect(screen.getByText('登录已到期，请重新登录。')).toBeTruthy()
-    expect(captcha).toHaveBeenCalledTimes(1)
+    expect(screen.queryByLabelText('手机号')).toBeNull()
+    expect(screen.getByRole('status')).toBeTruthy()
+    expect(captcha).not.toHaveBeenCalled()
   })
 
   it('恢复通信失败回到可用登录表单，不回显错误细节', async () => {
@@ -421,11 +420,12 @@ describe('桌面登录表单', () => {
       login: vi.fn()
     }
     renderLogin()
-    const screenBeforePlan = await screen.findByRole('status', { name: 'CONNECTING' })
+    await waitFor(() => expect(plan).toHaveBeenCalledTimes(1))
+    const screenBeforePlan = await screen.findByRole('status')
     expect(screen.queryByRole('heading')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
     await act(async () => finish(result))
-    expect(screen.getByRole('status', { name: 'CONNECTING' })).toBe(screenBeforePlan)
+    expect(screen.getByRole('status')).toBe(screenBeforePlan)
     expect(screen.queryByText(/MaaS|private-model-name|138\*\*\*\*0000/)).toBeNull()
     expect(plan).toHaveBeenCalledTimes(1)
   })

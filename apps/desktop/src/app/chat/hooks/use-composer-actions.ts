@@ -618,32 +618,6 @@ export function useComposerActions({
     [attachImagePath, copy.imageAttach, copy.imageAttachFailed, copy.imageWriteFailed]
   )
 
-  const pickImages = useCallback(async () => {
-    const paths = await selectDesktopPaths({
-      title: copy.attachImages,
-      defaultPath: currentCwd || undefined,
-      filters: [
-        {
-          name: t.composer.images,
-          extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff']
-        }
-      ]
-    })
-
-    if (!paths?.length) {
-      return
-    }
-
-    try {
-      for (const path of paths) {
-        await attachImagePath(path)
-      }
-    } catch (err) {
-      // Callers fire-and-forget this; surface failures instead of dropping them.
-      notifyError(err, copy.imageAttachFailed)
-    }
-  }, [attachImagePath, copy.attachImages, copy.imageAttachFailed, currentCwd, t.composer.images])
-
   const pasteClipboardImage = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
       try {
@@ -866,7 +840,6 @@ export function useComposerActions({
     insertContextPathInlineRef,
     pasteClipboardImage,
     pickContextPaths,
-    pickImages,
     removeAttachment
   }
 }

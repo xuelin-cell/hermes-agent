@@ -3,7 +3,6 @@ export const ASR_CHANNEL = 'hermes:uniwork-asr'
 export interface AsrIdentity {
   owner: string
   key: string
-  expiresAt: number
 }
 
 export interface AsrTranscript {

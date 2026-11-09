@@ -56,7 +56,7 @@ it('真实准备 A→B→A 的未运行助手，跳过运行中、删除及外�
       })
       const config = parse(fs.readFileSync(path.join(home, 'profiles', 'expert', 'config.yaml'), 'utf8'))
       expect(config.model).toBe('personal')
-      expect(config.plugins.enabled).toEqual(['personal', 'desktop-deliverables', 'desktop-artifact-share'])
+      expect(config.plugins.enabled).toEqual(['personal', 'desktop-deliverables', 'uniwork-telemetry', 'desktop-artifact-share'])
       expect(
         fs.existsSync(path.join(home, 'profiles', 'expert', 'plugins', 'desktop-artifact-share', 'plugin.yaml'))
       ).toBe(true)

@@ -14,9 +14,9 @@ export function splitSentAttachments(text: string, refs: string[] = []): { text:
   }
 }
 
-/** 判断引用是否是已上传的文件或图片，包括旧消息的内嵌图片。 */
-export function isUploadedAttachmentRef(ref: string): boolean {
-  return /^@file:/.test(ref) || isSentImageRef(ref)
+/** 判断引用是否属于消息附件卡片，包括文件夹和旧消息的内嵌图片。 */
+export function isMessageAttachmentRef(ref: string): boolean {
+  return /^@(?:file|folder):/.test(ref) || isSentImageRef(ref)
 }
 
 /** 识别可预览和重发的已发送图片。 */
@@ -40,7 +40,7 @@ export function parseSentAttachment(ref: string) {
   const [segment, extra] = hermesDirectiveFormatter.parse(ref)
   const mention = !extra && segment?.kind === 'mention' ? segment : undefined
 
-  if (!mention || (mention.type !== 'file' && mention.type !== 'image')) {
+  if (!mention || (mention.type !== 'file' && mention.type !== 'folder' && mention.type !== 'image')) {
     return null
   }
 

@@ -11,6 +11,7 @@
 import { useStore } from '@nanostores/react'
 import { useQuery } from '@tanstack/react-query'
 import { atom } from 'nanostores'
+import { lazy, Suspense } from 'react'
 
 import { RightSidebarPane } from '@/app/right-sidebar'
 import { ReviewPane } from '@/app/right-sidebar/review'
@@ -26,6 +27,14 @@ import { normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { cn } from '@/lib/utils'
 import { openPreview } from '@/store/preview'
 import { $currentCwd } from '@/store/session'
+import { $selectedWorkspaceMode } from '@/store/workspace-scope'
+
+// Lazy-load SessionArtifactsPane to avoid pulling the @/hermes barrel into
+// the renderer's module graph at boot (circular dep: @/hermes → @/api/sessions
+// → @/store/session-unread-remote → @/hermes). Only loaded in work mode.
+const SessionArtifactsPane = lazy(() =>
+  import('@/app/right-sidebar/session-artifacts').then(m => ({ default: m.SessionArtifactsPane }))
+)
 
 // ---------------------------------------------------------------------------
 // Logs — live agent-log tail. ⌘K-only chrome: the pane contribution exists
@@ -86,9 +95,17 @@ function previewFile(path: string) {
 const ZONE_CONTENT = 'h-full [&>aside]:h-full [&>aside]:w-full [&>aside]:pt-0'
 
 export function FilesPane() {
+  const workspaceMode = useStore($selectedWorkspaceMode)
+
   return (
     <div className={ZONE_CONTENT}>
-      <RightSidebarPane onActivateFile={previewFile} onActivateFolder={previewFile} />
+      {workspaceMode === 'codex' ? (
+        <RightSidebarPane onActivateFile={previewFile} onActivateFolder={previewFile} />
+      ) : (
+        <Suspense fallback={null}>
+          <SessionArtifactsPane />
+        </Suspense>
+      )}
     </div>
   )
 }

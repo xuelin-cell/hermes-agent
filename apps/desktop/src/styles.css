@@ -2434,14 +2434,19 @@ body.guest-pointer-lock :is(webview, iframe) {
   pointer-events: auto;
 }
 
-/* The latest reply's completion time follows the old Uniwork hover-only rule. */
+/* The latest reply's completion time follows the old Uniwork hover-only rule.
+   Hidden without collapsing layout: a `display: none` anchor loses its rect, so
+   the closing tooltip re-positioned to (0, 0) and its exit animation flashed in
+   the top-left corner. */
 [data-slot='aui_assistant-footer'][data-always-visible] [data-slot='aui_reply-completed'] {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .group:hover [data-slot='aui_assistant-footer'][data-always-visible] [data-slot='aui_reply-completed'],
 [data-slot='aui_assistant-footer'][data-always-visible]:focus-within [data-slot='aui_reply-completed'] {
-  display: inline-flex;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 /* 回复操作复用 icon-xs 按钮的点击区域与悬停反馈，图标与元信息使用相同灰度。 */

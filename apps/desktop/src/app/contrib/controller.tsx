@@ -608,7 +608,9 @@ const $hasWorkspace = computed($currentCwd, cwd => Boolean(cwd.trim()))
 // is about.
 bindPaneVisibility(
   'files',
-  computed([$hasWorkspace, $fileBrowserOpen], (workspace, open) => workspace && open),
+  computed([$hasWorkspace, $fileBrowserOpen, $selectedWorkspaceMode], (workspace, open, mode) =>
+    mode === 'codex' ? workspace && open : open
+  ),
   () => setFileBrowserOpen(false),
   () => setFileBrowserOpen(true)
 )

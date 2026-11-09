@@ -11,7 +11,7 @@ import { Slot } from '@/contrib/react/slot'
 import { useContributions } from '@/contrib/react/use-contributions'
 import { useI18n } from '@/i18n'
 import { triggerHaptic } from '@/lib/haptics'
-import { Bug, Search } from '@/lib/icons'
+import { Bug } from '@/lib/icons'
 import { formatModifierToken } from '@/lib/keybinds/combo'
 import { cn } from '@/lib/utils'
 import { $developerMode, toggleDeveloperMode } from '@/store/developer-mode'
@@ -21,17 +21,16 @@ import {
   $fileBrowserOpen,
   $panesFlipped,
   $sidebarOpen,
+  requestSessionSearchFocus,
   toggleFileBrowserOpen,
   togglePanesFlipped,
-  toggleSidebarOpen,
-  requestSessionSearchFocus
+  toggleSidebarOpen
 } from '@/store/layout'
 import { $unreadSessionCount } from '@/store/session-dot-state'
 import { $titlebarAppActionsSide, TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-app-actions'
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
-import { messageCenterAvailable, MessageCenterBell } from './message-center'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   TITLEBAR_ICON_BADGE_SCALE,
@@ -341,24 +340,24 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
 
   return (
     <>
-      <div aria-label={t.shell.windowControls} className={leftClusterClass} data-titlebar-cluster="left">
+      <div
+        aria-label={t.shell.windowControls}
+        className={leftClusterClass}
+        data-titlebar-cluster="left"
+        style={sidebarOpen && !panesFlipped ? {
+          width: 'max(0px, calc(var(--workspace-left, 276px) - var(--titlebar-controls-left) - 16px))'
+        } : undefined}
+      >
         {sidebarOpen && (
           <button
             aria-label="元景数字员工"
-            style={{ fontFamily: "var(--uniwork-title-font, sans-serif)" }}
             className="mr-auto flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-base font-bold whitespace-nowrap text-foreground/85 select-none"
             onClick={handleBrandClick}
+            style={{ fontFamily: 'var(--uniwork-title-font, sans-serif)' }}
             type="button"
           >
             元景数字员工
           </button>
-        )}
-        {sidebarOpen && (
-          <Tip label={t.sidebar.searchAria}>
-            <Button aria-label={t.sidebar.searchAria} onClick={requestSessionSearchFocus} size="icon-titlebar" variant="ghost">
-              <Search className="size-5" />
-            </Button>
-          </Tip>
         )}
         {visibleLeftTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
@@ -386,7 +385,6 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
         data-titlebar-cluster="right"
       >
-        {messageCenterAvailable() && <MessageCenterBell />}
         {visibleSystemTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}
