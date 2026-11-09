@@ -40,6 +40,7 @@ export {
  *   app/capabilities/plugins/plugins-tab.tsx           * no desktop (local) plugins, no "open plugins folder"
  *   app/capabilities/skill-market.tsx                  cloud installs require the persistence-aware instance bridge
  *   app/chat/composer/trigger-popover.tsx              the backend's English hints of `@` completions in Chinese
+ *   app/chat/composer/workdir-mt/workdir-picker.tsx   (ours) * no working-folder picker (the instance's paths)
  *   app/chat/right-rail/office-sheet.tsx              (ours) the sheet viewer: spreadsheets the instance turns into tables
  *   app/chat/right-rail/office-slides.tsx              (ours) the page viewer: decks and documents the instance renders page by page
  *   app/chat/right-rail/pdf-preview.tsx                the shared PDF viewer: browser URLs or desktop-provided bytes
@@ -64,7 +65,9 @@ export {
  *   app/settings/config-settings.tsx                   * no Advanced ▸ Desktop settings (keep awake, F12, backend pool,
  *                                                      Quick Entry)
  *   app/settings/index.tsx                             * no Gateway, Credential Vault, Providers or About page
- *   app/settings/subpages.ts                           * no Advanced ▸ Desktop, Keyboard ▸ HUD gesture or Screen capture
+ *   app/settings/sessions-settings.tsx                 * no default directory section (the instance's paths)
+ *   app/settings/subpages.ts                           * no Advanced ▸ Desktop, Keyboard ▸ HUD gesture, Screen capture
+ *                                                      or Sessions ▸ Default directory
  *   app/settings/visibility.ts                         * the settings search (command palette) skips those pages too
  *   app/shell/gateway-menu-panel.tsx                   * no gateway restart
  *   app/shell/maas-account-status.tsx                  signing out keeps the instance: the confirmation says so
@@ -541,6 +544,14 @@ export function isPlanUsageHidden(): boolean {
   return isBrowserShell() && !window.hermesDesktop?.getPlanUsage
 }
 
+/** The working folder of new conversations (the composer's picker, Sessions ▸ Default
+ * directory). In the cloud every new conversation gets its own folder in the account's
+ * workspace on its own; choosing another one means browsing the instance's file system,
+ * whose paths (`/opt/data/workspace`, and up to `/`) mean nothing to a user. */
+export function isWorkdirHidden(): boolean {
+  return hideForUsers()
+}
+
 const NO_DESKTOP_PLUGINS = {}
 
 /** Capabilities ▸ Plugins without its desktop half: desktop plugins live in the
@@ -550,12 +561,18 @@ export function withoutDesktopPlugins<T extends object>(records: T): T {
   return hideForUsers() ? (NO_DESKTOP_PLUGINS as T) : records
 }
 
-const SETTINGS_SUBPAGES_HIDDEN = new Set(['config:advanced/desktop', 'keybinds/hud-gesture', 'keybinds/screen-capture'])
+const SETTINGS_SUBPAGES_HIDDEN = new Set([
+  'config:advanced/desktop',
+  'keybinds/hud-gesture',
+  'keybinds/screen-capture',
+  'sessions/default-directory'
+])
 
 /** Settings subpages of this-computer-only knobs: Advanced ▸ Desktop (keep the
  * machine awake, F12, the backend pool, Quick Entry's global shortcut, app
  * updates), and Keyboard ▸ HUD gesture and Screen capture (global shortcuts of
- * the desktop's floating HUD window and of screenshots). The browser has none of them. */
+ * the desktop's floating HUD window and of screenshots). The browser has none of them.
+ * Sessions ▸ Default directory goes too: see `isWorkdirHidden()`. */
 export function withoutHiddenSubpages<P extends { id: string }>(view: string, pages: readonly P[]): readonly P[] {
   return hideForUsers() ? pages.filter(page => !SETTINGS_SUBPAGES_HIDDEN.has(`${view}/${page.id}`)) : pages
 }

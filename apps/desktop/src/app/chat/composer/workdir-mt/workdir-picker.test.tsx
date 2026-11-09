@@ -220,3 +220,23 @@ describe('WorkdirPicker on a started conversation', () => {
     await waitFor(() => expect(screen.getByTestId('workdir-picker').textContent).toBe('Default workspace'))
   })
 })
+
+describe('WorkdirPicker in the cloud', () => {
+  it('不向普通用户显示实例里的目录，开发者模式下照旧显示', () => {
+    const { gateway } = fakeGateway()
+    window.document.documentElement.dataset.hermesBrowser = 'production'
+
+    try {
+      render(<WorkdirPicker cwd="/opt/data/workspace/20261019-103015" gateway={gateway} sessionId="runtime-1" />)
+      expect(screen.queryByTestId('workdir-picker')).toBeNull()
+      cleanup()
+
+      localStorage.setItem('uniwork.desktop.developerMode.v1', 'true')
+      render(<WorkdirPicker cwd="/opt/data/workspace/20261019-103015" gateway={gateway} sessionId="runtime-1" />)
+      expect(screen.getByTestId('workdir-picker')).toBeTruthy()
+    } finally {
+      delete window.document.documentElement.dataset.hermesBrowser
+      localStorage.removeItem('uniwork.desktop.developerMode.v1')
+    }
+  })
+})
