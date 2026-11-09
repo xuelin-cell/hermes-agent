@@ -87,7 +87,6 @@ async def test_validation_allowlist_and_concurrent_binding_ownership(postgres_da
     app,entry=await setup(postgres_database_url)
     try:
         async with TestClient(TestServer(app)) as client:
-            assert (await client.put(PATH+'missing',json=BODY)).status==404
             invalid={**BODY,'my_plan':{**BODY['my_plan'],'models':'{agent-secret-invalid-json'}}
             response=await client.put(PATH+'alice',json=invalid)
             assert response.status==422 and 'agent-secret-invalid-json' not in await response.text()
@@ -104,6 +103,36 @@ async def test_validation_allowlist_and_concurrent_binding_ownership(postgres_da
             await entry.messaging_routes.apply_login('alice',{'ipUrl':'https://login.test','agentIdCloud':'login-bot','agentKeyCloud':'login-secret'})
             again=await entry.messaging_routes.store.binding('alice')
             assert first['enabled'] and again['revision']==first['revision']
+    finally:
+        await entry.database.close()
+
+
+@pytest.mark.asyncio
+async def test_provision_creates_an_unknown_user_but_never_revives_a_disabled_one(postgres_database_url):
+    """The central service pushes 5G users who never opened the web app, and UniClaw serves them.
+    The first push creates the user without a login session; it never re-enables an operator-disabled
+    user, and a rejected push leaves no user behind."""
+    app,entry=await setup(postgres_database_url)
+    store=entry.messaging_routes.store
+    try:
+        async with TestClient(TestServer(app)) as client:
+            assert (await client.get(PATH+'carol')).status==404
+            assert (await client.put(PATH+'carol',json=BODY)).status==200
+            binding=await store.binding('carol')
+            assert binding['enabled'] and binding['source']=='service-provision'
+            assert (await entry.store.get_tenant_context('carol')).api_key==BODY['my_plan']['apiKey']
+            assert (await (await client.get(PATH+'carol')).json())['bound']
+            async with entry.database.acquire() as db:
+                assert await db.fetchval("SELECT count(*) FROM auth_sessions WHERE user_id='carol'")==0
+                await db.execute("UPDATE users SET status='disabled' WHERE user_id='bob'")
+            other={**BODY,'uniagentgate':{**BODY['uniagentgate'],'agent_id':'bob-bot'}}
+            assert (await client.put(PATH+'bob',json=other)).status==404
+            assert await store.binding('bob') is None
+            # carol already owns cloud-bot, so pushing it for a new user conflicts and creates nobody.
+            assert (await client.put(PATH+'dave',json=BODY)).status==409
+            async with entry.database.acquire() as db:
+                assert await db.fetchval("SELECT status FROM users WHERE user_id='bob'")=='disabled'
+                assert await db.fetchval("SELECT count(*) FROM users WHERE user_id='dave'")==0
     finally:
         await entry.database.close()
 

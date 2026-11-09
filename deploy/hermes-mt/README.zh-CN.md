@@ -424,7 +424,7 @@ PYKEY
 
 ### 中心下发 5G 绑定
 
-目标 `user_id` 必须已在 Hermes 登录建立用户记录，且账号未停用；不存在的用户返回 404，不会由该接口创建登录会话。无需新增数据库表。
+与 UniClaw 一致，目标 `user_id` 不需要先登录过云端网页：用户记录不存在时，首次 PUT 会创建（不创建登录会话，用户之后仍需短信登录才能使用网页）。已停用的用户返回 404，不会被下发重新启用；请求被拒绝（如 409 冲突）时不会留下用户记录。GET 对不存在的用户仍返回 404。无需新增数据库表。
 
 - `PUT /api/channels/uniagentgate/cloud-binding/{user_id}`：原子保存 5G 凭据和模型配置，自动启用绑定，channels 下一轮调度建立连接。
 - `GET /api/channels/uniagentgate/cloud-binding/{user_id}`：返回 `bound`、`state`、`last_error`、`updated_at`，不返回地址或密钥。
