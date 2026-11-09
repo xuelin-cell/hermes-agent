@@ -916,7 +916,12 @@ export const zh = defineLocale({
     unreadCount: count => `${count} 条未读消息`,
     markAllRead: '全部已读',
     empty: '暂无通知',
-    untitled: '公告'
+    emptyHint: '收到的新公告会显示在这里。',
+    untitled: '公告',
+    search: '搜索通知…',
+    noResults: '没有匹配的通知',
+    allRead: '没有未读通知',
+    open: '打开消息中心'
   },
 
   keybinds: {

@@ -1223,7 +1223,12 @@ export const en: Translations = {
     unreadCount: count => (count === 1 ? '1 unread notification' : `${count} unread notifications`),
     markAllRead: 'Mark all read',
     empty: 'No notifications yet',
-    untitled: 'Announcement'
+    emptyHint: 'Announcements you receive will show up here.',
+    untitled: 'Announcement',
+    search: 'Search notifications…',
+    noResults: 'No matching notifications',
+    allRead: 'No unread notifications',
+    open: 'Open notifications'
   },
 
   keybinds: {

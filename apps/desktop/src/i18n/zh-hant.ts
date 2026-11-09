@@ -744,7 +744,12 @@ export const zhHant = defineLocale({
     unreadCount: count => `${count} 則未讀通知`,
     markAllRead: '全部已讀',
     empty: '暫無通知',
-    untitled: '公告'
+    emptyHint: '收到的新公告會顯示在這裡。',
+    untitled: '公告',
+    search: '搜尋通知…',
+    noResults: '沒有符合的通知',
+    allRead: '沒有未讀通知',
+    open: '開啟訊息中心'
   },
 
   language: {

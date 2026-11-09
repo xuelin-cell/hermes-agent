@@ -1024,7 +1024,12 @@ export interface Translations {
     unreadCount: (count: number) => string
     markAllRead: string
     empty: string
+    emptyHint: string
     untitled: string
+    search: string
+    noResults: string
+    allRead: string
+    open: string
   }
 
   keybinds: {

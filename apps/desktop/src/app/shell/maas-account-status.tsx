@@ -8,6 +8,8 @@ import { notify } from '@/store/notifications'
 
 import type { LoginAccount } from '../../../electron/login/contract'
 
+import { messageCenterAvailable } from './message-center/availability'
+import { MessageCenterEntry } from './message-center/entry'
 import { PlanUsagePanel } from './plan-usage/panel'
 
 /** 头像卡片整合套餐和设置，退出仍统一确认后交给主进程处理停止与重启。 */
@@ -101,13 +103,20 @@ export function useMaasAccount(): LoginAccount | null {
   return account
 }
 
-/** 侧栏底部统一承载账号菜单，沿用主进程账号读取和安全退出。 */
+/** 侧栏底部统一承载账号菜单，沿用主进程账号读取和安全退出。
+ *  通知入口与账号控件同一水平行、紧邻其右：账号按钮占满剩余宽度，
+ *  铃铛固定宽度，所以账号名变长时只截断自己不挤动铃铛。 */
 export function MaasAccountSidebar() {
   const account = useMaasAccount()
 
   return account ? (
     <div className="shrink-0 px-[6px] pb-0 pt-1" data-slot="sidebar-account">
-      <AccountLogout account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          <AccountLogout account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
+        </div>
+        {messageCenterAvailable() && <MessageCenterEntry />}
+      </div>
     </div>
   ) : null
 }
