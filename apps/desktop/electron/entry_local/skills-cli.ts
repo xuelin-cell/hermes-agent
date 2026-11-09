@@ -73,7 +73,7 @@ export async function savedSkillsHome(userData: string): Promise<string> {
 /** 仅向终端返回启动参数；Python 由终端启动以保留真正的控制台输入输出。 */
 export function runDesktopSkillsCli(request: string[]): void {
   const file = request[0]
-  app.setName('Hermes Desktop MT')
+  app.setName('元景数字员工')
 
   if (process.platform === 'darwin') {
     app.setActivationPolicy('prohibited')

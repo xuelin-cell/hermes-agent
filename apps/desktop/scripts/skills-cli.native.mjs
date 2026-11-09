@@ -31,7 +31,7 @@ import fs from 'node:fs'; import path from 'node:path'; import { app } from 'ele
 import { CredentialStore, MAAS_IDENTITY_NAMESPACE } from './electron/login/credential-store';
 import { accountDataRoot, prepareAccountPaths } from './electron/entry_local/account-paths';
 import { openSkillsCliState, blockSkillsCliState } from './electron/entry_local/skills-cli-state';
-app.setName('Hermes Desktop MT');
+app.setName('元景数字员工');
 app.setPath('userData', process.env.HERMES_DESKTOP_USER_DATA_DIR);
 void app.whenReady().then(async () => {
  const userData = app.getPath('userData'); const uid = process.argv[2];

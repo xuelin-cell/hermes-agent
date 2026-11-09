@@ -473,7 +473,8 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
     }
 
   const [query, setQuery] = useState('')
-  const show = (id: AppearanceSubpageId) => subpage === undefined || subpage === id
+  const show = (id: AppearanceSubpageId) =>
+    (developerMode || !['typography', 'window-layout', 'chat-display'].includes(id)) && (subpage === undefined || subpage === id)
 
   useSettingDeepLink('config:appearance', page => page !== undefined && show(page as AppearanceSubpageId))
 
@@ -694,9 +695,9 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
                 <ChatFontSetting />
               </div>
 
-              <div id={settingElementId(ids.terminalFont)}>
+              {developerMode && <div id={settingElementId(ids.terminalFont)}>
                 <TerminalFontSetting />
-              </div>
+              </div>}
             </>
           )}
 
@@ -920,7 +921,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
             />
           )}
 
-          {show('general') && (
+          {developerMode && show('general') && (
             <ToggleRow
               checked={introSplash}
               description={a.introSplashDesc}
@@ -953,7 +954,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
             />
           )}
 
-          {show('general') && <ResumeLastSessionSetting />}
+          {developerMode && show('general') && <ResumeLastSessionSetting />}
 
           {show('chat-display') && (
             <ToggleRow
@@ -965,7 +966,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
             />
           )}
 
-          {show('general') && (
+          {developerMode && show('general') && (
             <ToggleRow
               below={
                 // A tip shows once (✕ or timer), so this is the only way to a
@@ -980,7 +981,7 @@ export function AppearanceSettings({ subpage }: AppearanceSettingsProps = {}) {
             />
           )}
 
-          {show('general') && (
+          {developerMode && show('general') && (
             <ToggleRow
               checked={toursEnabled}
               description={a.toursDesc}

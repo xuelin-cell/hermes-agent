@@ -1100,7 +1100,7 @@ const BOOT_FAKE_STEP_MS = (() => {
   return Math.max(120, raw)
 })()
 
-const APP_NAME: string = process.env.HERMES_DESKTOP_APP_NAME || 'Hermes Desktop MT'
+const APP_NAME: string = process.env.HERMES_DESKTOP_APP_NAME || '元景数字员工'
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
@@ -19287,7 +19287,7 @@ app.on('before-quit', event => {
     event.preventDefault()
     void logoutDesktopAccount('quit').catch(() => {
       restartAfterQuit = false
-      dialog.showErrorBox('Hermes Desktop MT', '无法开始安全退出，请重试。历史和登录记录未删除。')
+      dialog.showErrorBox('元景数字员工', '无法开始安全退出，请重试。历史和登录记录未删除。')
     })
 
     return

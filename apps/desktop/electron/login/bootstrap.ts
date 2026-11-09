@@ -43,7 +43,7 @@ function initializeLoginShell(): void {
   }
 
   initialized = true
-  app.setName('Hermes Desktop MT')
+  app.setName('元景数字员工')
   // 与账号数据根同名，Local 和 Roaming 两处都是 uniworker。
   const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker'))
   mkdirSync(userData, { recursive: true })
@@ -95,7 +95,7 @@ function initializeLoginShell(): void {
           ? 'Windows 进程状态查询超时，请稍后重新启动应用。'
           : '上次账号工作未能安全收尾，请寻求支持。'
 
-      dialog.showErrorBox('Hermes Desktop MT', `${advice}已阻止恢复登录，账号记录和历史已保留。`)
+      dialog.showErrorBox('元景数字员工', `${advice}已阻止恢复登录，账号记录和历史已保留。`)
       app.quit()
     })
   accountRuntime = new LocalRuntimeContext(
@@ -300,7 +300,7 @@ export function startDesktopLogin(): Promise<BrowserWindow | null> {
 
   starting = openLoginWindow().catch(() => {
     if (!stopping) {
-      dialog.showErrorBox('Hermes Desktop MT', '登录窗口无法打开，请关闭后重试。')
+      dialog.showErrorBox('元景数字员工', '登录窗口无法打开，请关闭后重试。')
       app.exit(1)
     }
 
