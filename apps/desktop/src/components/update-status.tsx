@@ -420,8 +420,11 @@ interface AboutUpdateCardProps {
 /**
  * Settings › About's two-row update card: the running version with its primary
  * action, then the product/website row. An available update keeps the single
- * primary button and switches it to "update now"; the check itself always runs
- * through the manual-check flow so the user gets the software-update dialog.
+ * primary button and switches it to "update now", but a CLIENT build still
+ * runs the manual-check flow on click — the same entry every other "check for
+ * updates" affordance uses — so About and the sidebar account card cannot
+ * diverge. The backend can't: it has no in-app download or ready step, so its
+ * "update now" applies directly.
  */
 function AboutUpdateCard({
   channel,
@@ -468,7 +471,9 @@ function AboutUpdateCard({
         <Button
           className="min-w-24 shrink-0 rounded-[0.625rem]"
           disabled={busy}
-          onClick={() => (canUpdate ? startActiveUpdate(target) : onCheck())}
+          // One path for a client build, whatever the label says: check → download
+          // dialog → ready → "launch". Only the backend keeps its direct apply.
+          onClick={() => (canUpdate && target === 'backend' ? startActiveUpdate(target) : onCheck())}
           size="lg"
           type="button"
           variant="outline"
