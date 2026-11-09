@@ -12,19 +12,20 @@ import { startTelemetryBridge, telemetryAccount, telemetryEnabled } from './brid
 
 function identity(id: string): LoginIdentity {
   return { uid: id, token: `header.${Buffer.from(JSON.stringify({ id, application: 'uniwork' })).toString('base64url')}.fixture`,
-    expiresAt: Date.now() + 60_000, maskedPhone: 'fixture' }
+    expiresAt: Date.now() - 60_000, maskedPhone: 'fixture' }
 }
 
-it('real loopback forwarding preserves int64 bytes, uses the current user token, and isolates account/profile opt-out', async () => {
+it('real forwarding preserves int64 and account/profile isolation while the server decides token validity', async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'uniwork-telemetry-'))
   const received: { body: string; authorization: string | undefined }[] = []
+  let upstreamStatus = 200
 
   const upstream = http.createServer(async (request, response) => {
     const chunks: Buffer[] = []
 
     for await (const chunk of request) {chunks.push(chunk)}
     received.push({ body: Buffer.concat(chunks).toString('utf8'), authorization: request.headers.authorization })
-    response.writeHead(200, { 'Content-Type': 'application/json' })
+    response.writeHead(upstreamStatus, { 'Content-Type': 'application/json' })
       .end(JSON.stringify({ code: 200, data: { results: [{ index: 0, status: 'accepted' }] } }))
   })
 
@@ -42,6 +43,7 @@ it('real loopback forwarding preserves int64 bytes, uses the current user token,
 
   try {
     const env = bridge.env(home)
+    expect(env.UNIWORK_TELEMETRY_CONTEXT).toBeDefined()
     const initial = JSON.parse(env.UNIWORK_TELEMETRY_CONTEXT)
     expect(initial.account).toBe(telemetryAccount(current, endpoint))
     expect(initial.models[0]).toMatchObject({ modelId: 'model-a', modelName: '模型 A', productId: 'product-a',
@@ -82,6 +84,8 @@ it('real loopback forwarding preserves int64 bytes, uses the current user token,
     expect((await send()).status).toBe(200)
     expect(received).toHaveLength(2)
     expect(() => bridge.env(path.join(home, '..', 'another-account'))).toThrow()
+    upstreamStatus = 401
+    expect((await (await send()).json()).status).toBe(401)
     current = null
     expect((await send()).status).toBe(401)
   } finally {
