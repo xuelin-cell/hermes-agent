@@ -3304,8 +3304,6 @@ export const ar = defineLocale({
       goBack: 'رجوع',
       goForward: 'تقدم',
       reload: 'إعادة تحميل الصفحة',
-      address: 'العنوان',
-      addressPlaceholder: 'أدخل العنوان',
       blankPageBody: 'اكتب عنوانًا في الأعلى للتصفح، أو اطلب من UniWork فتح صفحة.',
       finishedRestarting: message => `أنهى UniWork إعادة تشغيل خادم المعاينة${message ? `: ${message}` : ''}`,
       failedRestarting: message => `فشلت إعادة تشغيل الخادم: ${message}`,

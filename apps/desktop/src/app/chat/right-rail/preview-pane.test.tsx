@@ -178,7 +178,7 @@ describe('PreviewPane console state', () => {
       )
     })
 
-    expect(rendered.getByRole('textbox', { name: 'Address' })).toBeTruthy()
+    expect(rendered.queryByRole('textbox', { name: 'Address' })).toBeNull()
     expect(rendered.queryByRole('button', { name: 'Pop out' })).toBeNull()
   })
 

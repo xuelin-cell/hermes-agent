@@ -5500,8 +5500,6 @@ export const frOverrides = {
       goBack: 'Retour',
       goForward: 'Suivant',
       reload: 'Recharger la page',
-      address: 'Adresse',
-      addressPlaceholder: 'Saisir une adresse',
       blankPageBody: "Saisissez une adresse ci-dessus pour naviguer, ou demandez à UniWork d'ouvrir une page.",
       finishedRestarting: message =>
         `UniWork a terminé le redémarrage du serveur d'aperçu${message ? `: ${message}` : ''}`,

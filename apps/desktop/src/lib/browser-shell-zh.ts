@@ -350,10 +350,6 @@ export const CLOUD_ZH: TranslationOverrides = {
           title: provider => `${provider} 拒绝了你的登录凭据`,
           body: provider => `为 ${provider} 保存的凭据无效或已被撤销。请更新凭据或换一个提供方，然后重新发送消息。`
         },
-        billing: {
-          title: '余额已用完',
-          body: provider => `你的 ${provider} 账户余额已用完。请充值或换一个提供方，然后重新发送。`
-        },
         stream_drop: {
           title: '回复被中断了',
           body: '回复还没完成，连接就断了。点「重试」重新发送。'
@@ -429,7 +425,6 @@ export const CLOUD_ZH: TranslationOverrides = {
           title: provider => `你在 ${provider} 的登录已过期`
         }
       },
-      errorDetails: '详情',
       errorToastTitle: 'UniWork 没能完成回复',
       errorChooseModel: '选择模型',
       errorCompressConversation: '压缩对话',

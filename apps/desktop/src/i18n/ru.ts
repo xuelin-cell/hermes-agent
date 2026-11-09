@@ -4038,8 +4038,6 @@ export const ru = defineLocale({
       goBack: 'Назад',
       goForward: 'Вперёд',
       reload: 'Перезагрузить страницу',
-      address: 'Адрес',
-      addressPlaceholder: 'Введите адрес',
       blankPageBody: 'Введите адрес выше, чтобы просматривать, или попросите UniWork открыть страницу.',
       finishedRestarting: message =>
         `UniWork завершил перезапуск сервера предпросмотра${message ? `: ${message}` : ''}`,

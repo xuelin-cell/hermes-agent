@@ -5479,8 +5479,6 @@ export const esOverrides = {
       goBack: 'Atrás',
       goForward: 'Adelante',
       reload: 'Recargar página',
-      address: 'Dirección',
-      addressPlaceholder: 'Introduce una dirección',
       blankPageBody: 'Escribe una dirección arriba para navegar o pide a UniWork que abra una página.',
       finishedRestarting: message =>
         `UniWork terminó de reiniciar el servidor de vista previa${message ? `: ${message}` : ''}`,

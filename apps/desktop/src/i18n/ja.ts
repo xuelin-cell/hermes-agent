@@ -3807,8 +3807,6 @@ export const ja = defineLocale({
       goBack: '戻る',
       goForward: '進む',
       reload: 'ページを再読み込み',
-      address: 'アドレス',
-      addressPlaceholder: 'アドレスを入力',
       blankPageBody: '上のアドレス欄に入力するか、UniWork にページを開くよう頼んでください。',
       finishedRestarting: message =>
         `UniWork がプレビューサーバーの再起動を完了しました${message ? `: ${message}` : ''}`,

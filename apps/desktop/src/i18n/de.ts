@@ -5489,8 +5489,6 @@ export const deOverrides = {
       goBack: 'Zurück',
       goForward: 'Vor',
       reload: 'Seite neu laden',
-      address: 'Adresse',
-      addressPlaceholder: 'Adresse eingeben',
       blankPageBody: 'Geben Sie oben eine Adresse ein, um zu browsen, oder bitten Sie UniWork, eine Seite zu öffnen.',
       finishedRestarting: message => `UniWork hat den Vorschau-Server neu gestartet${message ? `: ${message}` : ''}`,
       failedRestarting: message => `Server-Neustart fehlgeschlagen: ${message}`,
