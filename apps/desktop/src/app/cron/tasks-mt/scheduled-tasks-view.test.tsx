@@ -101,6 +101,54 @@ describe('ScheduledTasksView run now', () => {
     expect(onOpenSession).toHaveBeenCalledWith(run.id, run)
   })
 
+  it('filters run history by the status selected in the header control', async () => {
+    const runs = [
+      {
+        ended_at: 1_700_000_023,
+        id: 'cron_success',
+        is_active: false,
+        last_active: 1_700_000_023,
+        source: 'cron',
+        started_at: 1_700_000_000,
+        title: 'Daily briefing'
+      },
+      {
+        ended_at: 1_700_000_123,
+        id: 'cron_failed',
+        is_active: false,
+        last_active: 1_700_000_123,
+        source: 'cron',
+        started_at: 1_700_000_100,
+        title: 'Failed daily briefing'
+      },
+      {
+        id: 'cron_running',
+        is_active: true,
+        last_active: 1_700_000_223,
+        source: 'cron',
+        started_at: 1_700_000_200,
+        title: 'Running daily briefing'
+      }
+    ]
+
+    getCronJobRuns.mockResolvedValue(runs)
+
+    render(<ScheduledTasksView />)
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Run history' }))
+
+    await waitFor(() => expect(screen.getByText('Success')).toBeTruthy())
+    expect(screen.getByText('Failed')).toBeTruthy()
+    expect(screen.getByText('Running')).toBeTruthy()
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'All statuses' }), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Running' }))
+
+    expect(screen.getAllByText('Running')).toHaveLength(2)
+    expect(screen.queryByText('Success')).toBeNull()
+    expect(screen.queryByText('Failed')).toBeNull()
+  })
+
   it('opens a task run collection before opening an individual run conversation', async () => {
     const onOpenSession = vi.fn()
 

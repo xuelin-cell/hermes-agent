@@ -69,6 +69,7 @@ import { TASK_TEMPLATES, type TaskTemplate, type TemplateIcon, templateSchedule 
 
 type Filter = 'active' | 'all' | 'completed' | 'paused'
 type TaskPage = 'tasks' | 'history'
+type RunFilter = 'all' | 'failed' | 'running' | 'success'
 type JobWithDir = CronJob & { workdir?: null | string }
 
 interface TaskRun {
@@ -114,18 +115,28 @@ function jobBucket(job: CronJob): Exclude<Filter, 'all'> {
   return job.state === 'paused' || !job.enabled ? 'paused' : 'active'
 }
 
-function runStatus(run: SessionInfo, t: ReturnType<typeof useTasksCopy>): string {
+function runStatusKind(run: SessionInfo): Exclude<RunFilter, 'all'> {
   const title = run.title?.toLowerCase() ?? ''
 
   if (run.is_active) {
-    return t('runStatusRunning')
+    return 'running'
   }
 
   if (title.startsWith('failed')) {
-    return t('runStatusFailed')
+    return 'failed'
   }
 
-  return t('runStatusSuccess')
+  return 'success'
+}
+
+function runStatus(run: SessionInfo, t: ReturnType<typeof useTasksCopy>): string {
+  const status = runStatusKind(run)
+
+  return status === 'running'
+    ? t('runStatusRunning')
+    : status === 'failed'
+      ? t('runStatusFailed')
+      : t('runStatusSuccess')
 }
 
 function runDuration(run: SessionInfo): string {
@@ -182,6 +193,7 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
   const [pendingDelete, setPendingDelete] = useState<CronJob | null>(null)
   const [runningJobId, setRunningJobId] = useState<string | null>(null)
   const [runs, setRuns] = useState<TaskRun[] | null>(null)
+  const [runFilter, setRunFilter] = useState<RunFilter>('all')
   const [selectedJob, setSelectedJob] = useState<SelectedJob | null>(null)
   const [selectedJobRuns, setSelectedJobRuns] = useState<SessionInfo[] | null>(null)
 
@@ -378,6 +390,13 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
     paused: t('filterPaused')
   }
 
+  const runFilterLabel: Record<RunFilter, string> = {
+    all: t('runStatusAll'),
+    failed: t('runStatusFailed'),
+    running: t('runStatusRunning'),
+    success: t('runStatusSuccess')
+  }
+
   const canReveal = typeof window !== 'undefined' && typeof window.hermesDesktop?.revealPath === 'function'
 
   return (
@@ -417,23 +436,20 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
             </button>
           </div>
 
-          {page === 'tasks' && (
+          {page === 'tasks' ? (
             <div className="ml-auto flex items-center gap-2">
               {showTemplates ? (
-                <>
-                  <Button
-                    className="h-7 px-3 text-sm"
-                    onClick={() => {
-                      setTemplatesOpen(false)
-                      setTemplatesDismissed(true)
-                    }}
-                    size="sm"
-                    variant="outline"
-                  >
-                    {t('back')}
-                  </Button>
-                  <span className="text-sm text-muted-foreground">{t('templatesTitle')}</span>
-                </>
+                <Button
+                  className="h-7 px-3 text-sm"
+                  onClick={() => {
+                    setTemplatesOpen(false)
+                    setTemplatesDismissed(true)
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  {t('back')}
+                </Button>
               ) : (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -494,6 +510,24 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
                 </DropdownMenu>
               </div>
             </div>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="group ml-auto h-7 rounded-full px-3 text-sm" size="sm" variant="outline">
+                  {runFilterLabel[runFilter]}
+                  <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuRadioGroup onValueChange={value => setRunFilter(value as RunFilter)} value={runFilter}>
+                  {(['all', 'running', 'success', 'failed'] as const).map(option => (
+                    <DropdownMenuRadioItem key={option} value={option}>
+                      {runFilterLabel[option]}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </header>
 
@@ -506,7 +540,7 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
             t={t}
           />
         ) : page === 'history' ? (
-          <RunHistory onOpenSession={onOpenSession} runs={runs} t={t} />
+          <RunHistory onOpenSession={onOpenSession} runFilter={runFilter} runs={runs} t={t} />
         ) : showTemplates ? (
           <div className="grid gap-4 sm:grid-cols-2">
             {TASK_TEMPLATES.map(template => {
@@ -762,10 +796,12 @@ function TaskRunCollection({
 
 function RunHistory({
   onOpenSession,
+  runFilter,
   runs,
   t
 }: {
   onOpenSession?: (sessionId: string, session?: SessionInfo) => void
+  runFilter: RunFilter
   runs: TaskRun[] | null
   t: ReturnType<typeof useTasksCopy>
 }) {
@@ -774,6 +810,12 @@ function RunHistory({
   }
 
   if (runs.length === 0) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">{t('noRuns')}</p>
+  }
+
+  const visibleRuns = runFilter === 'all' ? runs : runs.filter(({ run }) => runStatusKind(run) === runFilter)
+
+  if (visibleRuns.length === 0) {
     return <p className="py-10 text-center text-sm text-muted-foreground">{t('noRuns')}</p>
   }
 
@@ -786,7 +828,7 @@ function RunHistory({
           <span>{t('runTime')}</span>
           <span className="text-right">{t('runDuration')}</span>
         </div>
-        {runs.map(({ job, run }) => {
+        {visibleRuns.map(({ job, run }) => {
           const label = job.name || job.prompt
 
           const row = (

@@ -11,6 +11,7 @@ registerPluginLocales(SCOPE, {
     runStatus: 'Status',
     runTime: 'Run time',
     runDuration: 'Duration',
+    runStatusAll: 'All statuses',
     runStatusSuccess: 'Success',
     runStatusFailed: 'Failed',
     runStatusRunning: 'Running',
@@ -93,6 +94,7 @@ registerPluginLocales(SCOPE, {
     nextRun: (time: string) => `Next: ${time}`
   },
   zh: {
+    runStatusAll: '全部状态',
     title: '定时任务',
     runHistory: '运行记录',
     runName: '任务名称',
@@ -181,6 +183,7 @@ registerPluginLocales(SCOPE, {
     nextRun: (time: string) => `下次 ${time}`
   },
   'zh-hant': {
+    runStatusAll: '全部狀態',
     title: '定時任務',
     runHistory: '執行紀錄',
     runName: '任務名稱',
