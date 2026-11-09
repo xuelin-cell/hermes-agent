@@ -113,7 +113,7 @@ it('损坏、无法解密和字段错配都拒绝读取，原始文件保留且�
   expect(storage.encryptString).not.toHaveBeenCalled()
   expect(fs.readFileSync(file)).toEqual(cipher)
   storage.decryptString.mockReturnValueOnce(JSON.stringify({ ...record, expiresAt: 1 }))
-  expect(store.load()?.expiresAt).toBe(1) // 读取旧记录不等于允许恢复到期身份。
+  expect(store.load()?.expiresAt).toBe(1) // 保留上游元数据，不在客户端延长 JWT 有效期。
   fs.rmSync(file)
   fs.mkdirSync(file)
   expect(() => store.load()).toThrow()

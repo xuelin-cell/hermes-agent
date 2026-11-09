@@ -256,9 +256,6 @@ export const en: Translations = {
     logoutDescription:
       'Stop this account’s local backends, messaging gateways and their managed work, then return to sign-in. History, files and scheduled job definitions are kept.',
     logoutBusy: 'Signing out of account…',
-    expired: 'Your sign-in has expired. Please sign in again.',
-    expiredLabel: 'Sign-in expired',
-    expiredRunning: 'Your sign-in has expired. Current tasks will continue. You can sign out and sign in again.',
     resendAfter: 'Resend in {seconds}s',
     smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',
     smsLimited: 'Too many requests. Please wait before trying again.',

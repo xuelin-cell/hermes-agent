@@ -44,7 +44,7 @@ export class CloudDriveCredentials {
   private current(): CredentialContext {
     const identity = this.identity()
 
-    if (!identity || identity.expiresAt <= this.now()) {
+    if (!identity) {
       throw new Error('登录状态已变化，请重新登录')
     }
 

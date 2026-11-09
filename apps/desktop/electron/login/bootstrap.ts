@@ -269,7 +269,7 @@ export function currentDesktopAsrIdentity() {
   const result = accountRuntime?.login.currentPlan()
 
   return identity && result?.status === 'available'
-    ? { owner: identity.uid, key: result.plan.apiKey, expiresAt: identity.expiresAt }
+    ? { owner: identity.uid, key: result.plan.apiKey }
     : null
 }
 

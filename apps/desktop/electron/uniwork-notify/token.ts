@@ -84,7 +84,7 @@ export class NtfyTokenClient {
   async get(): Promise<string> {
     const identity = this.identity()
 
-    if (!identity || identity.expiresAt <= this.now() || !identity.token) {
+    if (!identity || !identity.token) {
       this.cached = null
       throw new NtfyTokenError('auth')
     }

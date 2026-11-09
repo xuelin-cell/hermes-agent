@@ -126,7 +126,7 @@ it('重新聚焦获得同一展示身份时，退出确认不被组件重挂打�
   expect(window.hermesDesktop.logoutMaasAccount).toHaveBeenCalledTimes(1)
 })
 
-it.each(['timer', 'wake'])('到期 %s 只提示一次，保留已打开确认和手动退出，不自动注销', async mode => {
+it.each(['timer', 'wake'])('登录 JWT 到期 %s 不提示失效，保留已打开确认和手动退出', async mode => {
   vi.useFakeTimers()
   const expiresAt = Date.now() + 1000
   const logoutMaasAccount = vi.fn(async () => {})
@@ -146,13 +146,13 @@ it.each(['timer', 'wake'])('到期 %s 只提示一次，保留已打开确认和
     await act(async () => window.dispatchEvent(new Event('focus')))
   }
 
-  expect(screen.getByText('登录已到期')).toBeTruthy()
+  expect(screen.queryByText('登录已到期')).toBeNull()
   expect(screen.getByRole('dialog')).toBe(dialog)
-  expect(notify).toHaveBeenCalledTimes(1)
+  expect(notify).not.toHaveBeenCalled()
   expect(logoutMaasAccount).not.toHaveBeenCalled()
   await act(async () => window.dispatchEvent(new Event('focus')))
   await act(async () => vi.advanceTimersByTimeAsync(120_000))
-  expect(notify).toHaveBeenCalledTimes(1)
+  expect(notify).not.toHaveBeenCalled()
   expect(screen.getByRole('dialog')).toBe(dialog)
   fireEvent.click(within(dialog).getByRole('button', { name: '退出' }))
   expect(logoutMaasAccount).toHaveBeenCalledTimes(1)

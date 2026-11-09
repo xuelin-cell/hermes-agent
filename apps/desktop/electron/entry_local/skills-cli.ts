@@ -36,7 +36,7 @@ export function isSkillsCommand(args: string[]): boolean {
 export async function savedSkillsHome(userData: string): Promise<string> {
   const identity = new CredentialStore(userData).load()
 
-  if (!identity || identity.expiresAt <= Date.now()) {
+  if (!identity) {
     throw new Error('请先在 UniWork 中登录有效账号，再安装或查询技能。')
   }
 
@@ -52,10 +52,10 @@ export async function savedSkillsHome(userData: string): Promise<string> {
     throw new Error('账号正在退出或等待恢复，请先在 UniWork 中完成处理。')
   }
 
-  // 查询期间可能发生注销或重新登录，再次读取并核对同一身份与期限。
+  // 查询期间可能发生注销或重新登录，再次读取并核对同一身份。
   const current = new CredentialStore(userData).load()
 
-  if (!current || current.uid !== identity.uid || current.token !== identity.token || current.expiresAt <= Date.now()) {
+  if (!current || current.uid !== identity.uid || current.token !== identity.token) {
     throw new Error('登录状态已变化，请重新运行命令。')
   }
 
