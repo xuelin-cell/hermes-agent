@@ -88,6 +88,12 @@ export const $backendUpdateStatus = atom<DesktopUpdateStatus | null>(null)
 export const $backendUpdateApply = atom<UpdateApplyState>(IDLE)
 export const $backendUpdateChecking = atom<boolean>(false)
 
+/** True only while a client package is being downloaded WITHOUT installing it
+ *  (the manual-check "download dialog" and the ambient prefetch behind it).
+ *  Deliberately separate from $updateApply: holding bytes must never look like
+ *  an install in progress, because the install is the user's call. */
+export const $updateDownloading = atom<boolean>(false)
+
 export type UpdateTarget = 'client' | 'backend'
 export const $updateOverlayTarget = atom<UpdateTarget>('client')
 
@@ -102,6 +108,7 @@ export const openUpdateOverlayFor = (target: UpdateTarget): void => {
 export const resetUpdateApplyState = () => {
   $updateApply.set(IDLE)
   $backendUpdateApply.set(IDLE)
+  $updateDownloading.set(false)
 }
 
 const UPDATE_TOAST_ID = 'desktop-update-available'
@@ -452,7 +459,7 @@ export function startActiveUpdate(target?: UpdateTarget): void {
   const effective = target ?? activeUpdateTarget()
   $updateOverlayTarget.set(effective)
   $updateOverlayOpen.set(true)
-  void (effective === 'backend' ? applyBackendUpdate() : applyUpdates())
+  void (effective === 'backend' ? applyBackendUpdate() : installClientUpdate())
 }
 
 /**
@@ -788,7 +795,7 @@ export async function prepareClientUpdate(): Promise<boolean> {
 }
 
 /** True while a client transfer or install owns the update surfaces. */
-export const isClientUpdateRunning = (): boolean => $updateApply.get().applying
+export const isClientUpdateRunning = (): boolean => $updateDownloading.get() || $updateApply.get().applying
 
 /**
  * The one path a manual "check for updates" takes once it knows a build is
@@ -796,8 +803,8 @@ export const isClientUpdateRunning = (): boolean => $updateApply.get().applying
  * account card and Settings › About call `requestUpdateCheck()`, which lands
  * here, so the two entries cannot drift.
  *
- * The package stops at `$updateReady`; installing still needs the user's own
- * "launch" click, which runs apply() against the bytes already on disk.
+ * Only bytes are fetched. Nothing here applies, quits or restarts: the package
+ * lands in `$updateReady` and the dialog waits for the user's "launch" click.
  */
 export async function startClientUpdateDownload(): Promise<void> {
   $updateOverlayTarget.set('client')
@@ -813,13 +820,13 @@ export async function startClientUpdateDownload(): Promise<void> {
   $updateReadyDismissed.set(false)
   $updateDownloadFailure.set(null)
 
-  // Enter on the download stage: the overlay's progress view headlines it as a
-  // transfer in flight and offers the only interruptible action (Cancel).
-  $updateApply.set({ ...IDLE, applying: true, stage: 'fetch', message: translateNow('updates.downloadingUpdate') })
+  $updateDownloading.set(true)
 
-  await prepareClientUpdate()
-
-  $updateApply.set(IDLE)
+  try {
+    await prepareClientUpdate()
+  } finally {
+    $updateDownloading.set(false)
+  }
 
   // A genuine failure belongs to the download-failure dialog, which steps aside
   // while this overlay is open — hand the surface back to it. No failure and no
@@ -831,12 +838,41 @@ export async function startClientUpdateDownload(): Promise<void> {
   }
 }
 
+// Only a click may start an install: applyUpdates() ends in quitAndInstall (or
+// a hand-off that quits), so a stray programmatic call — an effect that fires
+// when $updateReady flips, a retry loop, a surface that re-enters on re-render —
+// must never be able to do it. installClientUpdate() is the single door; every
+// user-facing affordance goes through it.
+let installApproved = false
+
+/**
+ * Start the client install the user just asked for. The ONLY entry point to
+ * applyUpdates(): it arms the very next apply, so no other code path (present
+ * or future) can download-and-restart on its own.
+ */
+export function installClientUpdate(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {
+  installApproved = true
+
+  return applyUpdates(opts).finally(() => {
+    installApproved = false
+  })
+}
+
 export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promise<DesktopUpdateApplyResult> {
   if ($updateStatus.get()?.retirement) {
     openUpdateOverlayFor('client')
 
     return { ok: false, error: 'retirement-blocked' }
   }
+
+  // Refuse anything that did not come from installClientUpdate(). The surfaces
+  // stay exactly as they are — in particular a downloaded package stays on its
+  // "ready, launch when you want" view instead of installing itself.
+  if (!installApproved) {
+    return { ok: false, error: 'install-not-requested' }
+  }
+
+  installApproved = false
 
   const bridge = window.hermesDesktop?.updates
 
@@ -979,6 +1015,7 @@ export async function cancelActiveUpdate(): Promise<boolean> {
   }
 
   $updateApply.set(IDLE)
+  $updateDownloading.set(false)
   // The user just said "not now": keep the ambient prefetch from restarting
   // the download they stopped on the next check. An explicit update still runs
   // — applyUpdates() never consults this latch.
@@ -1273,7 +1310,7 @@ async function maybeNudgeClientAfterBackendUpdate(): Promise<void> {
         dismissNotification(CLIENT_BEHIND_TOAST_ID)
         $updateOverlayTarget.set('client')
         $updateOverlayOpen.set(true)
-        void applyUpdates()
+        void installClientUpdate()
       }
     },
     durationMs: 0,
@@ -1389,7 +1426,7 @@ async function runEverythingUpdate(): Promise<void> {
     if ((clientStatus?.behind ?? 0) > 0 || clientStatus?.updateAvailable) {
       $updateOverlayTarget.set('client')
       $updateOverlayOpen.set(true)
-      await applyUpdates()
+      await installClientUpdate()
     }
   } finally {
     $updateEverything.set({ running: false })

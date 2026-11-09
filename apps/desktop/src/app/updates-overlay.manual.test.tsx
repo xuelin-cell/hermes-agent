@@ -9,7 +9,7 @@ import {
   $updateOverlayOpen,
   $updateOverlayTarget,
   $updateStatus,
-  applyUpdates,
+  installClientUpdate,
   resetUpdateApplyState
 } from '@/store/updates'
 
@@ -34,7 +34,7 @@ it('shows manual recovery guidance without claiming the help command installs an
   $updateOverlayTarget.set('client')
   $updateOverlayOpen.set(true)
   $updateStatus.set({ supported: false, reason: 'source-probe-unavailable', message })
-  await applyUpdates()
+  await installClientUpdate()
   expect($updateApply.get().message).toBe(message)
   await act(async (): Promise<void> => {
     render(
