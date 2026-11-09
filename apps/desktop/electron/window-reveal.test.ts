@@ -131,8 +131,8 @@ test('does not reveal a destroyed window', () => {
 
 // The pet overlay reveals with showInactive() and the HUD with show() + focus(),
 // so the fallback has to run the caller's action rather than a plain show().
-// onRevealed now runs BEFORE show() so callers can adjust window state (e.g.,
-// maximize) before the window becomes visible, preventing flicker.
+// onRevealed runs BEFORE show() so callers can perform actions that must
+// precede visibility (e.g., the HUD hides the main window first).
 test('the fallback runs the caller reveal action, not a plain show', () => {
   const actions: string[] = []
   let scheduled: (() => void) | null = null

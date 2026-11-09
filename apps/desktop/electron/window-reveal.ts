@@ -49,9 +49,10 @@ export function createWindowRevealController(
     revealed = true
     cancelFallback()
 
-    // Call onRevealed BEFORE show() so callers can adjust window state
-    // (e.g., maximize) before the window becomes visible. This prevents
-    // the "normal size → maximized" flicker on Windows.
+    // Call onRevealed BEFORE show() so callers can run actions that must
+    // precede visibility (e.g., the HUD hides the main window before the
+    // HUD appears). Window-state changes like maximize belong at creation
+    // time, before first paint, not here.
     onRevealed()
 
     if (!window.isVisible()) {

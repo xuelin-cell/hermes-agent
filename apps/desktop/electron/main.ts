@@ -688,6 +688,9 @@ const IS_PACKAGED = app.isPackaged || Boolean(process.env.HERMES_DESKTOP_IS_PACK
 const IS_MAC = process.platform === 'darwin'
 const IS_WINDOWS = process.platform === 'win32'
 const IS_WSL = isWslEnvironment()
+// Startup diagnostics: launch-to-visible is measured from the main process
+// start (includes Electron's own boot, which is what the user waits through).
+const MAIN_PROCESS_STARTED_AT = Date.now() - Math.round(process.uptime() * 1000)
 // Truthful macOS kernel major (Tahoe = 25). Product version lies (16 vs 26) per
 // build SDK, so gate Tahoe workarounds on Darwin instead.
 const DARWIN_MAJOR = IS_MAC ? Number.parseInt(os.release(), 10) || 0 : 0
@@ -12318,7 +12321,7 @@ const accountLogout = createAccountLogout({
     try {
       await withTimeout(desktopMessaging.settle(), 10_000, 'messaging settle')
     } catch (error) {
-      log.warn('[quit] messaging settle timed out, continuing', error)
+      rememberLog(`[quit] messaging settle failed, continuing: ${error?.message || error}`)
     }
 
     const roots = [
@@ -12445,6 +12448,8 @@ const quitFinalization = createQuitFinalization({
   isWindows: IS_WINDOWS,
   hardExit: code => {
     rememberLog(`[quit] forcing Windows process exit after Electron quit finalization stalled`)
+    // app.exit 会终止事件循环，挂起的异步 flush 定时器不再执行，必须同步落盘。
+    flushDesktopLogBufferSync()
     app.exit(code)
   }
 })
@@ -14959,15 +14964,18 @@ function createWindow() {
     }
   }
 
+  // 必须在首帧绘制前 maximize：从未显示过的窗口会直接以最大化态出现；
+  // 等 ready-to-show 再 maximize，Windows 会从还原矩形播 zoom 动画
+  // （可见的“小窗→全屏”过渡）。
+  if (savedWindowState?.isMaximized) {
+    createdMainWindow.maximize()
+  }
+
   const revealController = wireWindowReveal(createdMainWindow, {
     onRevealed: () => {
-      // Maximize after reveal (show) so Windows doesn't flash the normal-size
-      // frame before the maximize DWM transition. Calling maximize() on a
-      // hidden window queues the SWP change; when the window later shows, the
-      // user sees a brief "small box → fullscreen" flicker.
-      if (savedWindowState?.isMaximized) {
-        createdMainWindow.maximize()
-      }
+      rememberLog(
+        `[startup] main window visible at +${Math.round(Date.now() - MAIN_PROCESS_STARTED_AT)}ms (since main process start)`
+      )
 
       // Persist geometry as soon as the window is visible so a crash before the
       // first clean resize/move/close still captures the restored bounds (#56726).
