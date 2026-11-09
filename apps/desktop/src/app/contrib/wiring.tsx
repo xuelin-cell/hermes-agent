@@ -13,7 +13,6 @@ import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEff
 import { useLocation, useNavigate } from 'react-router'
 
 import { getSessionMessages as getUniSearchMessages } from '@/api/sessions'
-import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { ConfirmHost } from '@/components/confirm-host'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
@@ -1176,7 +1175,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // while every handler still closes over the latest values.
   const nextActions: WiringActions = {
     onAddContextRef: composer.addContextRefAttachment,
-    onAddUrl: url => composer.addContextRefAttachment(`@url:${formatRefValue(url)}`, url),
     // The sidebar row menu reuses this verb in the Archived view too, where the
     // row is already archived — dispatch by state so the verb restores there
     // instead of re-archiving (#98813).
@@ -1230,7 +1228,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     onPasteClipboardImage: opts => composer.pasteClipboardImage(opts),
     onPickFiles: () => void composer.pickContextPaths('file'),
     onPickFolders: () => void composer.pickContextPaths('folder'),
-    onPickImages: () => void composer.pickImages(),
     onReload: reloadFromMessage,
     onRemoveAttachment: id => void composer.removeAttachment(id),
     onRestoreToMessage: restoreToMessage,

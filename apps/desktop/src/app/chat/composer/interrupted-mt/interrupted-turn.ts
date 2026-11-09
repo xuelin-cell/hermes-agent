@@ -12,6 +12,7 @@ export interface InterruptedTurn {
   detectedAt: number
   prompt: string
   sessionId: string
+  executionId?: string
 }
 
 /** 按会话编号存放可续跑的中断回答。 */

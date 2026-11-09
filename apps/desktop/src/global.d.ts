@@ -46,6 +46,7 @@ export type DesktopMachineProfile = MachineProfile
 declare global {
   interface Window {
     hermesDesktop: {
+      rememberUsageInput?: (input: import('../electron/uniwork-telemetry/inputs').TelemetryInput) => Promise<void>
       agentMail: (input: AgentMailRequest) => Promise<AgentMailResult>
       /** 只读本次已准备账号的脱敏信息，运行中到期仍返回原期限。 */
       /** 仅返回当前账号套餐展示信息，不接受页面身份参数。 */
@@ -364,7 +365,7 @@ declare global {
       discardConversationFolder?: (folder: string) => Promise<void>
       /** 程序被关掉时中断的回答：列出仍可点 ▶ 继续的会话，或在用户处理后删掉记录。 */
       interruptedTurns?: {
-        list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string }[]>
+        list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string; executionId?: string }[]>
         dismiss: (sessionId: string) => Promise<void>
       }
       /** 页面离开时取消自己的转换请求；排队中没人等的转换会被跳过。 */

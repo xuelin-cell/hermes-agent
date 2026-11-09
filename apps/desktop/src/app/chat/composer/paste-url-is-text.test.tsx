@@ -180,4 +180,31 @@ describe('粘贴已发送的消息', () => {
     expect(composerPlainText(editor).trim()).toBe('普通文字')
     expect(mainComposerScope.$attachments.get()).toEqual([])
   })
+
+  it('复制的文件夹仍作为目录引用随新消息提交', async () => {
+    const writeClipboard = vi.fn(async (_text: string, _html?: string) => true)
+    vi.stubGlobal('hermesDesktop', { writeClipboard })
+    await copyMessageWithAttachments('整理文件夹', ['@folder:`测试目录/`'], '/source')
+    const [text, html] = writeClipboard.mock.calls[0]
+    const onSubmit = vi.fn<ChatBarProps['onSubmit']>(async () => true)
+    const { container } = render(<Harness onAttachPrCommentUrl={vi.fn()} onSubmit={onSubmit} />)
+    const editor = container.querySelector<HTMLElement>(`[data-slot="${RICH_INPUT_SLOT}"]`)!
+
+    pasteInto(editor, text, html)
+    await act(async () => fireEvent.submit(editor.closest('form')!))
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        '整理文件夹',
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              kind: 'folder',
+              path: '/source/测试目录',
+              refText: '@folder:/source/测试目录'
+            })
+          ]
+        })
+      )
+    )
+  })
 })

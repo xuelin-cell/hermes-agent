@@ -81,7 +81,7 @@ export async function prepareAllProfiles(options: PreparationOptions): Promise<S
     const home = profile === 'default' ? options.home : path.join(options.home, 'profiles', profile)
 
     try {
-      enableDesktopPlugins(home, ['desktop-deliverables'])
+      enableDesktopPlugins(home, ['desktop-deliverables', 'uniwork-telemetry'])
       options.interrupted.claim(home)
       installArtifactSharePlugin(home, options.appRoot)
 

@@ -10,6 +10,7 @@ import { ChatRuntimeBoundary } from '@/app/chat'
 import { PRIMARY_SESSION_VIEW } from '@/app/chat/session-view'
 import { mergeOlderTranscriptPage } from '@/app/chat/transcript-backfill'
 import { useMessageStream } from '@/app/session/hooks/use-message-stream'
+import { usePromptActions } from '@/app/session/hooks/use-prompt-actions'
 import { useSessionStateCache } from '@/app/session/hooks/use-session-state-cache'
 import { stubThreadEnvironment } from '@/components/assistant-ui/test-utils'
 import { getLatestSessionMessages } from '@/hermes'
@@ -76,6 +77,8 @@ const noop = async () => undefined
 let cache: ReturnType<typeof useSessionStateCache>
 let stream: ReturnType<typeof useMessageStream>
 let refresh: () => Promise<void>
+let restoreCheckpoint: ReturnType<typeof usePromptActions>['restoreToMessage']
+const checkpointRequest = vi.fn(async () => ({}) as never)
 
 function ObserveRuntime() {
   const messages = useAuiState(state => state.thread.messages)
@@ -116,6 +119,29 @@ function Harness({
     setMessages
   })
   const { activeSessionIdRef, selectedStoredSessionIdRef, updateSessionState } = cache
+
+  const promptActions = usePromptActions({
+    activeSessionId: RUNTIME,
+    activeSessionIdRef,
+    branchCurrentSession: async () => true,
+    busyRef,
+    createBackendSessionForSend: async () => RUNTIME,
+    getRoutedStoredSessionId: () => STORED,
+    getRuntimeIdForStoredSession: () => RUNTIME,
+    getRouteToken: () => 'checkpoint-test',
+    handleSkinCommand: () => '',
+    openMemoryGraph: () => undefined,
+    refreshSessions: noop,
+    requestGateway: checkpointRequest,
+    resumeStoredSession: noop,
+    runtimeIdByStoredSessionIdRef: useRef(new Map([[STORED, RUNTIME]])),
+    selectedStoredSessionIdRef,
+    startFreshSessionDraft: () => undefined,
+    sttEnabled: false,
+    updateSessionState
+  })
+
+  restoreCheckpoint = promptActions.restoreToMessage
 
   const hydrate = useCallback(
     async (attempts = 1, storedSessionId: string | null = STORED, runtimeSessionId: string | null = RUNTIME) => {
@@ -219,6 +245,7 @@ async function finishTurn() {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  checkpointRequest.mockReset()
   vi.mocked(getLatestSessionMessages).mockReset()
   setActiveSessionId(RUNTIME)
   setSelectedStoredSessionId(STORED)
@@ -238,6 +265,77 @@ afterEach(() => {
   localStorage.clear()
   vi.useRealTimers()
   vi.restoreAllMocks()
+})
+
+it.each([
+  { lateReceipt: false, repeated: false },
+  { lateReceipt: true, repeated: false },
+  { lateReceipt: false, repeated: true },
+  { lateReceipt: true, repeated: true }
+])('恢复检查点后只显示一次原提示词（回执迟到=$lateReceipt，前文同文=$repeated）', async ({ lateReceipt, repeated }) => {
+  const prefix: SessionMessage[] = repeated
+    ? [
+        { id: 31, role: 'user', content: '你好', timestamp: 0.1 },
+        { id: 32, role: 'assistant', content: '前一轮回答', timestamp: 0.2 }
+      ]
+    : []
+
+  const oldHistory: SessionMessage[] = [
+    ...prefix,
+    { id: 41, role: 'user', content: '你好', timestamp: 1 },
+    { id: 42, role: 'assistant', content: '旧回答', timestamp: 2 }
+  ]
+
+  const freshHistory: SessionMessage[] = [
+    ...prefix,
+    { id: 43, role: 'user', content: '你好', timestamp: 3 },
+    { id: 44, role: 'assistant', content: '新回答', timestamp: 4 }
+  ]
+
+  let accept!: (value: never) => void
+  checkpointRequest.mockReturnValue(
+    new Promise(resolve => {
+      accept = resolve
+    })
+  )
+  render(<Harness />)
+  act(() => cache.updateSessionState(RUNTIME, state => ({ ...state, messages: toChatMessages(oldHistory) }), STORED))
+  const source = $sessionStates.get()[RUNTIME].messages[prefix.length]
+  let restored!: Promise<void>
+  await act(async () => {
+    restored = restoreCheckpoint(source.id)
+  })
+  const receipt = { user_row_id: 43, survivor_row_id_map: { '41': null, '42': null } } as never
+
+  if (!lateReceipt) {
+    await act(async () => {
+      accept(receipt)
+      await restored
+    })
+  }
+
+  send('message.start')
+  send('message.delta', { text: '新回答' })
+  await act(async () => vi.advanceTimersByTimeAsync(100))
+  send('message.complete', {
+    text: '新回答',
+    persisted_turn: { user_row_id: 43, final_assistant_row_id: 44, row_ids: [43, 44], complete: true }
+  })
+  vi.mocked(getLatestSessionMessages).mockResolvedValue({ session_id: STORED, messages: freshHistory })
+  await act(async () => refresh())
+
+  if (lateReceipt) {
+    await act(async () => {
+      accept(receipt)
+      await restored
+    })
+  }
+
+  const expected = [...prefix.map(message => message.content), '你好', '新回答']
+  expect($sessionStates.get()[RUNTIME].messages.map(chatMessageText)).toEqual(expected)
+  expect(screen.getByTestId('runtime').textContent).toBe(expected.join('\n'))
+  const users = $sessionStates.get()[RUNTIME].messages.filter(message => message.role === 'user')
+  expect(users.at(-1)?.rowId).toBe(43)
 })
 
 it('keeps an idle Todo snapshot for review when post-turn history refresh clears the live panel', async () => {

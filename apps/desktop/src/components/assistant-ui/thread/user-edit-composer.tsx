@@ -77,7 +77,7 @@ import { DATA_IMAGE_URL_RE } from '@/lib/embedded-images'
 import { triggerHaptic } from '@/lib/haptics'
 import { Loader2Icon } from '@/lib/icons'
 import { isMacPlatform } from '@/lib/platform'
-import { isUploadedAttachmentRef } from '@/lib/sent-attachments'
+import { isMessageAttachmentRef } from '@/lib/sent-attachments'
 import { cn } from '@/lib/utils'
 import type { ComposerAttachment } from '@/store/composer'
 import { notifyError } from '@/store/notifications'
@@ -98,7 +98,7 @@ export const UserEditComposer: FC<UserEditComposerProps> = ({ cwd, gateway, sess
   const aui = useAui()
   const draft = useAuiState(s => s.composer.text)
   const attachmentRefs = useAuiState(s => messageAttachmentRefs(s.message.metadata?.custom?.attachmentRefs))
-  const fileRefs = attachmentRefs.filter(isUploadedAttachmentRef)
+  const fileRefs = attachmentRefs.filter(isMessageAttachmentRef)
   const textDirection = useForcedTextDirection()
   const rootRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement | null>(null)

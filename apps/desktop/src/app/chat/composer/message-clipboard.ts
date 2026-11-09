@@ -48,7 +48,7 @@ async function copyableAttachment(ref: string, cwd: string): Promise<ComposerAtt
     label,
     detail: path,
     path,
-    ...(kind === 'file' ? { refText: `@file:${formatRefValue(path)}` } : {})
+    ...(kind !== 'image' ? { refText: `@${kind}:${formatRefValue(path)}` } : {})
   }
 }
 
