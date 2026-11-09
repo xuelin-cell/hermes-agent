@@ -430,7 +430,7 @@ PYKEY
 - `GET /api/channels/uniagentgate/cloud-binding/{user_id}`：返回 `bound`、`state`、`last_error`、`updated_at`，不返回地址或密钥。
 - `DELETE /api/channels/uniagentgate/cloud-binding/{user_id}`：解除该用户 5G 绑定，重复调用仍成功；其他平台和模型凭据保持原有配置。
 
-以上是 nginx 对外路径，同时支持 `/agents/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；接口的访问范围由部署网络或网关控制。中心服务直接提交请求体即可。
+以上是 nginx 对外路径，同时支持 `/agents/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；中心服务直接提交请求体即可。该接口能建用户、写模型 key，生产须在 `entry.env` 设置 `MT_CHANNELS_BINDING_ALLOW`（账号服务地址，逗号分隔，IP 或网段），其他来源一律 403；来源取 nginx 写入的 `X-Real-IP`。留空则不限来源，只靠部署网络控制。
 
 部署保留 `MT_CHANNELS_KEY`，用于入口、channels 与实例之间的内部认证，不需要提供给调用 cloud-binding 的中心服务。发送 5G 附件时另填 `MT_CHANNELS_MEDIA_BASE_URL`（网关可访问的附件入口）。`MT_CHANNELS_GATEWAY_ORIGINS` 可留空，网关地址来自登录响应或下发请求。
 

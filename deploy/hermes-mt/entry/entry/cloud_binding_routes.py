@@ -1,5 +1,6 @@
 """Central provisioning using the UniClaw cloud-binding contract."""
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
@@ -8,6 +9,9 @@ from aiohttp import web
 
 from .maas import Plan
 from .messaging_credentials import cloud_binding
+from .sso import parse_networks, peer_address, trusted
+
+log=logging.getLogger(__name__)
 
 
 def parse_plan(raw):
@@ -36,9 +40,15 @@ class CloudBindingRoutes:
     def __init__(self,entry):
         self.entry=entry
         self.store=entry.messaging_routes.store
+        # A malformed MT_CHANNELS_BINDING_ALLOW fails at startup rather than silently opening the API.
+        self.allow=parse_networks(entry.s.channels_binding_allow)
 
     async def handle(self,request):
-        # As in UniClaw, deployment networking controls access to this service API.
+        # As in UniClaw the contract carries no credential; besides deployment networking, only the
+        # configured account-service sources may create users or write model keys through it.
+        if self.allow and not trusted(request,self.allow):
+            log.warning('cloud-binding: refused source %r',peer_address(request)[:64])
+            return self.error(403,'forbidden_source','来源地址不在允许范围内。')
         user=request.match_info['user_id']
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',user):
             return self.error(422,'invalid_user_id','用户 ID 无效。')

@@ -32,6 +32,9 @@ class Settings:
     channels_relay_url: str = _env('MT_CHANNELS_RELAY_URL')
     channels_media_base_url: str = _env('MT_CHANNELS_MEDIA_BASE_URL').rstrip('/')
     channels_gateway_origins: str = _env('MT_CHANNELS_GATEWAY_ORIGINS')
+    # 中心下发 5G 绑定（cloud-binding）沿用 UniClaw 契约、不带鉴权，却能建用户、写模型 key：只放行这里列的来源
+    # （账号服务地址，逗号分隔，IP 或网段，如 192.168.2.182）；留空不限来源。来源取我们自己的 nginx 写的 X-Real-IP。
+    channels_binding_allow: str = _env('MT_CHANNELS_BINDING_ALLOW')
 
     # 执行后端：docker = 我们自己用 Docker 建容器；cube = 让沙箱平台建实例。
     # 两条路并存，切换只改这一个变量。默认 docker，保持既有部署不受影响。

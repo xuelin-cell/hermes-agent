@@ -18,9 +18,9 @@ BODY={'uniagentgate':{'gateway_url':'https://gateway.test','agent_id':'cloud-bot
 PATH='/agents/api/channels/uniagentgate/cloud-binding/'
 
 
-async def setup(dsn):
+async def setup(dsn,**overrides):
     settings=Settings(database_url=dsn,credential_key=Fernet.generate_key().decode(),backend='cube',
-        channels_key='relay-secret',channels_relay_url='ws://entry.test/agents/api/__entry/messaging/relay')
+        channels_key='relay-secret',channels_relay_url='ws://entry.test/agents/api/__entry/messaging/relay',**overrides)
     app=build_app(settings)
     entry=next(route.handler.__self__ for route in app.router.routes() if route.handler.__name__=='login')
     app.on_startup.clear()
@@ -133,6 +133,25 @@ async def test_provision_creates_an_unknown_user_but_never_revives_a_disabled_on
             async with entry.database.acquire() as db:
                 assert await db.fetchval("SELECT status FROM users WHERE user_id='bob'")=='disabled'
                 assert await db.fetchval("SELECT count(*) FROM users WHERE user_id='dave'")==0
+    finally:
+        await entry.database.close()
+
+
+@pytest.mark.asyncio
+async def test_only_the_account_service_source_may_provision(postgres_database_url):
+    """The contract has no credential yet creates users and writes model keys, so an unlisted source
+    is refused before anything is read or written; nginx overwrites X-Real-IP with the TCP peer."""
+    app,entry=await setup(postgres_database_url,channels_binding_allow='192.168.2.182')
+    try:
+        async with TestClient(TestServer(app)) as client:
+            stranger={'X-Real-IP':'10.0.0.9'}
+            assert (await client.put(PATH+'carol',json=BODY,headers=stranger)).status==403
+            assert (await client.get(PATH+'alice',headers=stranger)).status==403
+            assert (await client.put(PATH+'carol',json=BODY)).status==403
+            async with entry.database.acquire() as db:
+                assert await db.fetchval("SELECT count(*) FROM users WHERE user_id='carol'")==0
+            assert (await client.put(PATH+'carol',json=BODY,headers={'X-Real-IP':'192.168.2.182'})).status==200
+            assert (await entry.messaging_routes.store.binding('carol'))['enabled']
     finally:
         await entry.database.close()
 
