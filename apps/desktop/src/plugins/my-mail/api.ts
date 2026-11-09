@@ -2,16 +2,37 @@ import type { AgentMailAction } from '../../../electron/agent-mail/contract'
 
 import type { MailDetail, MailFolder, MailMessage } from './model'
 
+/** Electron decorates IPC rejections; mailbox UI should show only the provider's actionable message. */
+function agentMailError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error)
+  const clean = message.replace(/^Error invoking remote method 'hermes:agent-mail': (?:Error: )?/, '').trim()
+
+  return new Error(clean)
+}
+
+async function invoke<T>(input: Parameters<NonNullable<Window['hermesDesktop']['agentMail']>>[0]): Promise<T> {
+  try {
+    return await window.hermesDesktop.agentMail(input) as T
+  } catch (error) {
+    throw agentMailError(error)
+  }
+}
+
 async function request(profile: string, operation: 'status' | 'enable' | 'disable') {
   if (!window.hermesDesktop?.agentMail) {
     throw new Error('智能体邮箱仅在桌面应用中可用。')
   }
 
-  return window.hermesDesktop.agentMail({ operation, profile })
+  return invoke({ operation, profile })
 }
 
 async function action<T>(profile: string, name: AgentMailAction, input: Record<string, unknown>): Promise<T> {
-  const result = await window.hermesDesktop.agentMail({ action: name, input, operation: 'action', profile })
+  const result = await invoke<Awaited<ReturnType<NonNullable<Window['hermesDesktop']['agentMail']>>>>({
+    action: name,
+    input,
+    operation: 'action',
+    profile
+  })
 
   return result.data as T
 }
