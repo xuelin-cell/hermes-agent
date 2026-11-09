@@ -614,6 +614,5 @@
   font-weight: 400;
 }
 :root[data-hermes-theme='uniwork'] [data-sidebar-primary-nav='new-session'] {
-  background: var(--ui-control-hover-background);
   font-weight: 600;
 }

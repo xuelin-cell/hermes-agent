@@ -1,4 +1,4 @@
-import { IconMessagePlus, IconHeadset, IconPuzzle, IconClock, IconMail, IconCloudUpload } from '@tabler/icons-react'
+import { DesignNavIcon } from './design-nav-icon'
 import { KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useStore } from '@nanostores/react'
@@ -213,21 +213,21 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'new-session',
     label: '',
-    icon: props => <IconMessagePlus {...props} />,
+    icon: props => <DesignNavIcon name="task" {...props} />,
     action: 'new-session',
     keybindActionId: 'session.new'
   },
   {
     id: 'capabilities',
     label: '',
-    icon: props => <IconPuzzle {...props} />,
+    icon: props => <DesignNavIcon name="capabilities" {...props} />,
     route: CAPABILITIES_ROUTE,
     keybindActionId: 'nav.capabilities'
   },
   {
     id: 'messaging',
     label: '',
-    icon: props => <IconHeadset {...props} />,
+    icon: props => <DesignNavIcon name="phone" {...props} />,
     route: MESSAGING_ROUTE,
     keybindActionId: 'nav.messaging'
   },
@@ -244,7 +244,7 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'cron',
     label: '',
-    icon: props => <IconClock {...props} />,
+    icon: props => <DesignNavIcon name="clock" {...props} />,
     route: CRON_ROUTE,
     keybindActionId: 'nav.cron',
     tier: 'advanced'
@@ -426,13 +426,13 @@ export function ChatSidebar({
         }
 
         const codicon = data.codicon || 'plug'
-        const NavigationIcon = ({ mail: IconMail, cloud: IconCloudUpload, 'cloud-upload': IconCloudUpload } as Record<string, typeof IconMail>)[codicon]
+        const designIcon = ({ mail: 'mail', cloud: 'cloud', 'cloud-upload': 'cloud' } as const)[codicon as 'mail' | 'cloud' | 'cloud-upload']
 
         return [
           {
             id: c.id,
             label: data.label,
-            icon: (props: { className?: string }) => NavigationIcon ? <NavigationIcon {...props} /> : <Codicon name={codicon} {...props} />,
+            icon: (props: { className?: string }) => designIcon ? <DesignNavIcon name={designIcon} {...props} /> : <Codicon name={codicon} {...props} />,
             route: data.path,
             tier: data.tier
           }
@@ -465,7 +465,7 @@ export function ChatSidebar({
   const navItems = useMemo(() => {
     if (workspaceMode === 'codex') {
       return [
-        { ...SIDEBAR_NAV[0], icon: (props: { className?: string }) => <Codicon name="add" {...props} /> },
+        SIDEBAR_NAV[0],
         {
           id: 'workspace-editor',
           label: t.workspaceEditor.title,
@@ -575,7 +575,6 @@ export function ChatSidebar({
   const newSessionCombo = useStore($bindings)['session.new']?.[0]
   const newSessionKbd = newSessionCombo ? comboTokens(newSessionCombo) : []
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchOpen, setSearchOpen] = useState(false)
   const [serverMatches, setServerMatches] = useState<SessionSearchResult[]>([])
   const [searchPending, setSearchPending] = useState(false)
   const [newSessionKbdFlash, setNewSessionKbdFlash] = useState(false)
@@ -589,10 +588,7 @@ export function ChatSidebar({
 
   // Hotkey (session.focusSearch) → focus the field once it's mounted.
   useEffect(() => {
-    const onFocus = () => {
-      setSearchOpen(true)
-      requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }))
-    }
+    const onFocus = () => searchInputRef.current?.focus({ preventScroll: true })
 
     window.addEventListener(SESSION_SEARCH_FOCUS_EVENT, onFocus)
 
@@ -1653,7 +1649,7 @@ export function ChatSidebar({
       data-tour="sessions-sidebar"
     >
       <SidebarContent className="gap-0 overflow-hidden bg-transparent px-2.5">
-        <SidebarGroup className="shrink-0 p-0 pb-2 pt-[calc(var(--titlebar-height)+0.375rem)]">
+        <SidebarGroup className="shrink-0 p-0 pb-2 pt-[calc(var(--titlebar-height)+1rem)]">
           <SidebarGroupContent>
             <SidebarMenu className="gap-px">
               {navItems.map(item => {
@@ -1789,10 +1785,12 @@ export function ChatSidebar({
 
         <SidebarStorageCorruptNotice />
 
-        {showSessionSections && searchOpen && (
+        {showSessionSections && (
           <div className="shrink-0 px-2 pb-1 pt-1">
             <SearchField
               aria-label={s.searchAria}
+              containerClassName="w-full min-h-10 rounded-lg px-2 opacity-100 hover:bg-(--ui-control-hover-background) focus-within:bg-(--ui-control-hover-background) [&>svg]:text-(--ui-text-secondary)"
+              inputClassName="text-(--ui-text-secondary) placeholder:text-(--ui-text-secondary)"
               inputRef={searchInputRef}
               onChange={setSearchQuery}
               placeholder={s.searchPlaceholder}
