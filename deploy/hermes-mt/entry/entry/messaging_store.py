@@ -19,8 +19,12 @@ class MessagingStore:
             await db.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', 'messaging:'+user)
             await db.execute('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', 'messaging-bot:'+platform+':'+agent_id)
             if plan is not None:
+                # As in UniClaw, the central service provisions 5G users who may never open the web
+                # app, so a first push creates the user (no login session). An operator-disabled
+                # user stays disabled; a later failure in this transaction leaves no user behind.
+                await db.execute("INSERT INTO users(user_id,masked_phone,last_login_at) VALUES($1,NULL,now()) ON CONFLICT(user_id) DO NOTHING",user)
                 active = await db.fetchval("SELECT user_id FROM users WHERE user_id=$1 AND status='active' FOR SHARE",user)
-                if not active: raise web.HTTPNotFound(text='用户配置不存在或用户已停用。')
+                if not active: raise web.HTTPNotFound(text='用户已停用。')
             row = await self._configure(db,user,gateway,agent_id,secret,platform)
             if enable and not row['enabled']:
                 row = dict(await db.fetchrow("UPDATE messaging_bindings SET enabled=true,revision=revision+1,connection_state='stopped',updated_at=now() WHERE id=$1 RETURNING *",row['id']))

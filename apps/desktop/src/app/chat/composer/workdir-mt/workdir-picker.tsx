@@ -15,6 +15,7 @@ import {
 import { releaseTypingFocus } from '@/components/ui/keyboard-first'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { HermesGateway } from '@/hermes'
+import { isWorkdirHidden } from '@/lib/browser-shell'
 import { selectDesktopPaths } from '@/lib/desktop-fs'
 import { Check, ChevronDown, FolderOpen } from '@/lib/icons'
 import { cn } from '@/lib/utils'
@@ -96,8 +97,12 @@ function useDefaultWorkdir(gateway: HermesGateway | null | undefined): [string, 
   return [value, () => setAttempt(n => n + 1)]
 }
 
-/** 聊天输入框的工作目录：新对话可选择，对话开始后只读显示。 */
-export function WorkdirPicker({ cwd, gateway, sessionId }: WorkdirPickerProps) {
+/** 聊天输入框的工作目录：新对话可选择，对话开始后只读显示。云端不显示（实例里的路径对用户没有意义），开发者模式除外。 */
+export function WorkdirPicker(props: WorkdirPickerProps) {
+  return isWorkdirHidden() ? null : <WorkdirMenu {...props} />
+}
+
+function WorkdirMenu({ cwd, gateway, sessionId }: WorkdirPickerProps) {
   const t = useWorkdirCopy()
   const target = useStore($newChatWorkspaceTarget)
   const projectScope = useStore($projectScope)

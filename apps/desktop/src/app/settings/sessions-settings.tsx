@@ -16,6 +16,7 @@ import {
   setSessionArchived
 } from '@/hermes'
 import { useI18n } from '@/i18n'
+import { isWorkdirHidden } from '@/lib/browser-shell'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { pathLeaf } from '@/lib/display-path'
 import { triggerHaptic } from '@/lib/haptics'
@@ -43,7 +44,7 @@ interface SessionsSettingsProps {
 export function SessionsSettings({ subpage }: SessionsSettingsProps = {}) {
   useSettingDeepLink('sessions', page => subpage === undefined || page === subpage)
 
-  if (subpage === 'default-directory') {
+  if (subpage === 'default-directory' && !isWorkdirHidden()) {
     return (
       <SettingsContent>
         <DefaultProjectDirSetting />
@@ -51,7 +52,7 @@ export function SessionsSettings({ subpage }: SessionsSettingsProps = {}) {
     )
   }
 
-  return <ArchivedSessionsSettings includeDefaultDirectory={subpage === undefined} />
+  return <ArchivedSessionsSettings includeDefaultDirectory={subpage === undefined && !isWorkdirHidden()} />
 }
 
 function ArchivedSessionsSettings({ includeDefaultDirectory }: { includeDefaultDirectory: boolean }) {
