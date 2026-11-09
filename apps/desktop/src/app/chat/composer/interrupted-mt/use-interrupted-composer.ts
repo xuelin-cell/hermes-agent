@@ -37,7 +37,7 @@ export function useInterruptedComposer({
     triggerHaptic('submit')
 
     try {
-      if (await onSubmit(continueNote(turn.prompt), { displayKind: 'hidden' })) {
+      if (await onSubmit(continueNote(turn.prompt), { displayKind: 'hidden', usageResume: { executionId: turn.executionId } })) {
         dismissInterruptedTurn(turn.sessionId)
       }
     } finally {

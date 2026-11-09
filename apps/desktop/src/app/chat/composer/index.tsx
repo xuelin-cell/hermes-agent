@@ -117,7 +117,7 @@ import {
   selectionLinkLabel
 } from './url-refs'
 import { VoiceActivity, VoicePlaybackActivity } from './voice-activity'
-import { WorkTemplatePicker } from './work-templates/picker'
+import { WorkTemplatePicker, type WorkTemplateSelection } from './work-templates/picker'
 import { WorkdirPicker } from './workdir-mt/workdir-picker'
 
 export function ChatBar({
@@ -159,6 +159,7 @@ export function ChatBar({
   // is created first); render-time assignment keeps the ref current.
   const asrBusyRef = useRef(false)
   const voiceStopRef = useRef<{ active: boolean; end: () => void }>({ active: false, end: () => {} })
+  const [welcomeSelection, setWelcomeSelection] = useState<WorkTemplateSelection | null>(null)
 
   // Every send (typed, queued, voice) passes through the contributed
   // middleware chain first — rewrite / pass-through / cancel. Empty chain =
@@ -184,15 +185,20 @@ export function ChatBar({
         return true
       }
 
+      // Snapshot before middleware awaits or the first send navigates away from the welcome composer.
+      const skillTag = showWelcomeTemplates && !options?.fromQueue && !options?.displayKind &&
+        welcomeSelection?.scope === (queueSessionKey || sessionId || null)
+        ? welcomeSelection.tag ?? undefined : undefined
+
       const draft = await runComposerMiddleware({ text: value, attachments: options?.attachments })
 
       if (!draft) {
         return false
       }
 
-      return onSubmitProp(draft.text, { ...options, attachments: draft.attachments })
+      return onSubmitProp(draft.text, { ...options, attachments: draft.attachments, ...(skillTag ? { skillTag } : {}) })
     },
-    [onSubmitProp]
+    [onSubmitProp, showWelcomeTemplates, welcomeSelection, queueSessionKey, sessionId]
   )
 
   // Which live composer this instance IS (main | tile) — its attachment set,
@@ -1362,6 +1368,7 @@ export function ChatBar({
             <WorkTemplatePicker
               disabled={inputDisabled || busy || asrActive}
               onReplaceText={text => replaceText(text)}
+              onSelectionChange={setWelcomeSelection}
               scope={activeQueueSessionKey}
               selectionContainer={welcomeSelectionContainer}
             />

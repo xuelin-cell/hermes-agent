@@ -29,6 +29,7 @@ import {
   parseSentAttachment,
   splitSentAttachments
 } from '@/lib/sent-attachments'
+import { rememberRewindUsage } from '@/lib/usage-input'
 
 import {
   appendText,
@@ -457,6 +458,8 @@ export async function runRewindSubmit(
       throw error
     }
   }
+
+  await rememberRewindUsage(liveSessionId, recovery?.storedSessionId, text)
 
   const submit = async () => {
     const { result, sessionId: usedId } = await withSessionNotFoundResume(

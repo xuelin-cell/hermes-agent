@@ -6,20 +6,27 @@ import { WelcomeIcon } from '@/components/chat/welcome-icon'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 import { iconSize, X } from '@/lib/icons'
+import type { SkillTagUsage } from '@/lib/usage-input'
 import { $selectedWelcomeModules } from '@/store/workspace-category'
 
 import { $resolvedWelcomeCatalog, loadWelcomeCatalog } from './catalog-store'
 import { HorizontalRow } from './horizontal-row'
+
+export interface WorkTemplateSelection {
+  scope: string | null
+  tag: SkillTagUsage | null
+}
 
 interface WorkTemplatePickerProps {
   selectionContainer?: HTMLElement | null
   scope: string | null
   disabled: boolean
   onReplaceText: (text: string) => void
+  onSelectionChange?: (selection: WorkTemplateSelection) => void
 }
 
 /** 推荐行在分类和模板之间切换，输入框中的分类 chip 独立保留。 */
-export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionContainer }: WorkTemplatePickerProps) {
+export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionContainer, onSelectionChange }: WorkTemplatePickerProps) {
   const { locale, t } = useI18n()
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en'
   const catalog = useStore($resolvedWelcomeCatalog[language])
@@ -45,6 +52,11 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
   useEffect(() => {
     setSelection({ scope, language, moduleId: module?.id, category: null, template: null })
   }, [scope, language, module?.id])
+  useEffect(() => {
+    onSelectionChange?.({ scope, tag: category ? { id: category.id, name: category.name } : null })
+
+    return () => onSelectionChange?.({ scope, tag: null })
+  }, [scope, category, onSelectionChange])
 
   if (!categories.length) {
     return null
