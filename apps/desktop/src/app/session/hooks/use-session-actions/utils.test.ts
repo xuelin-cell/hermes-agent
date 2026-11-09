@@ -25,6 +25,7 @@ import {
   dedupeInflightUserAgainstTranscript,
   goneSessionVerdict,
   isSessionGoneError,
+  listedSliceTarget,
   overlayConcurrentMessageChanges,
   preserveEquivalentTranscript,
   preserveLocalPendingTurnMessages,
@@ -56,6 +57,12 @@ const streamingMsg = (id: string, text: string, extra: Partial<ChatMessage> = {}
   }) as ChatMessage
 
 const session = (over: Partial<SessionInfo>): SessionInfo => over as SessionInfo
+
+describe('listed session projection', () => {
+  it('treats a cron execution as an ordinary conversation row', () => {
+    expect(listedSliceTarget(session({ id: 'cron-run', source: 'cron' }))).toBe('sessions')
+  })
+})
 
 describe('applyRuntimeInfo approval mode', () => {
   beforeEach(() => {

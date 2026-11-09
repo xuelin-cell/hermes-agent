@@ -13,7 +13,7 @@ import {
 import { normalizePersonalityValue } from '@/lib/chat-runtime'
 import { embeddedImageUrls, textWithoutEmbeddedImages } from '@/lib/embedded-images'
 import { parseErrorSurface } from '@/lib/error-surface'
-import { isMessagingSource, normalizeSessionSource } from '@/lib/session-source'
+import { isMessagingSource } from '@/lib/session-source'
 import { isLiveTailReplyId } from '@/lib/spoken-reply'
 import { reconcileApprovalModeForProfile } from '@/store/approval-mode'
 import { requestDesktopOnboardingForCredentialWarning } from '@/store/onboarding'
@@ -1836,9 +1836,7 @@ export function dropListedSession(storedSessionId: string): void {
 export function listedSliceTarget(session: SessionInfo): ListedSessionSlice {
   return isMessagingSource(session.source)
     ? 'messaging'
-    : normalizeSessionSource(session.source) === 'cron'
-      ? 'cron'
-      : 'sessions'
+    : 'sessions'
 }
 
 export function restoreListedSession(session: SessionInfo, slice?: ListedSessionSlice): void {

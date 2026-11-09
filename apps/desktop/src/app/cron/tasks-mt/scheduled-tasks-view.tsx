@@ -7,6 +7,7 @@ import {
   IconFilter,
   IconFolder,
   IconLanguage,
+  IconMessageCirclePlus,
   IconMoon,
   IconMovie,
   IconPhone
@@ -27,6 +28,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Tip } from '@/components/ui/tooltip'
 import {
   createCronJob,
   type CronJob,
@@ -46,7 +48,6 @@ import { $cronJobs, invalidateCronJobsRequests } from '@/store/cron'
 import { notify, notifyError } from '@/store/notifications'
 import { $profileScope, ALL_PROFILES } from '@/store/profile'
 
-import { Panel } from '../../overlays/panel'
 import { mutateAndRefreshCronJobs, refreshCronJobs } from '../cron-actions'
 
 import { useTasksCopy } from './copy'
@@ -68,8 +69,8 @@ type Filter = 'active' | 'all' | 'completed' | 'paused'
 type JobWithDir = CronJob & { workdir?: null | string }
 
 interface ScheduledTasksViewProps {
-  onClose: () => void
   onOpenSession?: (sessionId: string, session?: SessionInfo) => void
+  onRunTask?: (prompt: string) => Promise<boolean>
 }
 
 interface EditorState {
@@ -101,7 +102,7 @@ function jobBucket(job: CronJob): Exclude<Filter, 'all'> {
 }
 
 /** 定时任务页（UniWork 样式）：任务卡片、筛选、从模板入手、新建 / 编辑弹窗。 */
-export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksViewProps) {
+export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksViewProps) {
   const t = useTasksCopy()
   const jobs = useStore($cronJobs) as JobWithDir[]
   const profile = cronProfile(useStore($profileScope))
@@ -111,6 +112,7 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
   const [templatesDismissed, setTemplatesDismissed] = useState(false)
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [pendingDelete, setPendingDelete] = useState<CronJob | null>(null)
+  const [runningJobId, setRunningJobId] = useState<string | null>(null)
 
   const words: ScheduleWords = useMemo(
     () => ({
@@ -209,6 +211,22 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
     }
   }
 
+  const runNow = async (job: CronJob) => {
+    if (runningJobId) {
+      return
+    }
+
+    setRunningJobId(job.id)
+
+    try {
+      await onRunTask?.(job.prompt)
+    } catch (error) {
+      notifyError(error, t('actionFailed'))
+    } finally {
+      setRunningJobId(null)
+    }
+  }
+
   const filterLabel: Record<Filter, string> = {
     active: t('filterActive'),
     all: t('filterAll'),
@@ -219,8 +237,8 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
   const canReveal = typeof window !== 'undefined' && typeof window.hermesDesktop?.revealPath === 'function'
 
   return (
-    <Panel onClose={onClose}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-8">
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-8 py-7">
         <header className="mb-5">
           <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
@@ -262,22 +280,45 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
             </DropdownMenu>
           )}
           <div className="ml-auto flex gap-2">
-            <Button className="rounded-full" onClick={() => setEditor({})} size="sm" variant="outline">
-              <Plus className="size-4" />
-              {t('create')}
-            </Button>
-            <Button
-              className="rounded-full"
-              onClick={() => {
-                setTemplatesDismissed(false)
-                setTemplatesOpen(true)
-              }}
-              size="sm"
-              variant="outline"
-            >
-              <IconClipboardList size={15} />
-              {t('fromTemplate')}
-            </Button>
+            <div className="flex overflow-hidden rounded-full border border-border">
+              <Button
+                className="rounded-r-none border-0"
+                onClick={() => setEditor({})}
+                size="sm"
+                variant="outline"
+              >
+                <Plus className="size-4" />
+                {t('create')}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    aria-label={t('createMenu')}
+                    className="rounded-l-none border-0 border-l border-border px-2"
+                    size="sm"
+                    title={t('createMenu')}
+                    variant="outline"
+                  >
+                    <ChevronDown className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setEditor({})}>
+                    <IconMessageCirclePlus className="size-4" />
+                    {t('fromConversation')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setTemplatesDismissed(false)
+                      setTemplatesOpen(true)
+                    }}
+                  >
+                    <IconClipboardList className="size-4" />
+                    {t('fromTemplate')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
 
@@ -352,6 +393,22 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
                     {footerText(job)}
                   </span>
                   <div className="flex shrink-0 items-center gap-1" onClick={event => event.stopPropagation()}>
+                    <Tip
+                      className="rounded-2xl px-4 py-2 text-sm font-semibold tracking-[0.01em] shadow-[0_8px_20px_rgb(0_0_0_/_0.22)]"
+                      label={t('runNow')}
+                      placement="control"
+                    >
+                      <Button
+                        aria-label={t('runNow')}
+                        className="rounded-xl transition-colors hover:bg-muted/80"
+                        disabled={runningJobId !== null || !onRunTask}
+                        onClick={() => void runNow(job)}
+                        size="icon-sm"
+                        variant="ghost"
+                      >
+                        <Play className="size-4" />
+                      </Button>
+                    </Tip>
                     <Button onClick={() => void openLatestRun(job)} size="sm" variant="ghost">
                       {t('view')}
                     </Button>
@@ -451,7 +508,7 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
         open={pendingDelete !== null}
         title={t('deleteTitle')}
       />
-    </Panel>
+    </div>
   )
 }
 

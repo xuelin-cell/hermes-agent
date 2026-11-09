@@ -33,7 +33,6 @@ import { normalizeSessionSource, sessionSourceLabel } from '@/lib/session-source
 import { cn } from '@/lib/utils'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $activeConnectionId } from '@/store/connections'
-import { $cronJobs } from '@/store/cron'
 import { $developerMode } from '@/store/developer-mode'
 import { $interfaceMode, $showsAdvancedChrome, shownInMode } from '@/store/interface-mode'
 import { $bindings } from '@/store/keybinds'
@@ -42,7 +41,6 @@ import {
   $panesFlipped,
   $pinnedSessionIds,
   $sidebarCardRows,
-  $sidebarCronOpen,
   $sidebarFiltersActive,
   $sidebarMessagingOpenIds,
   $sidebarOrdering,
@@ -64,7 +62,6 @@ import {
   pinSession,
   SESSION_SEARCH_FOCUS_EVENT,
   setPinnedSessionOrder,
-  setSidebarCronOpen,
   setSidebarPinsOpen,
   setSidebarProjectOrderIds,
   setSidebarRecentsOpen,
@@ -159,7 +156,6 @@ import type { SidebarNavItem } from '../../types'
 import { type NewSessionSplitHandler, startNewSessionDrag } from '../new-session-drag'
 
 import { SidebarSectionAddButton } from './chrome'
-import { SidebarCronJobsSection } from './cron-jobs-section'
 import { SidebarFilterMenu } from './filter-menu'
 import { buildGatewaySessionGroups, scopeGatewaySessionGroups, useGatewaySessionGroups } from './gateway-group-model'
 import { SidebarLoadMoreRow } from './load-more-row'
@@ -410,9 +406,7 @@ export function ChatSidebar({
   onArchiveSession,
   onBranchSession,
   onNewSessionInWorkspace,
-  onNewSessionSplit,
-  onManageCronJob,
-  onTriggerCronJob
+  onNewSessionSplit
 }: ChatSidebarProps) {
   const { t } = useI18n()
   const s = t.sidebar
@@ -512,7 +506,6 @@ export function ChatSidebar({
   const unconfirmedPinWrites = useStore($unconfirmedPinWrites)
   const pinsOpen = useStore($sidebarPinsOpen)
   const agentsOpen = useStore($sidebarRecentsOpen)
-  const cronOpen = useStore($sidebarCronOpen)
   // The sidebar highlight tracks the FOCUSED session — the interacted tile's
   // tab, else the main selection — so it stays 1:1 with whatever tab is active.
   const selectedSessionId = useStore($focusedStoredSessionId)
@@ -520,7 +513,6 @@ export function ChatSidebar({
   const currentView = focusedSessionIsTile ? 'chat' : routeView
   const sessions = useStore($sessions)
   const cronSessions = useStore($cronSessions)
-  const cronJobs = useStore($cronJobs)
   const messagingSessions = useStore($messagingSessions)
   const messagingPlatformTotals = useStore($messagingPlatformTotals)
   const messagingTruncated = useStore($messagingTruncated)
@@ -1593,8 +1585,8 @@ export function ChatSidebar({
 
   // Filtered down to nothing still renders the section: the empty state is what
   // tells you the filter — not an empty account — is why the list is bare.
-  // Messaging threads and cron jobs live inside this area too: a profile whose
-  // only sessions are messaging threads (or that only has scheduled jobs) must
+  // Messaging threads live inside this area too: a profile whose only sessions
+  // are messaging threads must
   // not collapse the whole sidebar to the blank state (#63593).
   const showSessionSections =
     showSessionSkeletons ||
@@ -1602,8 +1594,7 @@ export function ChatSidebar({
     filtersActive ||
     sortedSessions.length > 0 ||
     projectModel.length > 0 ||
-    messagingGroups.length > 0 ||
-    (showsAdvancedChrome && cronJobs.length > 0)
+    messagingGroups.length > 0
 
   // The sidebar's session-area mode — exposed as data-attributes so custom
   // skins can target project mode (overview vs. entered), archived, or search
@@ -2124,17 +2115,6 @@ export function ChatSidebar({
                 )
               })}
 
-            {!trimmedQuery && !worktreeGroupingActive && showsAdvancedChrome && cronJobs.length > 0 && (
-              <SidebarCronJobsSection
-                jobs={cronJobs}
-                label={s.cronJobs}
-                onManageJob={onManageCronJob}
-                onOpenRun={onResumeSession}
-                onToggle={() => setSidebarCronOpen(!cronOpen)}
-                onTriggerJob={onTriggerCronJob}
-                open={cronOpen}
-              />
-            )}
           </div>
         )}
 
