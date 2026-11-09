@@ -152,6 +152,7 @@ class FakeCube:
         self.tokens: dict[str, str] = {}
         self.boot_failures: list[CubeError] = []   # 每次 bootstrap 先弹一个出来抛，空了就正常
         self.gone_during_wait: set[str] = set()     # 等就绪时被外部删掉的实例
+        self.silent_limits: list = []                # 每次等就绪给的 unreachable_limit_s
         self.activity: dict | None = None            # 转发器报的忙不忙；None = 老转发器，不报
         self.sync_error: CubeError | None = None
         self.status_error: CubeError | None = None
@@ -204,7 +205,8 @@ class FakeCube:
         return {"ok": True, "state": {"restored_from": (state or {}).get("restore_from", ""), "archive": "a.tar.gz",
                                       "counts": {"state.db": {"messages": 3}}, "notes": []}}
 
-    async def wait_hermes(self, sandbox_id, port, timeout_s=240):
+    async def wait_hermes(self, sandbox_id, port, timeout_s=240, unreachable_limit_s=None):
+        self.silent_limits.append(unreachable_limit_s)
         if sandbox_id in self.gone_during_wait:
             self.gone_during_wait.discard(sandbox_id)
             self.sandboxes.pop(sandbox_id, None)
@@ -534,6 +536,23 @@ async def test_waking_paused_instance_writes_resume_audit(monkeypatch) -> None:
     assert ("audit", "tenant.resume") in store.calls
     # 快路径：实例在、模板对、引导过 ⇒ 不拿跨副本的锁
     assert ("pg_lock", "in") not in store.calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state, archived_before_pause, short", [
+    ("paused", True, True),     # 先归档再暂停：转发器起不来就别等满就绪超时，早点从归档重建
+    ("paused", False, False),   # 归档之后可能还有没存下的东西：不能重建，照常等
+    ("running", True, False),   # 不是唤醒：照常等
+])
+async def test_only_a_safely_rebuildable_woken_instance_gives_up_early_on_a_silent_forwarder(
+        monkeypatch, state, archived_before_pause, short) -> None:
+    """11-09 真机：切回个人版时实例唤醒后转发器没起来，入口等满 180 秒才从归档重建，用户等了 3 分多钟。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""),
+                      archived_before_pause=archived_before_pause)
+    cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": state}})
+    await _manager(store, cube).ensure_running("u")
+    assert cube.silent_limits[0] == (TenantManager.RESUME_UNREACHABLE_S if short else None)
 
 
 @pytest.mark.asyncio

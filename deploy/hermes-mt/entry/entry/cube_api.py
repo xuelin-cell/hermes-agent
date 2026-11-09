@@ -56,6 +56,10 @@ class SandboxGone(CubeError):
     """等就绪时控制面确认这台实例已经不存在。调用方该立即重建，而不是等满就绪超时。"""
 
 
+class ForwarderSilent(CubeError):
+    """等就绪时转发器一直不应答（``wait_hermes`` 的 ``unreachable_limit_s``）。"""
+
+
 # 引导请求被平台代理挡回时重发：间隔、总时长。见 ``proxy_hiccup``。
 BOOTSTRAP_RETRY_S = 30.0
 BOOTSTRAP_RETRY_INTERVAL_S = 1.0
@@ -491,15 +495,20 @@ class Cube:
         )
         return body if isinstance(body, dict) else {}
 
-    async def wait_hermes(self, sandbox_id: str, port: int, timeout_s: float = 240) -> None:
+    async def wait_hermes(self, sandbox_id: str, port: int, timeout_s: float = 240,
+                          unreachable_limit_s: float | None = None) -> None:
         """等 hermes 真的能应答业务请求。
 
         注意 Host 头由平台按 ``maskRequestHost`` 改写成回环形式，所以这里
         照常用平台的路由 Host 即可，不需要我们自己伪造回环 Host。
+
+        ``unreachable_limit_s``：每次都是平台代理替转发器回 502/503/504（转发器根本没起来）连续这么久，
+        就不等满 ``timeout_s``，报 ``ForwarderSilent``。转发器答过一次话（hermes 还没好）就照常等。
         """
         deadline = time.monotonic() + timeout_s
         last = ""
         next_probe = 0.0
+        silent_since: float | None = None
         while time.monotonic() < deadline:
             try:
                 st, body = await self._tenant_req(
@@ -508,8 +517,17 @@ class Cube:
                 if isinstance(body, dict) and body.get("ok"):
                     return
                 last = str(body)[:120]
+                silent_since = None
             except CubeError as exc:
                 last = exc.message or str(exc.status)
+                if unreachable_limit_s is not None and forwarder_unreachable(exc):
+                    now = time.monotonic()
+                    silent_since = now if silent_since is None else silent_since
+                    if now - silent_since >= unreachable_limit_s:
+                        raise ForwarderSilent(exc.status, f"转发器 {unreachable_limit_s:.0f}s 内一直不应答：{last}",
+                                              exc.body) from exc
+                else:
+                    silent_since = None
                 unknown = exc.status == 404 or "not found" in last.lower()
                 if unknown and time.monotonic() >= next_probe:
                     # 数据面说不认识这台实例：可能是刚起来路由还没登记，也可能是实例已经被删了。

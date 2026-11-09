@@ -225,6 +225,10 @@ class TenantManager:
     Docker 与沙箱均由实例转发器管理 Hermes 和连接器的进程生命周期。
     """
 
+    # 唤醒正常时转发器几秒内就应答（11-09 真机 2 秒）；这么久一直是平台代理替它回 502/503/504，就是没起来。
+    # 判错了也只是多一次从归档重建（约 20 秒），不丢东西，所以宁短勿长。
+    RESUME_UNREACHABLE_S = 10.0
+
     def __init__(
         self,
         settings: Settings,
@@ -816,8 +820,13 @@ class TenantManager:
                             was_paused = False
 
                 # 实例可能是 paused —— 这个请求会把它自动唤醒，等就绪即可。
+                # 唤醒后转发器起不来（11-09 真机：切回个人版每次白等满 180 秒才重建）：上次是先归档再暂停的，
+                # 重建不丢东西，转发器连续 RESUME_UNREACHABLE_S 秒不应答就交给下面的 _discard_unresponsive。
+                silent_limit = (self.RESUME_UNREACHABLE_S
+                                if was_paused and await self.store.paused_after_archive(user_id) else None)
                 try:
-                    await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                    await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s,
+                                                unreachable_limit_s=silent_limit)
                 except SandboxGone:
                     # 等就绪期间控制面确认实例没了（节点丢失、被手工删）。10-08 真机：删除是异步的，
                     # 刚删完控制面还说"在"，旧版等满 180 秒就绪超时才发现。现在当场重建，同一个请求里完成。

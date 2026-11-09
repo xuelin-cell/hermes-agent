@@ -156,6 +156,20 @@ async def test_wait_hermes_keeps_waiting_while_control_plane_still_lists_it(monk
     assert len(control) == 1
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("health, silent", [
+    ((503, {"error": "service unavailable"}), True),             # 平台代理替转发器回的：转发器没起来
+    ((503, {"ok": False, "error": "hermes 未在超时内就绪"}), False),  # 转发器自己答的：hermes 慢，照常等
+])
+async def test_wait_hermes_gives_up_early_only_when_the_forwarder_never_answers(monkeypatch, health, silent) -> None:
+    monkeypatch.setattr(cube_api.asyncio, "sleep", _no_sleep)
+    cube, fake = _cube()
+    fake.responses["health"] = health
+    with pytest.raises(CubeError) as exc:
+        await cube.wait_hermes("sbA", 9121, timeout_s=0.3, unreachable_limit_s=0.05)
+    assert isinstance(exc.value, cube_api.ForwarderSilent) is silent
+
+
 # ---- 引导请求被平台代理挡回时重发（10-14 换模板时撞上过：转发器刚应答了健康检查，引导请求就被代理回了 502）
 
 PROXY_502 = "<html>\n<head><title>502 Bad Gateway</title></head>\n<body>\n<center><h1>502 Bad Gateway</h1></center>\n<hr><center>openresty</center>\n</body>\n</html>\n"
