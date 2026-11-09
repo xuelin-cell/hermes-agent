@@ -131,8 +131,8 @@ test('does not reveal a destroyed window', () => {
 
 // The pet overlay reveals with showInactive() and the HUD with show() + focus(),
 // so the fallback has to run the caller's action rather than a plain show().
-// onRevealed runs BEFORE show() so callers can perform actions that must
-// precede visibility (e.g., the HUD hides the main window first).
+// The window is shown BEFORE onRevealed runs: a throwing onRevealed must not
+// leave the window hidden, and the fallback is already disarmed at that point.
 test('the fallback runs the caller reveal action, not a plain show', () => {
   const actions: string[] = []
   let scheduled: (() => void) | null = null
@@ -157,11 +157,11 @@ test('the fallback runs the caller reveal action, not a plain show', () => {
   controller.scheduleFallback()
   scheduled?.()
 
-  assert.deepEqual(actions, ['revealed', 'showInactive'])
+  assert.deepEqual(actions, ['showInactive', 'revealed'])
 })
 
-// The HUD hides the main window from onRevealed — whichever path wins, that
-// side effect has to happen exactly once.
+// The HUD hides the main window from its show callback — whichever path wins,
+// that side effect has to happen exactly once.
 test('onRevealed side effects run once when both paths fire', () => {
   const harness = createHarness()
 

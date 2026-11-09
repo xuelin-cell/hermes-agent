@@ -691,6 +691,35 @@ const IS_WSL = isWslEnvironment()
 // Startup diagnostics: launch-to-visible is measured from the main process
 // start (includes Electron's own boot, which is what the user waits through).
 const MAIN_PROCESS_STARTED_AT = Date.now() - Math.round(process.uptime() * 1000)
+// Launch-to-window-visible was one black box (3.6-21 s across runs). These
+// stamps split it into bundle evaluation, module init, app-ready, window
+// creation and first paint. A mark carries the timestamp it was taken at, so
+// one flushed later still reports when it happened.
+const startupMarkQueue: string[] = []
+
+function queueStartupMark(stage: string, at: number = Date.now()): void {
+  startupMarkQueue.push(
+    `[startup] ${stage} at +${Math.round(at - MAIN_PROCESS_STARTED_AT)}ms (since main process start, ${new Date(at).toISOString()})`
+  )
+}
+
+function flushStartupMarks(): void {
+  if (!startupMarkQueue.length) {
+    return
+  }
+
+  const pending = startupMarkQueue.splice(0, startupMarkQueue.length)
+
+  try {
+    rememberLog(pending.join('\n'))
+  } catch {
+    // The log sink is not initialized yet (this runs during module
+    // evaluation); keep the marks for the next flush.
+    startupMarkQueue.unshift(...pending)
+  }
+}
+
+queueStartupMark('main bundle evaluated')
 // Truthful macOS kernel major (Tahoe = 25). Product version lies (16 vs 26) per
 // build SDK, so gate Tahoe workarounds on Darwin instead.
 const DARWIN_MAJOR = IS_MAC ? Number.parseInt(os.release(), 10) || 0 : 0
@@ -1706,6 +1735,10 @@ const hermesLog: string[] = []
 let desktopLogBuffer = ''
 let desktopLogFlushTimer = null
 let desktopLogFlushPromise = Promise.resolve()
+
+// The log sink exists now: replay the marks captured during module evaluation.
+queueStartupMark('module init complete')
+flushStartupMarks()
 
 let poolLimits = readPersistedPoolLimits()
 // Hard cap on local backends that are starting OR running (the LRU eviction
@@ -14499,15 +14532,17 @@ function spawnHudWindow(sessionId, profile) {
 
   wireWindowReveal(win, {
     show: () => {
-      win.show()
-      win.focus()
-    },
-    onRevealed: () => {
-      // Step the app aside: the HUD IS the surface now.
+      // Step the app aside before the HUD appears: the HUD IS the surface now.
+      // This lives in the show callback, not in onRevealed, so the main window
+      // is already hidden when the HUD is shown regardless of reveal order.
       if (hudRestoreMainWindow && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.hide()
       }
 
+      win.show()
+      win.focus()
+    },
+    onRevealed: () => {
       // Compositor overlay adapters (Hyprland float+pin today). Electron
       // alwaysOnTop is already set; this is the dialect some WMs actually hear.
       void promoteHudOverlay({ title: HUD_WINDOW_TITLE })
@@ -14911,6 +14946,9 @@ function createWindow() {
 
   const createdMainWindow = mainWindow
   artifactShareWindows.add(createdMainWindow)
+
+  queueStartupMark('main window created')
+  flushStartupMarks()
 
   // 在开始导航前监听文档就绪；不等待图片等次要资源，避免卡在登录卡片。
   firstDesktopWindowReady ??= new Promise<BrowserWindow>((resolve, reject) => {
@@ -19091,6 +19129,9 @@ app.on('open-url', (event, url) => {
 })
 
 const desktopStartup = app.whenReady().then(() => {
+  queueStartupMark('app ready')
+  flushStartupMarks()
+
   // desktop-mt: 云盘续期只管理桌面令牌，不触碰 Hermes 账号或会话缓存。
   stopDriveCredentialRenewal = installDriveCredentialRenewal(ACCOUNT_DRIVE_CLIENT, powerMonitor)
   // Post-update relaunch detection (App Installer arm): when the previous

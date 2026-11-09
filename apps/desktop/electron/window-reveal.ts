@@ -49,15 +49,15 @@ export function createWindowRevealController(
     revealed = true
     cancelFallback()
 
-    // Call onRevealed BEFORE show() so callers can run actions that must
-    // precede visibility (e.g., the HUD hides the main window before the
-    // HUD appears). Window-state changes like maximize belong at creation
-    // time, before first paint, not here.
-    onRevealed()
-
+    // Show BEFORE onRevealed: a throwing onRevealed must not leave the window
+    // hidden forever — the fallback timer is already disarmed by `revealed`.
+    // Callers that must act before the window becomes visible do it inside
+    // their own show callback (the HUD hides the main window there).
     if (!window.isVisible()) {
       window.show()
     }
+
+    onRevealed()
 
     return true
   }
