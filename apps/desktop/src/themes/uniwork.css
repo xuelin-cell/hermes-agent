@@ -361,12 +361,6 @@
   font-size: var(--conversation-text-font-size);
 }
 
-/* 消息时间和回复元数据统一使用内置 Inter，保证数字与单位有真实的字重差异。 */
-:root[data-hermes-theme='uniwork'] [data-slot='aui_reply-metadata'],
-:root[data-hermes-theme='uniwork'] [data-slot='aui_user-sent-time'] {
-  font-family: 'Inter', var(--dt-font-sans);
-}
-
 /* 旧版 Uniwork 的消息灰阶只作用于操作栏和发送时间。 */
 :root[data-hermes-theme='uniwork']
   :is([data-slot='aui_assistant-footer'], [data-slot='aui_user-footer'], [data-slot='aui_user-sent-time']) {
