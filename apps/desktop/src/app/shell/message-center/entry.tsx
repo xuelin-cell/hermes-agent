@@ -7,7 +7,7 @@ import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { Bell } from '@/lib/icons'
 import { cn } from '@/lib/utils'
-import { $unreadAnnouncements } from '@/store/message-center'
+import { $announcements, $unreadAnnouncements } from '@/store/message-center'
 
 import { withCountBadge } from '../titlebar-count-badge'
 
@@ -16,14 +16,21 @@ import { withCountBadge } from '../titlebar-count-badge'
  *
  * 位置在侧栏底部账号行、账号控件的右侧；点击走工作区整页路由，不再展开
  * 浮层 —— 离开时点任意会话或导航项即可，路由本身承载状态，没有额外开关。
+ *
+ * 没有任何通知时整行不渲染入口：空列表没必要留一个通往空页面的按钮。
  */
 export function MessageCenterEntry() {
   const { t } = useI18n()
   const copy = t.messageCenter
+  const announcements = useStore($announcements)
   const unread = useStore($unreadAnnouncements)
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const active = pathname === NOTIFICATIONS_ROUTE
+
+  if (announcements.length === 0) {
+    return null
+  }
 
   return (
     <Tip label={copy.open}>
