@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { type ChatMessage, textPart } from '@/lib/chat-messages'
 import { createClientSessionState } from '@/lib/chat-runtime'
@@ -49,6 +49,92 @@ describe('文档消息的文字编辑', () => {
     expect(plan?.editedMessage.attachmentRefs).toBe(refs)
     expect(plan?.truncateRowId).toBe(42)
     expect(JSON.stringify(source)).toBe(before)
+  })
+})
+
+describe('附图消息的编辑重发', () => {
+  const image = '@image:`images/long poster.png`'
+  const embedded = '@image:data:image/jpeg;base64,/9j/AA=='
+
+  it('先按源会话路径挂载原图，再带原文档提交新正文', async () => {
+    const request = vi.fn(async (method: string, _params?: Record<string, unknown>, _timeout?: number) => {
+      if (method === 'session.history') {
+        return { messages: [{ role: 'user', text: `原说明\n${image}\ndata:image/png;base64,AAAA`, row_id: 42 }] }
+      }
+
+      if (method === 'image.attach') {
+        return { attached: true, path: '/workspace/images/long poster.png' }
+      }
+
+      if (method === 'image.attach_bytes') {
+        return { attached: true, path: '/home/attached.jpg' }
+      }
+
+      return { status: 'streaming' }
+    })
+
+    await runRewindSubmit(
+      request as Parameters<typeof runRewindSubmit>[0],
+      'sid',
+      '@file:report.pdf\n\n新说明',
+      0,
+      undefined,
+      false,
+      undefined,
+      undefined,
+      `原说明\n${image}`,
+      undefined,
+      { cwd: '/workspace', refs: [image, embedded] }
+    )
+
+    expect(request.mock.calls.map(([method]) => method)).toEqual([
+      'session.history',
+      'image.attach',
+      'image.attach_bytes',
+      'prompt.submit'
+    ])
+    expect(request.mock.calls[1][1]).toEqual({ path: '/workspace/images/long poster.png', session_id: 'sid' })
+    expect(request.mock.calls[2][1]).toEqual({ content_base64: '/9j/AA==', filename: 'image.jpg', session_id: 'sid' })
+    expect(request.mock.calls[3][1]).toMatchObject({ text: '@file:report.pdf\n\n新说明', truncate_before_row_id: 42 })
+  })
+
+  it.each(['image.attach_bytes', 'prompt.submit'])('%s 失败时，撤销这次已登记的图片', async failedMethod => {
+    const request = vi.fn(async (method: string, _params?: Record<string, unknown>) => {
+      if (method === failedMethod) {
+        throw new Error('image edit failed')
+      }
+
+      if (method === 'image.attach') {
+        return { attached: true, path: '/workspace/images/long poster.png' }
+      }
+
+      if (method === 'image.attach_bytes') {
+        return { attached: true, path: '/home/attached.jpg' }
+      }
+
+      return { detached: true }
+    })
+
+    await expect(
+      runRewindSubmit(
+        request as Parameters<typeof runRewindSubmit>[0],
+        'sid',
+        '新说明',
+        0,
+        undefined,
+        false,
+        undefined,
+        42,
+        undefined,
+        undefined,
+        { cwd: '/workspace', refs: [image, embedded] }
+      )
+    ).rejects.toThrow('image edit failed')
+
+    expect(request.mock.calls.filter(([method]) => method === 'image.detach').map(([, params]) => params)).toEqual([
+      { path: '/workspace/images/long poster.png', session_id: 'sid' },
+      ...(failedMethod === 'prompt.submit' ? [{ path: '/home/attached.jpg', session_id: 'sid' }] : [])
+    ])
   })
 })
 

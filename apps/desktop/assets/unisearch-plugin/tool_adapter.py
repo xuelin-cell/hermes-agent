@@ -6,6 +6,9 @@ import asyncio
 import copy
 import json
 import logging
+import time
+
+from .fetch.status import result_status
 
 from agent.web_search_registry import get_provider
 from hermes_cli.config import get_config_path
@@ -99,8 +102,11 @@ def _policy_block(url):
 async def _extract_owned(provider, urls):
     """保留整批等待上限与取消传播；套件失败不进入其他服务的救援。"""
     try:
-        call = provider.extract(urls, format="markdown")
         timeout = extract_helpers._extract_timeout_seconds()
+        options = {"format": "markdown"}
+        if provider.name == "builtin_parse":
+            options["deadline"] = time.monotonic() + (timeout if timeout > 0 else 115)
+        call = provider.extract(urls, **options)
         return await asyncio.wait_for(call, timeout) if timeout > 0 else await call
     except asyncio.CancelledError:
         raise
@@ -157,6 +163,18 @@ def _extract_handler(original):
             merged, output_helpers._effective_char_limit(args.get("char_limit")), debug
         )
         trimmed = output_helpers._trim_results(merged)
+        if backend == "builtin_parse":
+            # 原生整理丢弃额外字段；按输入位置补回，重定向和重复URL不串配。
+            for row, source in zip(trimmed, merged):
+                status = result_status(source)
+                if row.get("error") or not row.get("content"):
+                    status["fetch_status"] = "unavailable"
+                    status.pop("browser_followup", None)
+                    if source.get("fetch_status") in {"usable", "partial"}:
+                        status["reasons"] = ["output_unavailable"]
+                    elif row.get("blocked_by_policy"):
+                        status["reasons"] = ["policy_blocked"]
+                row.update(status)
         if not trimmed:
             return tool_error("Content was inaccessible or not found")
         body = {

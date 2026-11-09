@@ -17728,8 +17728,12 @@ ipcMain.handle('hermes:selectPaths', async (_event, options: any = {}) => {
   return result.filePaths
 })
 
-ipcMain.handle('hermes:writeClipboard', (_event, text) => {
-  clipboard.writeText(String(text || ''))
+ipcMain.handle('hermes:writeClipboard', (_event, text, html) => {
+  if (typeof html === 'string') {
+    clipboard.write({ text: String(text || ''), html })
+  } else {
+    clipboard.writeText(String(text || ''))
+  }
 
   return true
 })

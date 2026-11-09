@@ -188,10 +188,21 @@ export const isAttachmentRef = (ref: string): boolean => /^@(?:file|folder):/.te
 export function splitLeadingAttachmentRefs(text: string): { refs: string[]; text: string } {
   const lines = text.split('\n')
   const refs: string[] = []
+  let end = 0
 
-  while (lines.length && isAttachmentRef(lines[0]) && REFERENCE_LINE_RE.test(lines[0].trimEnd())) {
-    refs.push(lines.shift()!.trimEnd())
+  for (const line of lines) {
+    const ref = line.trim()
+
+    if (ref) {
+      if (!isAttachmentRef(ref) || !REFERENCE_LINE_RE.test(ref)) {
+        break
+      }
+
+      refs.push(ref)
+    }
+
+    end += 1
   }
 
-  return refs.length ? { refs, text: lines.join('\n').trim() } : { refs, text }
+  return refs.length ? { refs, text: lines.slice(end).join('\n').trim() } : { refs, text }
 }

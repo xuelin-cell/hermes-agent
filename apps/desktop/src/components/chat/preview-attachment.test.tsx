@@ -99,7 +99,7 @@ it('预转换失败保持卡片可点击，不自动提示或放弃原有预览�
   normalize.mockResolvedValueOnce({ kind: 'file', path: '/account/work/report.docx' })
   render(<PreviewAttachment target="report.docx" />)
   await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview: report.docx' }))
   })
   expect(open).toHaveBeenCalledWith({ kind: 'file', path: '/account/work/report.docx' })
 })
@@ -122,4 +122,26 @@ it('opens preview from the full card and closes an already previewed file', asyn
   act(() => $previewTabs.set([{ id: 'file:file:///account/work/report.csv', target }]))
   fireEvent.click(screen.getByRole('button', { name: 'Hide: report.csv' }))
   expect($previewTabs.get()).toHaveLength(0)
+})
+
+it('本机文件显示上传、打开所在文件夹、另存为，不再单独放打开预览按钮', async () => {
+  const reveal = vi.fn(async () => true)
+  window.hermesDesktop = { prepareOfficePreview: prepare, cancelOfficePreview: cancel, revealPath: reveal } as never
+  render(<PreviewAttachment target="report.csv" />)
+  expect(screen.getByRole('button', { name: 'Save as' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Open containing folder' }))
+  })
+  expect(reveal).toHaveBeenCalledWith('/account/work/report.csv')
+})
+
+it.each([
+  ['远程后端', 'report.csv', { mode: 'remote', profile: 'remote' }],
+  ['网址', 'https://example.com/report.csv', null]
+])('%s没有本机路径，不显示打开所在文件夹', (_label, target, connection) => {
+  $connection.set(connection as never)
+  render(<PreviewAttachment target={target} />)
+  expect(screen.queryByRole('button', { name: 'Open containing folder' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Save as' })).toBeTruthy()
 })

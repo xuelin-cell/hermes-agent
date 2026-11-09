@@ -47,6 +47,7 @@ export function getUkeyThumbprint() {
  * @returns {Promise<string>}
  */
 export async function locateSignTool({ signing = false } = {}) {
+  let bundleError
   // Prefer the bundle tools resolver (dynamic import to avoid circular dependency)
   try {
     const { ensureWindowsBundleTools } = await import('./windows-bundle-tools.mjs')
@@ -54,8 +55,8 @@ export async function locateSignTool({ signing = false } = {}) {
     if (tools.signtool && fs.existsSync(tools.signtool)) {
       return tools.signtool
     }
-  } catch {
-    // Fall through to fallback paths
+  } catch (error) {
+    bundleError = error
   }
 
   // Fallback: winCodeSign cache (app-builder-lib downloads signtool here)
@@ -71,13 +72,30 @@ export async function locateSignTool({ signing = false } = {}) {
     }
   }
 
-  // Last resort: PATH lookup
+  // Existing PATH fallback
   const where = spawnSync('where', ['signtool.exe'], { encoding: 'utf8' })
   if (where.status === 0 && where.stdout.trim()) {
     return where.stdout.trim().split(/\r?\n/)[0]
   }
 
-  throw new Error('signtool.exe not found: install Windows SDK or set HERMES_PREPARED_PACKAGING')
+  // Preserve existing resolver precedence; the installed SDK is the final fallback.
+  if (process.platform === 'win32') {
+    const roots = [...new Set([process.env['ProgramFiles(x86)'], process.env.ProgramFiles].filter(Boolean))]
+    for (const root of roots) {
+      const bin = path.join(root, 'Windows Kits', '10', 'bin')
+      if (!fs.existsSync(bin)) continue
+      const versions = fs.readdirSync(bin, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && /^\d+(\.\d+)+$/.test(entry.name))
+        .map(entry => entry.name)
+        .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+      for (const version of [...versions, '']) {
+        const candidate = path.join(bin, version, process.arch, 'signtool.exe')
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate
+      }
+    }
+  }
+
+  throw new Error('signtool.exe not found in the installed Windows SDK, builder cache, or PATH; install Windows SDK or prepare packaging tools', { cause: bundleError })
 }
 
 /**

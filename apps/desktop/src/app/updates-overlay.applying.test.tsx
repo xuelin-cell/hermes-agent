@@ -5,6 +5,7 @@ import { I18nProvider } from '@/i18n/context'
 import { en } from '@/i18n/en'
 import {
   $updateApply,
+  $updateDownloading,
   $updateOverlayOpen,
   $updateOverlayTarget,
   $updateStatus,
@@ -48,6 +49,21 @@ afterEach((): void => {
   resetUpdateApplyState()
   Reflect.deleteProperty(window, 'hermesDesktop')
   vi.restoreAllMocks()
+})
+
+// Holding bytes is not installing: the manual-check prefetch renders the same
+// transfer surface while apply stays untouched, so the package can never look
+// (or behave) like an install the user did not ask for.
+it('shows the transfer surface for a download that is not an install', async (): Promise<void> => {
+  const apply = vi.fn()
+  window.hermesDesktop = { updates: { apply } } as unknown as Window['hermesDesktop']
+  $updateDownloading.set(true)
+
+  await renderOverlay()
+
+  expect(apply).not.toHaveBeenCalled()
+  expect(screen.getByText(en.updates.downloadingUpdate)).toBeTruthy()
+  expect(screen.queryByRole('button', { name: en.updates.updateNow })).toBeNull()
 })
 
 // The reference dialog puts one dismissible action on the download state.

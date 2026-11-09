@@ -85,6 +85,7 @@ import { useUniworkAsr } from './hooks/use-uniwork-asr'
 // desktop-mt: 程序被关掉中断的回答，15 分钟内可点 ▶ 继续。
 import { useInterruptedComposer } from './interrupted-mt/use-interrupted-composer'
 import { shouldConvertPasteToAttachment } from './large-paste'
+import { readCopiedMessageAttachments } from './message-clipboard'
 import { ActionBadges } from './micro-actions'
 // desktop-mt: 当前窗格独立读取上下文用量。
 import { ComposerContextRing } from './model-mt/context-ring'
@@ -594,6 +595,26 @@ export function ChatBar({
   }
 
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
+    const copiedAttachments = readCopiedMessageAttachments(event.clipboardData)
+
+    if (copiedAttachments.length) {
+      event.preventDefault()
+
+      for (const attachment of copiedAttachments) {
+        scope.attachments.add(attachment)
+      }
+
+      const text = sanitizeComposerInput(event.clipboardData.getData('text').trim())
+
+      if (text) {
+        recordUndoPoint()
+        insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(text)))
+        scheduleFlushEditorToDraft(event.currentTarget)
+      }
+
+      return
+    }
+
     const imageBlobs = extractClipboardImageBlobs(event.clipboardData)
 
     if (imageBlobs.length > 0 && onAttachImageBlob) {
@@ -686,10 +707,10 @@ export function ChatBar({
     // A paste into an open `@url:`/`@file:` scope CONSUMES that scope instead of
     // stacking on it — the scope is the browse mode the user is pasting into,
     // not text they typed and want to keep (`@url:@url:\`https://…\``).
-    const scope = openDirectiveScope(event.currentTarget)
+    const directiveScope = openDirectiveScope(event.currentTarget)
 
     recordUndoPoint()
-    insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(pastedText)), scope)
+    insertComposerContentsAtCaret(event.currentTarget, pathifyRefs(linkifyUrls(pastedText)), directiveScope)
     scheduleFlushEditorToDraft(event.currentTarget)
   }
 

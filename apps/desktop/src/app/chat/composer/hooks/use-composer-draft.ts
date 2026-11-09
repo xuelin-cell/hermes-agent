@@ -265,8 +265,18 @@ export function useComposerDraft({
       setFocusRequestId(id => id + 1)
     })
 
-    const offInsert = onComposerInsertRequest(({ mode, target: requested, text, token }) => {
+    const offInsert = onComposerInsertRequest(({ attachments, mode, target: requested, text, token }) => {
       if (requested === target) {
+        if (attachments?.length) {
+          for (const attachment of attachments) {
+            attachmentScope.add(attachment)
+          }
+
+          if (!text) {
+            focusInput()
+          }
+        }
+
         // A tokened insert came from the plugin SDK — echo whether the text
         // actually landed, so its promise never settles on a silent no-op.
         ackComposerInsert(token, appendExternalText(text, mode))
@@ -277,7 +287,7 @@ export function useComposerDraft({
       offFocus()
       offInsert()
     }
-  }, [appendExternalText, focusInput, inputDisabled, paintDraft, target])
+  }, [appendExternalText, attachmentScope, focusInput, inputDisabled, paintDraft, target])
 
   const stashAt = (scope: string | null, text = draftRef.current, attachments = attachmentScope.$attachments.get()) =>
     stashSessionDraft(scope, text, attachments)
