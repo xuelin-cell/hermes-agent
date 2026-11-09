@@ -1306,6 +1306,11 @@ def _add_skill_routes(app: web.Application, entry: Entry, api) -> None:
     app.router.add_post(api("/__entry/skills/{operation}"), entry.skill_routes.handle)
 
 
+def _add_welcome_route(app: web.Application, entry: Entry, api) -> None:
+    """首页模板（日常办公 / 学习生活 / 代码开发）：两个版本都有，企业版不要 MaaS 令牌（welcome_routes.py）。"""
+    app.router.add_post(api("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
+
+
 def _add_connector_routes(app: web.Application, entry: Entry, api) -> None:
     """扫码 / OAuth 连接器：普通版一直有，企业版开了 connectors 才有。"""
     app.router.add_post(api("/__entry/connectors"), entry.connector_routes.handle)
@@ -1314,14 +1319,14 @@ def _add_connector_routes(app: web.Application, entry: Entry, api) -> None:
 
 def _add_personal_routes(app: web.Application, entry: Entry, api) -> None:
     """只有普通版（不连管理后台）才有的路由：云盘、邮箱、分享、套餐、消息平台和它们要的浏览器令牌。
-    技能和连接器两组企业版按 MT_CLIENT_FEATURES 也有，见 build_app。"""
+    技能和连接器两组企业版按 MT_CLIENT_FEATURES 也有，首页模板两个版本都有，见 build_app。"""
     app.router.add_get(api("/__entry/browser-auth.js"), entry.browser_auth_script)
     app.router.add_post(api("/__entry/maas-auth"), entry.maas_auth_status)
     app.router.add_post(api("/__entry/langfuse/grant"), entry.langfuse_routes.issue)
     app.router.add_post(api("/__entry/langfuse/api/public/otel/v1/traces"), entry.langfuse_routes.upload)
     app.router.add_post(api("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
     _add_skill_routes(app, entry, api)
-    app.router.add_post(api("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
+    _add_welcome_route(app, entry, api)
     app.router.add_post(api("/__entry/plan/{operation}"), entry.plan_routes.handle)
     app.router.add_post(api("/__entry/account/{operation}"), entry.account_routes.handle)
     app.router.add_post(api("/__entry/mail"), entry.mail_routes.handle)
@@ -1349,6 +1354,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     if not settings.enterprise:
         _add_personal_routes(app, entry, api)
     else:
+        _add_welcome_route(app, entry, api)
         # 企业版按 MT_CLIENT_FEATURES 开放个人版的技能和连接器；以后改成管理后台下发的 clientFeatures
         features = settings.enterprise_features
         if features & {"kits", "skills"}:

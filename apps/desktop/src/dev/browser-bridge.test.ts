@@ -1121,6 +1121,15 @@ describe('the two cloud entries (desktop-mt)', () => {
     expect(calls.at(-1)).toContain('/api/__hermes_backend/api/skills/toggle')
   })
 
+  it('reads the home templates through the enterprise entry, without a MaaS login', async () => {
+    const calls = await installFor({ enterprise: { status: 'active' }, user_id: 'ent:t:u' }, 200, url =>
+      url.endsWith('/__entry/welcome/zh-CN') ? jsonResponse({ modules: [{ id: 'office' }], version: 'v1' }) : undefined
+    )
+
+    expect(await window.hermesDesktop.getWelcomeCatalog?.('zh-CN')).toEqual({ modules: [{ id: 'office' }], version: 'v1' })
+    expect(calls).toContain('/api/__entry/welcome/zh-CN')
+  })
+
   it('treats a failed account answer as the personal entry', async () => {
     await installFor({ error: 'down' }, 502)
 

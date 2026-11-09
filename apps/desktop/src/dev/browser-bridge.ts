@@ -1477,7 +1477,28 @@ export function installBrowserDevelopmentBridge(): boolean {
     return connectionForProfile(conn, profile, connectionId)
   }
 
+  // The home templates (日常办公 / 学习生活 / 代码开发) are one config for everyone; the enterprise entry reads it
+  // without a MaaS token, which its accounts do not have (deploy/hermes-mt/entry/entry/welcome_routes.py).
+  const enterpriseWelcome = async (locale: WelcomeLocale): Promise<WelcomePayload> => {
+    if (!['zh-CN', 'en'].includes(locale)) {
+      throw new Error('Invalid locale')
+    }
+
+    const response = await fetch(`${browserApiBase()}__entry/welcome/${locale}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      method: 'POST'
+    })
+
+    if (!response.ok) {
+      throw new Error(`welcome catalog: HTTP ${response.status}`)
+    }
+
+    return (await response.json()) as WelcomePayload
+  }
+
   const enterpriseCapabilities = (features: ReadonlySet<string>) => ({
+    getWelcomeCatalog: enterpriseWelcome,
     ...(features.has('kits')
       ? {
           cloudKits: true as const,

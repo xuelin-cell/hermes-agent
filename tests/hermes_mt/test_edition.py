@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
+from aiohttp import web
+from aiohttp.test_utils import TestServer
 from cryptography.fernet import Fernet
 
 from entry import tenants as tenants_module
@@ -15,6 +20,7 @@ from entry.app import build_app
 from entry.config import Settings
 from entry.cube_api import Cube
 from entry.tenants import PERSONAL_POLICY_KEYS, YUANJING_MCP_NAME, TenantManager
+from entry.welcome_routes import WelcomeRoutes
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / "deploy" / "hermes-mt"
@@ -37,12 +43,12 @@ def test_personal_routes_exist_only_without_the_platform() -> None:
     enterprise = _routes(uniwork_server=PLATFORM, client_features="none")
     gone = personal - enterprise
     for route in ("drive/{operation}", "mail", "plan/{operation}", "account/{operation}", "connectors",
-                  "messaging/{operation}", "skills/{operation}", "welcome/{locale}", "maas-auth", "browser-auth.js"):
+                  "messaging/{operation}", "skills/{operation}", "maas-auth", "browser-auth.js"):
         assert f"/agents/api/__entry/{route}" in gone
     assert not enterprise - personal
     for shared in ("/agents/login", "/agents/api/__entry/me", "/agents/api/__entry/login", "/agents/api/__entry/select-tenant",
-                   "/agents/api/__entry/enterprise", "/agents/api/ws", "/agents/api/__hermes_backend/{tail}",
-                   "/hermes/__entry/service/v1/runtimes"):
+                   "/agents/api/__entry/enterprise", "/agents/api/__entry/welcome/{locale}", "/agents/api/ws",
+                   "/agents/api/__hermes_backend/{tail}", "/hermes/__entry/service/v1/runtimes"):
         assert shared in enterprise
 
 
@@ -70,8 +76,36 @@ def test_enterprise_opens_the_skill_and_connector_routes_it_lists(features: str,
     assert {route.removeprefix("/agents/api/__entry/") for route in enterprise - closed} == opened
     assert not enterprise - personal
     for route in ("drive/{operation}", "mail", "plan/{operation}", "account/{operation}", "messaging/{operation}",
-                  "welcome/{locale}", "maas-auth", "browser-auth.js"):
+                  "maas-auth", "browser-auth.js"):
         assert f"/agents/api/__entry/{route}" not in enterprise  # 这些要个人版的 MaaS 账号或消息平台，不开
+
+
+@pytest.mark.asyncio
+async def test_enterprise_home_templates_are_read_without_a_maas_token() -> None:
+    seen: list[tuple[str | None, str | None]] = []
+    broken = {"en"}
+
+    async def system_config(request: web.Request) -> web.Response:
+        seen.append((request.query.get("key"), request.headers.get("Authorization")))
+        if any(request.query.get("key", "").endswith(locale) for locale in broken):
+            return web.json_response({"configValue": "not json"})
+        return web.json_response({"configValue": json.dumps({"modules": [{"id": "office"}]}), "version": " v1 "})
+
+    upstream = web.Application()
+    upstream.router.add_get("/app/gateway/uniwork/system-config", system_config)
+    async with TestServer(upstream) as server:
+        routes = WelcomeRoutes(SimpleNamespace())
+        assert routes.url == "https://maas.ai-yuanjing.com/app/gateway/uniwork/system-config"  # 和桌面版同一个地址
+        routes.url = str(server.make_url("/app/gateway/uniwork/system-config"))
+        assert await routes.system_config("zh-CN") == {"modules": [{"id": "office"}], "version": "v1"}
+        assert seen == [("welcome_config_v3_zh-CN", None)]  # 不带令牌
+        await routes.system_config("zh-CN")
+        assert len(seen) == 1  # 缓存期内不再去取
+        with pytest.raises(web.HTTPServiceUnavailable):
+            await routes.system_config("en")  # 配置坏了，也没有上一份
+        broken.add("zh-CN")
+        routes.cache["zh-CN"] = (time.monotonic() - 3600, routes.cache["zh-CN"][1])
+        assert (await routes.system_config("zh-CN"))["modules"] == [{"id": "office"}]  # 过期后取不到，沿用上一份
 
 
 def test_policy_and_seeded_config_leave_out_personal_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
