@@ -30,7 +30,7 @@ interface Binding { home: string; account: string }
 
 /** Only the trusted desktop login supplies credentials. Decoding partitions the queue; MaaS authenticates. */
 export function telemetryAccount(identity: LoginIdentity | null, endpoint = ENDPOINT): string | null {
-  if (!identity || identity.expiresAt <= Date.now()) {return null}
+  if (!identity) {return null}
 
   try {
     const claims = JSON.parse(Buffer.from(identity.token.split('.')[1], 'base64url').toString('utf8'))

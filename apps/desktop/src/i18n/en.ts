@@ -4439,7 +4439,8 @@ export const en: Translations = {
   composer: {
     message: 'Message',
     addAttachment: 'Add attachments',
-    aiDisclaimer: 'AI responses may be inaccurate. Please verify important information.',
+    aiDisclaimer:
+      'AI responses may be inaccurate. Please verify important information when making medical, financial, or other professional decisions.',
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting UniWork...',
     placeholderReconnecting: 'Reconnecting to UniWork…',
