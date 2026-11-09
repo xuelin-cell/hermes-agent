@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { GlyphSpinner } from '@/components/ui/glyph-spinner'
 import { releaseTypingFocus } from '@/components/ui/keyboard-first'
-import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
 import { ChevronDown } from '@/lib/icons'
 import { formatModelPillLabel, providerDisplayName } from '@/lib/model-status-label'
@@ -177,19 +176,17 @@ export function ModelPill({
 
   if (!model.modelMenuContent) {
     return (
-      <Tip label={pinnedOverride ? `${copy.openModelPicker} — ${copy.modelPinned}` : copy.openModelPicker} side="top">
-        <Button
-          aria-label={copy.openModelPicker}
-          className={pillClass}
-          data-tour={tourMarker}
-          disabled={disabled}
-          onClick={() => setModelPickerOpen(true)}
-          type="button"
-          variant="ghost"
-        >
-          {label}
-        </Button>
-      </Tip>
+      <Button
+        aria-label={copy.openModelPicker}
+        className={pillClass}
+        data-tour={tourMarker}
+        disabled={disabled}
+        onClick={() => setModelPickerOpen(true)}
+        type="button"
+        variant="ghost"
+      >
+        {label}
+      </Button>
     )
   }
 
@@ -206,20 +203,18 @@ export function ModelPill({
 
   return (
     <DropdownMenu onOpenChange={setMenuOpen} open={open}>
-      <Tip label={title} side="top">
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label={title}
-            className={pillClass}
-            data-tour={tourMarker}
-            disabled={disabled}
-            type="button"
-            variant="ghost"
-          >
-            {label}
-          </Button>
-        </DropdownMenuTrigger>
-      </Tip>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label={title}
+          className={pillClass}
+          data-tour={tourMarker}
+          disabled={disabled}
+          type="button"
+          variant="ghost"
+        >
+          {label}
+        </Button>
+      </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
         className="w-64 p-0"
