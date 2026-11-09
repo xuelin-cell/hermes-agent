@@ -140,6 +140,14 @@ try {
         $env:ELECTRON_GET_USE_PROXY = '1'
     }
 
+    if ($Release) {
+        $node = Get-Command node -ErrorAction Stop
+        & $node.Source (Join-Path $sourceRoot 'apps\desktop\scripts\check-windows-signer.mjs')
+        if ($LASTEXITCODE -ne 0) {
+            throw "Signing preflight failed with exit code $LASTEXITCODE."
+        }
+    }
+
     # 国内镜像加速：Python 依赖走第一个可达的镜像，Electron 走 npmmirror。
     # 用户手动设置的环境变量优先（不会覆盖）。
     if (-not $env:UV_INDEX_URL) {
