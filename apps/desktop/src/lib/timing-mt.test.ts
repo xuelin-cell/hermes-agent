@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   markPageStep,
+  noteGatewayProfile,
   noteGatewayRequest,
   resetTimingForTests,
   type TimingRecord,
@@ -84,7 +85,10 @@ describe('chat.first_turn', () => {
   it('times the first turn of a new conversation, step by step, and only that turn', async () => {
     const gateway = fakeGateway()
     watchGateway(gateway)
-    await rpc(gateway, 'session.create', {}, { session_id: 's1', info: { model: 'deepseek-v4-flash' } }, 300)
+    noteGatewayProfile(gateway, 'default') // 主连接服务通用助手
+    // 存下来的会话 ID 和页面地址里的一样；运行时 ID 只在没有存下来的 ID 时用
+    const created = { session_id: 's1', stored_session_id: '20261110_143346_78be06', info: { model: 'deepseek-v4-flash' } }
+    await rpc(gateway, 'session.create', {}, created, 300)
     at(20_000) // 用户打字的时间不算
     await rpc(gateway, 'file.attach', { session_id: 's1' }, {}, 100)
     void noteGatewayRequest(gateway, 'prompt.submit', { session_id: 's1', text: 'hi' }, new Promise(() => undefined))
@@ -98,7 +102,14 @@ describe('chat.first_turn', () => {
     expect(reports).toEqual([
       {
         kind: 'chat.first_turn',
-        labels: { ok: true, attachments: 1, slow_notice: false, model: 'deepseek-v4-flash' },
+        labels: {
+          ok: true,
+          attachments: 1,
+          session: '20261110_143346_78be06',
+          slow_notice: false,
+          model: 'deepseek-v4-flash',
+          profile: 'default'
+        },
         seconds: 11.3,
         steps: { session: 0.3, agent: 6.8, first_token: 3, reply: 1.2 }
       }
@@ -121,18 +132,22 @@ describe('chat.first_turn', () => {
     gateway.emit({ type: 'error', session_id: 's2' })
 
     expect(reports).toHaveLength(1)
-    expect(reports[0]).toMatchObject({ kind: 'chat.first_turn', labels: { ok: false, slow_notice: true } })
+    expect(reports[0]).toMatchObject({ kind: 'chat.first_turn', labels: { ok: false, session: 's2', slow_notice: true } })
+    expect(reports[0].labels).not.toHaveProperty('profile') // 没告诉过这条连接是哪个档案：不瞎写
     expect(reports[0].steps).toEqual({ session: 0.1 })
   })
 })
 
 describe('bot.create', () => {
   it('links the bot to its self-introduction and reports both records', async () => {
-    const gateway = fakeGateway()
+    const primary = fakeGateway()
+    const gateway = fakeGateway() // 新 bot 自己的那条连接
+    watchGateway(primary)
     watchGateway(gateway)
-    await rpc(gateway, 'profiles.create', { name: 'sales' }, { ok: true }, 2_200)
-    await rpc(gateway, 'setup.runtime_check', { profile: 'sales' }, { ok: true }, 500)
-    await rpc(gateway, 'session.create', { profile: 'sales' }, { session_id: 'b1' }, 300)
+    noteGatewayProfile(gateway, 'sales')
+    await rpc(primary, 'profiles.create', { clone_from: 'default', name: 'sales', no_skills: false }, { ok: true }, 2_200)
+    await rpc(primary, 'setup.runtime_check', { profile: 'sales' }, { ok: true }, 500)
+    await rpc(gateway, 'session.create', {}, { session_id: 'b1', stored_session_id: '20261110_150211_ab12cd' }, 300)
     at(200)
     void noteGatewayRequest(gateway, 'prompt.submit', { session_id: 'b1' }, new Promise(() => undefined))
     at(6_800)
@@ -144,10 +159,18 @@ describe('bot.create', () => {
     gateway.emit({ type: 'message.complete', session_id: 'b1' })
 
     expect(reports.map(report => report.kind)).toEqual(['chat.first_turn', 'bot.create'])
-    expect(reports[0].labels).toMatchObject({ bot: true, model: 'glm-5.2' })
+    expect(reports[0].labels).toMatchObject({ bot: true, model: 'glm-5.2', profile: 'sales', session: '20261110_150211_ab12cd' })
     expect(reports[1]).toEqual({
       kind: 'bot.create',
-      labels: { ok: true, slow_notice: false, model: 'glm-5.2' },
+      labels: {
+        ok: true,
+        bot: 'sales',
+        no_skills: false,
+        session: '20261110_150211_ab12cd',
+        slow_notice: false,
+        clone: 'default',
+        model: 'glm-5.2'
+      },
       seconds: 14,
       steps: { create: 2.2, check: 0.5, to_submit: 1, agent: 6.8, first_token: 3, reply: 1 }
     })
@@ -159,7 +182,9 @@ describe('bot.create', () => {
     const failed = noteGatewayRequest(gateway, 'profiles.create', { name: 'x' }, Promise.reject(new Error('nope')))
     await expect(failed).rejects.toThrow('nope')
     await flush()
-    expect(reports).toEqual([{ kind: 'bot.create', labels: { ok: false }, seconds: 0, steps: { create: 0 } }])
+    expect(reports).toEqual([
+      { kind: 'bot.create', labels: { ok: false, bot: 'x', no_skills: false }, seconds: 0, steps: { create: 0 } }
+    ])
   })
 })
 
@@ -209,7 +234,7 @@ describe('expert.summon', () => {
     focusedSessionProfile.set('stock')
     $expertSummon.set(null)
     expect(reports).toEqual([
-      { kind: 'expert.summon', labels: { ok: true, pool_full: false }, seconds: 4.2, steps: { prepare: 4.2 } }
+      { kind: 'expert.summon', labels: { ok: true, expert: 'stock', pool_full: false }, seconds: 4.2, steps: { prepare: 4.2 } }
     ])
 
     // 准备中就离开：不记
@@ -224,7 +249,7 @@ describe('expert.summon', () => {
     $expertSummon.set({ displayName: '基金', phase: 'failed', profile: 'fund', poolFull: true, error: 'timed out' })
     expect(reports[1]).toEqual({
       kind: 'expert.summon',
-      labels: { ok: false, pool_full: true },
+      labels: { ok: false, expert: 'fund', pool_full: true },
       seconds: 180,
       steps: { prepare: 180 }
     })

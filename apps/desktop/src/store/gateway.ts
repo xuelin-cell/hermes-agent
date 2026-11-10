@@ -19,6 +19,7 @@ import {
   LIVENESS_REPROBE_DELAY_MS
 } from '@/lib/gateway-liveness-policy'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
+import { noteGatewayProfile } from '@/lib/timing-mt' // desktop-mt: 云版耗时埋点记是哪个档案的对话
 import {
   BACKEND_BOOT_WAIT_TIMEOUT_MS,
   isTimeoutError,
@@ -370,6 +371,10 @@ export function dispatchPrimaryServerRequest(request: ServerRequest, profile: st
 
 export function setPrimaryGateway(gateway: HermesGateway | null, profile = 'default'): void {
   const next = normKey(profile)
+
+  if (gateway) {
+    noteGatewayProfile(gateway, next) // desktop-mt: 主连接换档案时也跟着记（lib/timing-mt.ts）
+  }
 
   if (g.primaryGateway !== gateway) {
     g.primaryConnectionId = null
@@ -1023,6 +1028,7 @@ function isMissingProfileError(error: unknown): boolean {
 
 function createSecondary(profile: string, connectionId: null | string = null): Secondary {
   const gateway = new HermesGateway()
+  noteGatewayProfile(gateway, profile) // desktop-mt: 这条连接是哪个档案的（lib/timing-mt.ts）
   const scope = registryBackendScopeKey(connectionId, profile)
 
   const entry: Secondary = {
