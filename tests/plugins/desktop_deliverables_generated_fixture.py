@@ -37,7 +37,7 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
     leaf, extension = names.get(kind, ("fixture_write", "md"))
     videos = {"video", "background-video", "background-image-video"}
     # 支持交付的平台与桌面一样下载（钉钉视频除外）；其他消息平台只缓存后台翻译、播客。
-    delivered = platform == "desktop" or (
+    delivered = platform in {"desktop", "cron"} or (
         platform in {"weixin", "feishu", "wecom", "dingtalk", "uniagentgate"}
         and not (platform == "dingtalk" and kind in videos)
     )
@@ -199,7 +199,7 @@ def run_scenario(root, kind="fallback", media_dir=None, *, platform="desktop", d
                         assert output.read_bytes() == payload
                         # tool_call 桥会再次编码 JSON，Windows 路径反斜杠因此转义。
                         assert any(
-                            ("desktop_deliverables" if platform == "desktop" else '"deliverables"') in row["content"]
+                            ("desktop_deliverables" if platform in {"desktop", "cron"} else '"deliverables"') in row["content"]
                             and output.name in row["content"]
                             for row in tool_results
                         )

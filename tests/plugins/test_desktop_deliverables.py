@@ -46,6 +46,43 @@ def reply(plugin, text="完成了。", session="s", turn="t"):
     )
 
 
+@pytest.mark.parametrize("failed", [False, True])
+def test_cron_local_outputs_use_existing_preview_delivery(delivery, failed):
+    """定时任务复用本轮文件观察；旧文件、临时素材与失败命令不补卡。"""
+    plugin, work = delivery
+    old = work / "old.png"
+    old.write_bytes(b"old")
+    context = plugin.before_turn(session_id="cron_s", turn_id="t", task_id="cron_s", platform="cron")
+    assert context and "MEDIA:" in context["context"]
+    plugin.before_tool(tool_name="terminal", session_id="cron_s", turn_id="t", tool_call_id="write")
+    output = work / "狗狗图片_20261109.png"
+    output.write_bytes(b"new")
+    scratch = work / ".tmp" / "draft.png"
+    scratch.parent.mkdir()
+    scratch.write_bytes(b"scratch")
+    plugin.after_tool(
+        tool_name="terminal", session_id="cron_s", turn_id="t", tool_call_id="write",
+        result={"exit_code": 1 if failed else 0},
+    )
+    result = plugin.transform(response_text="完成了。", session_id="cron_s", turn_id="t", platform="cron")
+    if failed:
+        assert result is None
+    else:
+        assert result.count("MEDIA:") == 1
+        assert f"MEDIA:{output}" in result
+        assert str(old) not in result and str(scratch) not in result
+    assert plugin.transform(response_text="完成了。", session_id="cron_s", turn_id="t", platform="cron") is None
+
+
+def test_cron_remote_terminal_does_not_scan_host_files(delivery, monkeypatch):
+    """远程定时任务不沿本机目录生成交付引用。"""
+    plugin, work = delivery
+    monkeypatch.setenv("TERMINAL_ENV", "docker")
+    assert plugin.before_turn(session_id="cron_s", turn_id="t", task_id="cron_s", platform="cron") is None
+    (work / "unrelated.png").write_bytes(b"other")
+    assert plugin.transform(response_text="完成了。", session_id="cron_s", turn_id="t", platform="cron") is None
+
+
 @pytest.mark.parametrize("tool", ["write_file", "patch"])
 def test_written_path_is_carded_even_when_reply_names_nothing(delivery, tool):
     """直接写文件证据不依赖模型声明交付，文档压过同轮图片素材。"""

@@ -165,19 +165,28 @@ def _apply(profile: Optional[str], creds: dict[str, str]) -> None:
 
 
 def _unbind(profile: Optional[str]) -> None:
-    """清除目标 Profile 的微信凭据、关闭微信通道；只删除当前绑定账号自己的凭据文件。"""
-    from hermes_cli.config import get_env_value, remove_env_value
+    """清除目标 Profile 的微信凭据、关闭微信通道；只删除当前绑定账号自己的凭据文件。
+
+    账号 ID 只认账号文件里的：进程环境可能还留着启动时的旧账号。先删账号文件再删凭据，
+    文件删不掉时账号 ID 仍在，绑定保持原样，重试还能找到要删的文件。
+    """
+    from hermes_cli import config
     from hermes_cli.web_server_messaging import _write_platform_enabled
     from hermes_cli.web_server_profiles import _profile_scope
     from hermes_constants import get_hermes_home
 
     with _profile_scope(profile):
-        account_id = (get_env_value("WEIXIN_ACCOUNT_ID") or "").strip()
-        for key in _CREDENTIAL_KEYS:
-            remove_env_value(key)
-        _write_platform_enabled(PLATFORM_ID, False)
+        account_id = (config.load_env().get("WEIXIN_ACCOUNT_ID") or "").strip()
         for path in _account_files(Path(get_hermes_home()), account_id):
             path.unlink(missing_ok=True)
+        for key in _CREDENTIAL_KEYS:
+            config.remove_env_value(key)
+        # 删除被拒绝（如受管安装）时凭据还在文件里，不能报解绑成功。
+        if any(config.load_env().get(key) for key in _CREDENTIAL_KEYS):
+            raise RuntimeError("weixin credentials remain after unbind")
+        # 与扫码保存、桌面准备共用 config.yaml 锁，避免整文件回写互相覆盖。
+        with presentation.config_lock():
+            _write_platform_enabled(PLATFORM_ID, False)
 
 
 # 仪表盘按插件名加载接口文件；只取已加载的那份，避免另建一份锁不同的模块。

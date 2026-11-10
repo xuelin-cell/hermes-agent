@@ -181,6 +181,85 @@ def test_unbind_clears_credentials_and_only_that_accounts_files(ilink):
     assert sorted(p.name for p in accounts.iterdir()) == ["other@im.bot.json"]
 
 
+def test_unbind_reads_unbound_despite_credentials_frozen_at_backend_start(ilink, monkeypatch):
+    """后端带着微信凭据启动并已服务专家助手：解绑后状态按账号文件报未绑定，别的微信账号文件不动。"""
+    from importlib import import_module
+
+    from gateway.config import Platform, load_gateway_config
+    from hermes_cli.web_routers import messaging
+    from hermes_cli.web_server_profiles import _config_profile_scope
+    from tui_gateway.launch_profile_policy import activate_multi_profile_hosting
+
+    desktop = import_module("plugins.desktop-messaging.dashboard.plugin_api")
+    accounts = Path(get_hermes_home()) / "weixin" / "accounts"
+    accounts.mkdir(parents=True, exist_ok=True)
+    for name in ("bot123@im.bot.json", "other@im.bot.json"):
+        (accounts / name).write_text("{}", encoding="utf-8")
+    for key, value in {"WEIXIN_ACCOUNT_ID": "bot123@im.bot", "WEIXIN_TOKEN": "SECRET", "WEIXIN_BASE_URL": "https://x"}.items():
+        monkeypatch.setenv(key, value)
+        save_env_value(key, value)
+    activate_multi_profile_hosting()
+    monkeypatch.setattr(messaging, "read_runtime_status", lambda **_: None)
+    monkeypatch.setattr(messaging, "multiplexer_liveness_for_profile", lambda *a: None)
+
+    def row():
+        """主助手的微信状态行。"""
+        return next(p for p in desktop.platform_status("default")["platforms"] if p["id"] == "weixin")
+
+    assert row()["configured"] is True
+    asyncio.run(qr.unbind("default"))
+    after = row()
+    asyncio.run(qr.unbind("default"))
+
+    assert (after["configured"], after["enabled"]) == (False, False)
+    assert not any(field["is_set"] for field in after["env_vars"] if field["required"])
+    assert row()["configured"] is False
+    assert sorted(p.name for p in accounts.iterdir()) == ["other@im.bot.json"]
+    # 重启后不复活：进程里删不掉的旧凭据也不能让网关再启动微信。
+    with _config_profile_scope("default"):
+        assert Platform.WEIXIN not in load_gateway_config().get_connected_platforms()
+
+
+def test_unbind_that_cannot_delete_account_files_stays_bound_and_can_be_retried(ilink, monkeypatch):
+    """账号文件删不掉时解绑报失败、凭据原样保留；重试时还能找到并删净这些文件。"""
+    from fastapi import HTTPException
+
+    accounts = Path(get_hermes_home()) / "weixin" / "accounts"
+    accounts.mkdir(parents=True, exist_ok=True)
+    (accounts / "bot123@im.bot.json").write_text("{}", encoding="utf-8")
+    for key, value in {"WEIXIN_ACCOUNT_ID": "bot123@im.bot", "WEIXIN_TOKEN": "SECRET", "WEIXIN_BASE_URL": "https://x"}.items():
+        save_env_value(key, value)
+    real_unlink, locked = Path.unlink, [True]
+
+    def unlink(self, *args, **kwargs):
+        """模拟账号文件被占用，放开后恢复真实删除。"""
+        if locked[0] and self.parent == accounts:
+            raise PermissionError("locked")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    with pytest.raises(HTTPException):
+        asyncio.run(qr.unbind(None))
+    assert load_env()["WEIXIN_ACCOUNT_ID"] == "bot123@im.bot" and load_env()["WEIXIN_TOKEN"] == "SECRET"
+
+    locked[0] = False
+    assert asyncio.run(qr.unbind(None))["ok"] is True
+    assert not set(qr._CREDENTIAL_KEYS) & set(load_env())
+    assert not list(accounts.iterdir())
+
+
+def test_unbind_refused_credential_removal_is_not_reported_as_success(ilink, monkeypatch):
+    """凭据删除被拒绝（如受管安装）而仍留在账号文件里时，解绑不能返回成功。"""
+    from fastapi import HTTPException
+    from hermes_cli import config
+
+    for key, value in {"WEIXIN_ACCOUNT_ID": "bot123@im.bot", "WEIXIN_TOKEN": "SECRET"}.items():
+        save_env_value(key, value)
+    monkeypatch.setattr(config, "remove_env_value", lambda key: False)
+    with pytest.raises(HTTPException):
+        asyncio.run(qr.unbind(None))
+
+
 def test_account_files_refuse_path_like_ids(tmp_path):
     assert qr._account_files(tmp_path, "../evil") == []
     assert qr._account_files(tmp_path, "a/b") == []

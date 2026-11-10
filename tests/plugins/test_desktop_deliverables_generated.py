@@ -6,6 +6,13 @@ from tests.plugins.desktop_deliverables_generated_fixture import run_scenario
 
 
 @pytest.mark.parametrize("kind", ["fallback", "image", "video", "audio", "offline"])
+def test_cron_outputs_use_desktop_preview_delivery(tmp_path, kind):
+    """定时任务共用桌面文档、图片及音视频交付；存档保留引用，下载失败不生成假卡片。"""
+    receipt = run_scenario(tmp_path, kind, platform="cron")
+    assert receipt["text"].count("MEDIA:") == (0 if kind == "offline" else 1)
+
+
+@pytest.mark.parametrize("kind", ["fallback", "image", "video", "audio", "offline"])
 def test_generated_result_survives_actual_conversation_and_database_reopen(
     tmp_path, kind
 ):
