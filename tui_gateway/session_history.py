@@ -277,6 +277,43 @@ def _history_to_messages(history: list[dict], *, profile_home=None, image_urls: 
     return project_history_commentary(messages, home=profile_home)
 
 
+def _seed_timestamp(value: Any) -> float | None:
+    from math import isfinite
+
+    if type(value) not in (int, float):
+        return None
+    try:
+        timestamp = float(value)
+    except OverflowError:
+        return None
+    return timestamp if isfinite(timestamp) and timestamp > 0 else None
+
+
+def _seed_reply_metadata(value: Any) -> dict:
+    import json
+
+    from pydantic import ValidationError
+    from tui_gateway.contracts.common import TurnReplyModel, TurnTokenUsage
+
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    if not isinstance(value, dict):
+        return {}
+    metadata = {}
+    for key, schema in (("turn_token_usage", TurnTokenUsage), ("turn_model", TurnReplyModel)):
+        if key in value:
+            try:
+                metadata[key] = schema.model_validate(value[key], strict=True).model_dump()
+            except ValidationError:
+                continue
+    if (completed_at := _seed_timestamp(value.get("turn_completed_at"))) is not None:
+        metadata["turn_completed_at"] = completed_at
+    return metadata
+
+
 def _coerce_seed_history(value: Any) -> list[dict]:
     history = []
     for item in value if isinstance(value, list) else ():
@@ -290,6 +327,11 @@ def _coerce_seed_history(value: Any) -> list[dict]:
             # at turn time, so it is not accepted from the wire.
             if item.get("display_kind") == "hidden":
                 row["display_kind"] = "hidden"
+            if (timestamp := _seed_timestamp(item.get("timestamp"))) is not None:
+                row["timestamp"] = timestamp
+            # Imported footer snapshots are display-only; admission/delivery metadata stays gateway-owned.
+            if item["role"] == "assistant" and (metadata := _seed_reply_metadata(item.get("display_metadata"))):
+                row["display_metadata"] = metadata
             history.append(row)
     return history
 

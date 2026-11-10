@@ -2657,7 +2657,16 @@ export function useSessionActions({
               : branchMessages.length
                 ? requestBranchGateway<SessionCreateResponse>('session.create', {
                     ...createParams,
-                    messages: branchMessages.map(({ content, role }) => ({ content, role }))
+                    messages: branchMessages.map(({ content, role, source }) => ({
+                      content,
+                      role,
+                      timestamp: source.timestamp,
+                      display_metadata: {
+                        turn_token_usage: source.turnTokenUsage,
+                        turn_model: source.turnModel,
+                        turn_completed_at: source.turnCompletedAt
+                      }
+                    }))
                   })
                 : requestBranchGateway<SessionCreateResponse>('session.branch_stored', createParams).catch(
                     async err => {
@@ -2673,7 +2682,12 @@ export function useSessionActions({
 
                       return requestBranchGateway<SessionCreateResponse>('session.create', {
                         ...createParams,
-                        messages: messages.map(({ content, role }) => ({ content, role }))
+                        messages: messages.map(({ content, role, timestamp, display_metadata }) => ({
+                          content,
+                          role,
+                          timestamp,
+                          display_metadata
+                        }))
                       })
                     }
                   )
