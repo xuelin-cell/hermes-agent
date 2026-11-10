@@ -3,7 +3,8 @@
 // - The page itself is served without a login (the gateway does not guard static files). At start the bridge
 //   asks the entry's `__entry/config`, which sits behind the gateway: a 401 there means nobody is signed in.
 // - Signed in, the gateway's `/sso/me` names the account and its session id. When a tab comes back to the
-//   front with another sid (another tab switched accounts or signed out), it reloads.
+//   front with another sid (another tab switched accounts or signed out), it reloads. Local storage cleared by
+//   another page of the origin is checked the same way: it reloads only when the account changed.
 // - A business call answered with 401 means the session ended: ask `/sso/me` once, go to the login page if
 //   it agrees (never on a guess, or a stale answer would bounce between the page and the login page).
 // - The way to the login page is the entry's own `login` page beside the API (`/agents/login`): the gateway does
@@ -32,12 +33,19 @@ export interface SsoAccount {
 /** `off`: the entry signs people in itself. `sso`: the gateway does; `account` is null when `/sso/me` could not be read. */
 export type SsoBoot = { mode: 'off' } | { account: null | SsoAccount; mode: 'sso' }
 
-/** The entry's login page for the API base (`/agents/login` for `/agents/api/`), with this page as the way back. */
+/**
+ * The entry's login page for the API base (`/agents/login` for `/agents/api/`). Signing in again comes back to
+ * this page; switching accounts comes back to the app's home, since the session open here is the left account's.
+ */
 export function ssoLoginUrl(apiBase: string, prompt?: string): string {
-  const page = new URL('../login', new URL(apiBase, window.location.origin)).pathname
+  const api = new URL(apiBase, window.location.origin)
+  const page = new URL('../login', api).pathname
 
   const query = new URLSearchParams({
-    redirect_uri: window.location.pathname + window.location.search + window.location.hash
+    redirect_uri:
+      prompt === 'select_account'
+        ? new URL('../', api).pathname
+        : window.location.pathname + window.location.search + window.location.hash
   })
 
   if (prompt) {
@@ -118,22 +126,85 @@ function sessionTag(account: SsoAccount): string {
   return `${account.accountType}/${account.sid.slice(0, 6)}`
 }
 
-function watchSsoAccount(account: SsoAccount): void {
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') {
-      return
-    }
+// The account this page started with, and the check of it in flight (several triggers may fire at once).
+let watched: null | SsoAccount = null
+let checking: null | Promise<boolean> = null
 
-    void ssoMe().then(
+function watchSsoAccount(account: SsoAccount): void {
+  if (!watched) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        void recheckSsoAccount('visible')
+      }
+    })
+  }
+
+  watched = account
+}
+
+/**
+ * Asks the gateway whether this page still has the account it started with, and reloads when it does not.
+ * True when the page stays: same session, or the gateway unreachable for a moment. `via` names what made the
+ * page ask, for the entry's log.
+ */
+export function recheckSsoAccount(via: string): Promise<boolean> {
+  const account = watched
+
+  if (!account) {
+    return Promise.resolve(true)
+  }
+
+  checking ??= ssoMe()
+    .then(
       now => {
         if (!now) {
-          reloadFor('signed-out-elsewhere', { from: sessionTag(account) })
-        } else if (now.sid !== account.sid) {
-          reloadFor('sid-changed', { from: sessionTag(account), to: sessionTag(now) })
+          reloadFor('signed-out-elsewhere', { from: sessionTag(account), via })
+
+          return false
         }
+
+        if (now.sid !== account.sid) {
+          reloadFor('sid-changed', { from: sessionTag(account), to: sessionTag(now), via })
+
+          return false
+        }
+
+        return true
       },
-      () => undefined // the gateway is unreachable for a moment: keep the page
+      () => true
     )
+    .finally(() => {
+      checking = null
+    })
+
+  return checking
+}
+
+/**
+ * Another page of the origin cleared local storage (null key) or changed this page's browser login. The login
+ * page, the admin console and the account centre share the origin, and may clear it while the same person stays
+ * signed in. Under the unified login the account is the gateway's: reload only when it changed, otherwise
+ * `restore` puts back what this page keeps there. Without it, the browser login is the account: reload.
+ */
+export function onSharedStorageChange(event: StorageEvent, loginKey: string, sso: boolean, restore: () => void): void {
+  const login = event.key === loginKey && event.oldValue !== event.newValue
+
+  if (event.key !== null && !login) {
+    return
+  }
+
+  const reason = login ? 'storage-login-changed' : 'storage-cleared'
+
+  if (!sso) {
+    reloadFor(reason, login ? { had: Boolean(event.oldValue), has: Boolean(event.newValue) } : {})
+
+    return
+  }
+
+  void recheckSsoAccount(reason).then(kept => {
+    if (kept) {
+      restore()
+    }
   })
 }
 

@@ -17,13 +17,14 @@ import {
   type OfficePreviewErrorCode,
   type PdfDocumentSource
 } from '@/lib/browser-shell'
-import { installClientEvents, markBoot, noteLinkState, reloadFor } from '@/lib/client-events-mt'
+import { installClientEvents, markBoot, noteLinkState } from '@/lib/client-events-mt'
 import { $enterpriseFeatures, $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
 import type { EnterpriseUsage } from '@/lib/enterprise-usage-mt'
 import {
   bootSso,
   installSsoAuthErrorHandler,
   keepSsoPlaceholderLogin,
+  onSharedStorageChange,
   renderSsoBlocked,
   type SsoAccount,
   type SsoBoot,
@@ -1434,15 +1435,13 @@ export function installBrowserDevelopmentBridge(): boolean {
 
   if (productionBrowserBuild) {
     installClientEvents(browserApiBase())
-    // Another tab of the same origin cleared local storage (null key) or changed this page's login. The login
-    // page and the admin console share the origin, so the reason is recorded: it may not be our own tab.
-    window.addEventListener('storage', event => {
-      if (event.key === null) {
-        reloadFor('storage-cleared')
-      } else if (event.key === browserAuthKey(browserApiBase()) && event.oldValue !== event.newValue) {
-        reloadFor('storage-login-changed', { had: Boolean(event.oldValue), has: Boolean(event.newValue) })
-      }
-    })
+    window.addEventListener('storage', event =>
+      onSharedStorageChange(event, browserAuthKey(browserApiBase()), ssoMode, () => {
+        if (entryMe?.user_id) {
+          keepSsoAccountStorage(entryMe.user_id)
+        }
+      })
+    )
   }
 
   const conn = connection()
@@ -1722,6 +1721,17 @@ function startSso(bridge: object, boot: SsoBoot): void {
   Object.assign(bridge, { switchMaasAccount: () => void toSsoLogin(browserApiBase(), 'select_account') })
 }
 
+/** desktop-mt: what an account keeps in local storage under the unified login; again after another page cleared it. */
+function keepSsoAccountStorage(account: string): void {
+  scopeStorageToAccount(account)
+
+  if (personalCloud()) {
+    keepSsoPlaceholderLogin(browserApiBase(), account)
+  } else {
+    clearBrowserAuth(browserApiBase()) // an enterprise account has no account modules: drop whoever signed in before
+  }
+}
+
 /**
  * desktop-mt: once the entry said who this is, under the unified login: keep each account's local state apart,
  * give the personal entry's account modules their login, and keep a member the platform blocks on a page that
@@ -1734,13 +1744,7 @@ function settleSsoAccount(): boolean {
     return true
   }
 
-  scopeStorageToAccount(me.user_id)
-
-  if (personalCloud()) {
-    keepSsoPlaceholderLogin(browserApiBase(), me.user_id)
-  } else {
-    clearBrowserAuth(browserApiBase()) // an enterprise account has no account modules: drop whoever signed in before
-  }
+  keepSsoAccountStorage(me.user_id)
 
   const enterprise = me.enterprise as undefined | { allowed?: unknown; message?: unknown }
 

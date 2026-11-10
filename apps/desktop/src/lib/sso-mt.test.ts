@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { browserAuthKey } from '../../../shared/src/browser-maas-auth.js'
 
-import { bootSso, installSsoAuthErrorHandler, keepSsoPlaceholderLogin, renderSsoBlocked, ssoDisplayName, ssoLoginUrl } from './sso-mt'
+import {
+  bootSso,
+  installSsoAuthErrorHandler,
+  keepSsoPlaceholderLogin,
+  onSharedStorageChange,
+  renderSsoBlocked,
+  ssoDisplayName,
+  ssoLoginUrl
+} from './sso-mt'
 
 const originalLocation = window.location
 const originalFetch = window.fetch
@@ -60,15 +68,45 @@ function route(table: Record<string, () => Response>) {
 const ACCOUNT = { accountId: 'm-1', accountType: 'enterprise', name: '张三', sid: 'sid-1', tenantId: 't-1', tenantName: '一号企业' }
 
 describe('unified login (desktop-mt)', () => {
-  it('goes through the login page of the entry beside the API, with this page as the way back', () => {
+  it('goes through the login page of the entry beside the API; a switch of account comes back to the home', () => {
     // the entry redirects to its MT_SSO_LOGIN_URL: the gateway login page is configured in one place
-    const url = new URL(ssoLoginUrl('/agents/api/', 'select_account'), 'http://site.test')
+    const again = new URL(ssoLoginUrl('/agents/api/'), 'http://site.test')
+    const switched = new URL(ssoLoginUrl('/agents/api/', 'select_account'), 'http://site.test')
 
-    expect(url.pathname).toBe('/agents/login')
-    expect(Object.fromEntries(url.searchParams)).toEqual({
-      prompt: 'select_account',
-      redirect_uri: '/agents/chat?id=1#top'
+    expect(again.pathname).toBe('/agents/login')
+    expect(Object.fromEntries(again.searchParams)).toEqual({ redirect_uri: '/agents/chat?id=1#top' })
+    // the session open here belongs to the account being left: the next one would not find it
+    expect(switched.pathname).toBe('/agents/login')
+    expect(Object.fromEntries(switched.searchParams)).toEqual({ prompt: 'select_account', redirect_uri: '/agents/' })
+  })
+
+  it('keeps the page when another page of the site clears storage but the account is the same', async () => {
+    let current: typeof ACCOUNT | null = ACCOUNT
+
+    const calls = route({
+      '/agents/api/__entry/config': () => jsonResponse({ sso: true }),
+      '/app/gateway/sso/me?platform=agents': () => (current ? jsonResponse({ data: current }) : jsonResponse({}, 401))
     })
+
+    await bootSso('/agents/api/')
+    const restore = vi.fn()
+    const loginKey = browserAuthKey('/agents/api/')
+    const cleared = () => new StorageEvent('storage', { key: null })
+
+    onSharedStorageChange(new StorageEvent('storage', { key: 'hermes.theme', newValue: 'dark' }), loginKey, true, restore)
+    expect(calls.filter(url => url.includes('/sso/me'))).toHaveLength(1) // only the boot's: not ours to check
+
+    onSharedStorageChange(cleared(), loginKey, true, restore) // e.g. the admin console went to the login page
+    await vi.waitFor(() => expect(restore).toHaveBeenCalledOnce())
+    expect(reloaded).toBe(0)
+
+    current = { ...ACCOUNT, accountType: 'personal', sid: 'sid-2' }
+    onSharedStorageChange(cleared(), loginKey, true, restore)
+    await vi.waitFor(() => expect(reloaded).toBe(1))
+    expect(restore).toHaveBeenCalledOnce()
+
+    onSharedStorageChange(cleared(), loginKey, false, restore) // the entry's own login: storage is the account
+    expect(reloaded).toBe(2)
   })
 
   it('stays out of the way when the entry signs people in itself', async () => {
