@@ -83,6 +83,13 @@ def assemble(inputs: AgentInputs, out: Path) -> dict:
     manifest_path.unlink(missing_ok=True)
     (out / "command-map.json").unlink(missing_ok=True)
     inputs.validate(out)
+    from scripts.bundles.uniwork_bundled_skills import RECORD, verify_bundled_skills
+    skill_source = inputs.resources.get("skills", inputs.code / "skills")
+    skill_record = (verify_bundled_skills(skill_source)
+                    if (skill_source / RECORD).is_file() else None)
+    if (inputs.code / "skills" / RECORD).is_file():
+        skill_record = verify_bundled_skills(inputs.code / "skills")
+        verify_bundled_skills(skill_source, skill_record)
     entries = project_entries(inputs.project)
     repo = out / inputs.repo
     referenced = inputs.placement == "references"
@@ -139,6 +146,8 @@ def assemble(inputs: AgentInputs, out: Path) -> dict:
         launch_python = f"{location(inputs.environment)}/bin/python" if inputs.target.endswith("-bionic") else python
         commands = write_launchers(out, entries, python=launch_python, repo=inputs.repo, site=site,
                                    target=inputs.target, bin_dir=inputs.bin_dir)
+    if skill_record is not None:
+        verify_bundled_skills(repo / "skills", skill_record)
     manifest = {"schema": 1, "target": inputs.target, "repo": inputs.repo,
                 "venv": location(inputs.environment), "store": tools,
                 "launchers": list(entries), "runtime": {

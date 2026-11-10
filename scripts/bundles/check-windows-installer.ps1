@@ -199,6 +199,31 @@ try {
         [Environment]::SetEnvironmentVariable('PYTHONUTF8', '1', 'Process')
         [Environment]::SetEnvironmentVariable('HERMES_HOME', (Join-Path $Scratch 'hermes-home'), 'Process')
         $python = Join-Path $payload $stamp.runtime.storePython
+        # Build scripts are intentionally excluded from the shipped snapshot.
+        # Validate the extracted bytes here without importing a build-only module.
+        $skillRoot = Join-Path $repoDir 'skills'
+        $skillRecord = Join-Path $skillRoot '.bundled-source.json'
+        if (Test-Path -LiteralPath $skillRecord -PathType Leaf) {
+            $skillSource = Get-Content -LiteralPath $skillRecord -Raw -Encoding UTF8 | ConvertFrom-Json
+            $skillFiles = @(Get-ChildItem -LiteralPath $skillRoot -Recurse -File -Force | Where-Object { $_.FullName -ne $skillRecord })
+            if ($skillFiles.Count -ne @($skillSource.files.PSObject.Properties).Count) {
+                $problems.Add('Bundled skills file inventory differs from GitCode provenance.')
+            }
+            foreach ($file in $skillFiles) {
+                $relative = $file.FullName.Substring($skillRoot.Length + 1).Replace('\', '/')
+                $expectedHash = $skillSource.files.PSObject.Properties[$relative]
+                if (-not $expectedHash -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne $expectedHash.Value) {
+                    $problems.Add("Bundled skill file differs from provenance: $relative")
+                }
+            }
+            $ordinary = @(Get-ChildItem -LiteralPath (Join-Path $skillRoot 'uniwork') -Directory | Select-Object -ExpandProperty Name)
+            if (@(Compare-Object @($skillSource.skills) $ordinary).Count -gt 0) {
+                $problems.Add('Ordinary bundled skills differ from the GitCode skill list.')
+            }
+            $facts.Add("Skills: $($ordinary.Count) GitCode skills at $($skillSource.commit)")
+        } else {
+            $problems.Add('Bundled skills are missing GitCode provenance.')
+        }
         $output = @(& $python -c 'import sys, hermes_cli.main; print(sys.version.split()[0])' 2>&1)
         if ($LASTEXITCODE -eq 0) {
             $facts.Add("Python: $($output[-1]) loads hermes_cli.main")

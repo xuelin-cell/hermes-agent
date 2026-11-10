@@ -77,6 +77,12 @@ def identity_environment(request: BuildRequest, variant: str, inherited: Mapping
     env.setdefault("UNIWORK_BUNDLED_PLUGINS", DEFAULT_SOURCE)
     # 拉不到或有坏包就让打包失败，不再静默打出没有套件的安装包；打包人可以显式设 0 放行。
     env.setdefault(REQUIRED_ENV, "1")
+    from scripts.bundles.uniwork_bundled_skills import SOURCE_ENV, REF_ENV
+    env.setdefault(SOURCE_ENV, DEFAULT_SOURCE)
+    # A desktop release must never silently retain the snapshot's local skills.
+    env["UNIWORK_BUNDLED_SKILLS_REQUIRED"] = "1"
+    if env.get("UNIWORK_BUNDLED_PLUGINS_REF"):
+        env.setdefault(REF_ENV, env["UNIWORK_BUNDLED_PLUGINS_REF"])
     # 名字、appId、exe 和安装目录不带提交号，装新包覆盖旧包（见 apps/desktop/product-identity.cjs）。
     env.setdefault("UNIWORK_FIXED_IDENTITY", "1")
     return env
