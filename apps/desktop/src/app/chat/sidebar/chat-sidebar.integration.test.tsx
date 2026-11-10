@@ -114,6 +114,22 @@ const focus = (groupId: null | string) => act(() => noteActiveTreeGroup(groupId)
 describe('ChatSidebar navigation activity', () => {
   let disposeContributions: () => void
 
+  it('shows a completed cron execution as an ordinary conversation in simple mode', () => {
+    setInterfaceMode('simple')
+    $sessions.set([
+      makeSessionInfo({
+        id: 'cron-daily-briefing',
+        profile: 'default',
+        source: 'cron',
+        title: 'Daily briefing · Nov 09 09:00'
+      })
+    ])
+
+    renderSidebar('/chat', 'chat')
+
+    expect(screen.getByText('Daily briefing · Nov 09 09:00')).toBeTruthy()
+  })
+
   it('switches the real sidebar with named workspace tabs while keeping session history', () => {
     setSidebarGrouping('date')
     $projectTree.set([

@@ -245,9 +245,6 @@ export const zh = defineLocale({
     logoutTitle: '退出当前账号？',
     logoutDescription: '将停止当前账号的本地后端、消息网关及其托管工作，并返回登录页。历史、文件和定时任务定义保留。',
     logoutBusy: '正在退出账号…',
-    expired: '登录已到期，请重新登录。',
-    expiredLabel: '登录已到期',
-    expiredRunning: '登录已到期，当前任务继续运行。您可以退出账号后重新登录。',
     resendAfter: '{seconds} 秒后重发',
     smsSendError: '发送失败，请检查输入或刷新图片后重试。',
     smsLimited: '发送过于频繁，请稍后重试。',
@@ -905,7 +902,6 @@ export const zh = defineLocale({
     unreadSessions: count => (count === 1 ? '1 个未读会话' : `${count} 个未读会话`),
     muteHaptics: '关闭触感反馈',
     unmuteHaptics: '开启触感反馈',
-    openSettings: '打开设置',
     openStarmap: '打开记忆图谱',
     enterHud: 'HUD 模式',
     exitHud: '退出 HUD 模式',
@@ -917,9 +913,10 @@ export const zh = defineLocale({
   messageCenter: {
     title: '消息中心',
     unreadCount: count => `${count} 条未读消息`,
-    markAllRead: '全部已读',
     empty: '暂无通知',
-    untitled: '公告'
+    emptyHint: '收到的新公告会显示在这里。',
+    untitled: '公告',
+    open: '打开消息中心'
   },
 
   keybinds: {
@@ -1364,7 +1361,7 @@ export const zh = defineLocale({
       tabStripAlways: '始终',
       tabStripNever: '从不',
       appActionsTitle: '应用操作',
-      appActionsDesc: '设置、布局和 HUD 放在标题栏左侧还是右侧。选右侧可给标签留出左边空间。',
+      appActionsDesc: '布局和 HUD 放在标题栏左侧还是右侧。选右侧可给标签留出左边空间。',
       appActionsLeft: '左侧',
       appActionsRight: '右侧',
       terminalFontTitle: '终端字体',
@@ -4187,7 +4184,7 @@ export const zh = defineLocale({
   composer: {
     message: '消息',
     addAttachment: '添加附件',
-    aiDisclaimer: 'AI 回复可能不准确，请仔细核实重要信息。',
+    aiDisclaimer: 'AI 回复可能不准确，涉及医疗、金融等专业决策时，请仔细核实重要信息。',
     wakingProfile: profile => `正在唤醒 ${profile}…`,
     placeholderStarting: '正在启动 UniWork…',
     placeholderReconnecting: '正在重新连接 UniWork…',
@@ -4372,8 +4369,8 @@ export const zh = defineLocale({
     themeTryPre: '试试 ',
     themeTryPost: '。',
     attachLabel: '附加',
-    files: '文件…',
-    folder: '文件夹…',
+    files: '添加文件',
+    folder: '添加文件夹',
     images: '图片…',
     pasteImage: '粘贴图片',
     url: 'URL…',
@@ -4614,11 +4611,13 @@ export const zh = defineLocale({
       guiSkew: '请更新桌面应用',
       error: '更新已暂停'
     },
+    startingUpdate: '正在开始更新…',
     checking: '正在检查更新…',
     checkFailedTitle: '无法检查更新',
     tryAgain: '重试',
     notAvailableTitle: '更新不可用',
     unsupportedMessage: '此版本的 UniWork 无法在应用内自行更新。',
+    bridgeUnavailable: '桌面端更新服务不可用，请重启应用后重试。',
     connectionRetry: '请检查网络连接后重试。',
     gitUnusable: 'UniWork 无法在这台电脑上运行 Git，因此无法检查更新。',
     latestBody: '你正在运行最新版本。',
@@ -4687,6 +4686,7 @@ export const zh = defineLocale({
       restarting: '后端正在重启以加载更新…',
       notAvailable: '此后端无法更新。',
       failed: '后端更新失败。',
+      applied: '后端更新已完成。',
       noReturn: '后端未恢复在线。更新可能未完成——请检查后端主机。'
     },
     // Update-status overlay + version-details (mechanism-aware update UI).

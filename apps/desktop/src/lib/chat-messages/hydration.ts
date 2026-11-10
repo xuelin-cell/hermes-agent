@@ -1,10 +1,9 @@
 import { skillInvocationText } from '@hermes/shared'
 
 import { formatRefValue } from '@/components/assistant-ui/directive-text'
-import { splitLeadingAttachmentRefs } from '@/components/assistant-ui/reference-kinds'
-import { extractImageRefs } from '@/lib/embedded-images'
 import { dedupeGeneratedImageEchoesInParts } from '@/lib/generated-images'
 import { parseMessageTime } from '@/lib/message-time'
+import { splitSentAttachments } from '@/lib/sent-attachments'
 import { isTodoToolName } from '@/lib/todos'
 import { parseTurnReplyModel } from '@/lib/turn-reply-model'
 import { parseTurnTokenUsage } from '@/lib/turn-token-usage'
@@ -484,11 +483,9 @@ export function toChatMessages(messages: SessionMessage[]): ChatMessage[] {
     // optimistic composer already uses) and render them via the dedicated
     // attachments row below the bubble instead. The leading `@file:` block
     // (attached files, large pastes) moves there too, for the same parity.
-    const imageRefExtraction = displayRole === 'user' && rawDisplayContent ? extractImageRefs(rawDisplayContent) : null
-    const fileRefExtraction = imageRefExtraction ? splitLeadingAttachmentRefs(imageRefExtraction.cleanedText) : null
-    const displayContent = fileRefExtraction ? fileRefExtraction.text : rawDisplayContent
-    const liftedRefs = [...(fileRefExtraction?.refs ?? []), ...(imageRefExtraction?.refs ?? [])]
-    const extractedAttachmentRefs = liftedRefs.length ? liftedRefs : undefined
+    const attachments = displayRole === 'user' && rawDisplayContent ? splitSentAttachments(rawDisplayContent) : null
+    const displayContent = attachments ? attachments.text : rawDisplayContent
+    const extractedAttachmentRefs = attachments?.refs.length ? attachments.refs : undefined
 
     const parts: ChatMessagePart[] = []
     const rowId = message.row_id ?? (typeof message.id === 'number' ? message.id : undefined)

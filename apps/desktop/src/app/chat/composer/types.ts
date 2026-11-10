@@ -50,14 +50,12 @@ export interface ChatBarProps {
   cwd?: string | null
   onCancel: () => Promise<void> | void
   onAddContextRef?: (refText: string, label?: string, detail?: string) => void
-  onAddUrl?: (url: string) => void
   onAttachImageBlob?: (blob: Blob, isCurrent?: () => boolean) => Promise<boolean | void> | boolean | void
   onAttachDroppedItems?: (candidates: DroppedFile[]) => Promise<boolean | void> | boolean | void
   onAttachPastedText?: (text: string) => Promise<boolean> | boolean
   onPasteClipboardImage?: (opts?: { silent?: boolean }) => Promise<boolean> | void
   onPickFiles?: () => void
   onPickFolders?: () => void
-  onPickImages?: () => void
   onRemoveAttachment?: (id: string) => void
   onSteer?: (text: string) => Promise<boolean> | boolean
   /** Delivers a hidden note to the model mid-turn with no user turn (gateway session.steer). */

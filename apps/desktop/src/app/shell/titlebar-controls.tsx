@@ -30,7 +30,6 @@ import { $titlebarAppActionsSide, TITLEBAR_FIXED_TOOLS } from '@/store/titlebar-
 
 import { appViewForPath, hidesFixedTitlebarClusters, isOverlayView } from '../routes'
 
-import { messageCenterAvailable, MessageCenterBell } from './message-center'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   TITLEBAR_ICON_BADGE_SCALE,
@@ -68,7 +67,6 @@ export type SetTitlebarToolGroup = (id: string, tools: readonly TitlebarTool[], 
 interface TitlebarControlsProps extends ComponentProps<'div'> {
   leftTools?: readonly TitlebarTool[]
   tools?: readonly TitlebarTool[]
-  onOpenSettings: () => void
 }
 
 /**
@@ -117,7 +115,7 @@ function useModifierHeld(): boolean {
   return held
 }
 
-export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }: TitlebarControlsProps) {
+export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControlsProps) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
@@ -221,19 +219,9 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   }
 
   // Static system tools — always pinned to the screen's right edge so the
-  // left titlebar stays free for tabs (#107351).
+  // left titlebar stays free for tabs (#107351). Settings live in the sidebar
+  // account menu, not here.
   const systemTools: TitlebarTool[] = [
-    {
-      ...TITLEBAR_FIXED_TOOLS.settings,
-      actionId: 'nav.settings',
-      icon: <TitlebarIcon name="settings-gear" />,
-      id: 'settings',
-      label: t.titlebar.openSettings,
-      onSelect: () => {
-        triggerHaptic('open')
-        onOpenSettings()
-      }
-    },
     ...(developerMode
       ? [
           {
@@ -340,12 +328,20 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
 
   return (
     <>
-      <div aria-label={t.shell.windowControls} className={leftClusterClass} data-titlebar-cluster="left">
+      <div
+        aria-label={t.shell.windowControls}
+        className={leftClusterClass}
+        data-titlebar-cluster="left"
+        style={sidebarOpen && !panesFlipped ? {
+          width: 'max(0px, calc(var(--workspace-left, 276px) - var(--titlebar-controls-left) - 16px))'
+        } : undefined}
+      >
         {sidebarOpen && (
           <button
             aria-label="元景数字员工"
-            className="mr-1 flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-base font-bold whitespace-nowrap text-foreground/85 select-none"
+            className="mr-auto flex h-(--titlebar-control-height) cursor-default items-center rounded px-1.5 text-base font-bold whitespace-nowrap text-foreground/85 select-none"
             onClick={handleBrandClick}
+            style={{ fontFamily: 'var(--uniwork-title-font, sans-serif)' }}
             type="button"
           >
             元景数字员工
@@ -377,7 +373,6 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
         className={cn(titlebarToolClusterClass, 'right-(--titlebar-tools-right) top-(--titlebar-controls-top)')}
         data-titlebar-cluster="right"
       >
-        {messageCenterAvailable() && <MessageCenterBell />}
         {visibleSystemTools.map(tool => (
           <TitlebarToolButton key={tool.id} navigate={navigate} tool={tool} />
         ))}

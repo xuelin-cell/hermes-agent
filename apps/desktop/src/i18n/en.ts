@@ -256,9 +256,6 @@ export const en: Translations = {
     logoutDescription:
       'Stop this account’s local backends, messaging gateways and their managed work, then return to sign-in. History, files and scheduled job definitions are kept.',
     logoutBusy: 'Signing out of account…',
-    expired: 'Your sign-in has expired. Please sign in again.',
-    expiredLabel: 'Sign-in expired',
-    expiredRunning: 'Your sign-in has expired. Current tasks will continue. You can sign out and sign in again.',
     resendAfter: 'Resend in {seconds}s',
     smsSendError: 'Could not send the code. Check your input or refresh the image and try again.',
     smsLimited: 'Too many requests. Please wait before trying again.',
@@ -1211,7 +1208,6 @@ export const en: Translations = {
     unreadSessions: count => (count === 1 ? '1 unread session' : `${count} unread sessions`),
     muteHaptics: 'Mute haptics',
     unmuteHaptics: 'Unmute haptics',
-    openSettings: 'Open settings',
     openStarmap: 'Open memory graph',
     enterHud: 'HUD mode',
     exitHud: 'Exit HUD mode',
@@ -1224,9 +1220,10 @@ export const en: Translations = {
   messageCenter: {
     title: 'Notifications',
     unreadCount: count => (count === 1 ? '1 unread notification' : `${count} unread notifications`),
-    markAllRead: 'Mark all read',
     empty: 'No notifications yet',
-    untitled: 'Announcement'
+    emptyHint: 'Announcements you receive will show up here.',
+    untitled: 'Announcement',
+    open: 'Open notifications'
   },
 
   keybinds: {
@@ -1696,7 +1693,7 @@ export const en: Translations = {
       tabStripAlways: 'Always',
       tabStripNever: 'Never',
       appActionsTitle: 'App Actions',
-      appActionsDesc: 'Where Settings, Layout, and HUD sit in the titlebar. Right leaves room for tabs on the left.',
+      appActionsDesc: 'Where Layout and HUD sit in the titlebar. Right leaves room for tabs on the left.',
       appActionsLeft: 'Left',
       appActionsRight: 'Right',
       terminalFontTitle: 'Terminal Font',
@@ -4441,7 +4438,8 @@ export const en: Translations = {
   composer: {
     message: 'Message',
     addAttachment: 'Add attachments',
-    aiDisclaimer: 'AI responses may be inaccurate. Please verify important information.',
+    aiDisclaimer:
+      'AI responses may be inaccurate. Please verify important information when making medical, financial, or other professional decisions.',
     wakingProfile: profile => `Waking up ${profile}…`,
     placeholderStarting: 'Starting UniWork...',
     placeholderReconnecting: 'Reconnecting to UniWork…',
@@ -4637,8 +4635,8 @@ export const en: Translations = {
     themeTryPre: 'Try ',
     themeTryPost: '.',
     attachLabel: 'Attach',
-    files: 'Files…',
-    folder: 'Folder…',
+    files: 'Add files',
+    folder: 'Add folder',
     images: 'Images…',
     pasteImage: 'Paste image',
     url: 'URL…',
@@ -4882,11 +4880,13 @@ export const en: Translations = {
       guiSkew: 'Update the desktop app',
       error: 'Update paused'
     },
+    startingUpdate: 'Starting update…',
     checking: 'Looking for updates…',
     checkFailedTitle: 'Couldn’t check for updates',
     tryAgain: 'Try again',
     notAvailableTitle: 'Update not available',
     unsupportedMessage: 'This version of UniWork can’t update itself from inside the app.',
+    bridgeUnavailable: 'Desktop bridge unavailable.',
     connectionRetry:
       "UniWork couldn't reach the update server. Check your internet connection and try again. If you use a remote UniWork, make sure it is online.",
     gitUnusable: 'UniWork could not run Git on this computer, so it could not check for updates.',
@@ -4966,6 +4966,7 @@ export const en: Translations = {
       restarting: 'Backend restarting to load the update…',
       notAvailable: 'Update not available for this backend.',
       failed: 'Backend update failed.',
+      applied: 'Backend update applied.',
       noReturn: 'Backend didn’t come back online. The update may not have completed — check the backend host.'
     },
     // Update-status overlay + version-details (mechanism-aware update UI).

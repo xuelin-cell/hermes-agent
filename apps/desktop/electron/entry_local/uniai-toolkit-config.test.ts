@@ -6,7 +6,7 @@ import { expect, it, vi } from 'vitest'
 import { parse } from 'yaml'
 
 import { MAAS_MODEL_KEY_ENV } from './model-config'
-import { updateUniaiToolkitConfig } from './uniai-toolkit-config'
+import { UNIAI_TOOLKIT_USAGE_ID, updateUniaiToolkitConfig } from './uniai-toolkit-config'
 
 it('按套餐新建和更新内置记录，保留停用、工具过滤和其他服务，重复或失败不写盘，空套餐只删除内置项', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-uniai-config-'))
@@ -22,6 +22,7 @@ it('按套餐新建和更新内置记录，保留停用、工具过滤和其他�
     const created = parse(fs.readFileSync(file, 'utf8')).mcp_servers['UniAI-Toolkit']
     expect(created).toEqual({
       url: `https://maas.ai-yuanjing.com/app/mcp-server/mcp?key=\${${MAAS_MODEL_KEY_ENV}}&client_id=UniWork`,
+      uniwork_builtin_id: UNIAI_TOOLKIT_USAGE_ID,
       timeout: 1000
     })
     expect(parse(fs.readFileSync(file, 'utf8')).mcp_servers['arXiv-mcp']).toEqual({

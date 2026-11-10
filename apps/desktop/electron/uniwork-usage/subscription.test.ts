@@ -1,9 +1,11 @@
 import { once } from 'node:events'
 import { createServer } from 'node:http'
+
 import { expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ net: {} }))
 import type { LoginIdentity } from '../login/session'
+
 import { buildSubscriptionMarketUrl, PlanSubscriptionClient } from './subscription'
 
 it('每次订阅换取一次性凭证，校验身份与字段后只在主进程拼接市场地址', async () => {
@@ -14,23 +16,29 @@ it('每次订阅换取一次性凭证，校验身份与字段后只在主进程�
     maskedPhone: '138****0000',
     expiresAt: Date.now() + 60_000
   }
+
   let calls = 0
   let mode: 'ok' | '401' | 'bad' = 'ok'
   let hold = false
   let release: (() => void) | undefined
   let started: (() => void) | undefined
+
   const server = createServer(async (request, response) => {
     calls++
+
     if (mode === '401') {
       response.statusCode = 401
       response.end()
+
       return
     }
+
     if (hold)
-      await new Promise<void>(done => {
+      {await new Promise<void>(done => {
         release = done
         started?.()
-      })
+      })}
+
     response.setHeader('Content-Type', 'application/json')
     response.end(
       mode === 'bad'
@@ -44,14 +52,18 @@ it('每次订阅换取一次性凭证，校验身份与字段后只在主进程�
           })
     )
   })
+
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
   const address = server.address() as { port: number }
+
   const request: typeof fetch = async (url, options) => {
     expect(url).toBe('https://maas.ai-yuanjing.com/app/gateway/uniwork/market-ticket')
     expect(options?.redirect).toBe('error')
+
     return fetch(`http://127.0.0.1:${address.port}`, options)
   }
+
   const openExternal = vi.fn(async (_url: string) => ({ ok: true }))
   const client = new PlanSubscriptionClient(() => identity, openExternal, request)
 
@@ -80,10 +92,9 @@ it('每次订阅换取一次性凭证，校验身份与字段后只在主进程�
     expect(calls).toBe(2)
 
     identity = { ...identity, phone: '13800000000', expiresAt: Date.now() - 1 }
-    expect(await client.open()).toEqual({ status: 'failed', reason: 'auth' })
-    expect(calls).toBe(2)
+    expect(await client.open()).toEqual({ status: 'opened' })
+    expect(calls).toBe(3)
 
-    identity = { ...identity, expiresAt: Date.now() + 60_000 }
     mode = '401'
     expect(await client.open()).toEqual({ status: 'failed', reason: 'auth' })
     mode = 'bad'
@@ -91,9 +102,11 @@ it('每次订阅换取一次性凭证，校验身份与字段后只在主进程�
 
     mode = 'ok'
     hold = true
+
     const waiting = new Promise<void>(done => {
       started = done
     })
+
     const openedBeforeLate = openExternal.mock.calls.length
     const late = client.open()
     await waiting

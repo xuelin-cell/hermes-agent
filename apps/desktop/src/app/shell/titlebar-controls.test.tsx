@@ -29,7 +29,7 @@ function renderControls(pathname: string, props?: { leftTools?: TitlebarTool[]; 
     <MemoryRouter initialEntries={[pathname]}>
       <I18nProvider configClient={null} initialLocale="en">
         <NavigateProbe />
-        <TitlebarControls leftTools={props?.leftTools} onOpenSettings={() => {}} tools={props?.tools} />
+        <TitlebarControls leftTools={props?.leftTools} tools={props?.tools} />
       </I18nProvider>
     </MemoryRouter>
   )
@@ -213,7 +213,7 @@ describe('titlebar app-action cluster', () => {
     expect(screen.queryByLabelText('Layout editor')).toBeNull()
   })
 
-  it('moves settings, layout, and HUD to the left when the appearance setting says left', () => {
+  it('moves layout and HUD to the left when the appearance setting says left', () => {
     $developerMode.set(true)
     setTitlebarAppActionsSide('left')
     renderControls('/')
@@ -221,9 +221,20 @@ describe('titlebar app-action cluster', () => {
     const left = screen.getByLabelText('Window controls')
     const right = screen.getByLabelText('App controls')
 
-    expect(within(left).getByLabelText('Open settings')).toBeTruthy()
     expect(within(left).getByLabelText('Layout editor')).toBeTruthy()
     expect(within(left).getByLabelText('HUD mode')).toBeTruthy()
-    expect(within(right).queryByLabelText('Open settings')).toBeNull()
+    expect(within(right).queryByLabelText('Layout editor')).toBeNull()
+  })
+
+  it('has no titlebar settings entry on either side', () => {
+    $developerMode.set(true)
+
+    for (const side of ['left', 'right'] as const) {
+      setTitlebarAppActionsSide(side)
+      const { unmount } = renderControls('/')
+
+      expect(screen.queryByLabelText('Open settings')).toBeNull()
+      unmount()
+    }
   })
 })

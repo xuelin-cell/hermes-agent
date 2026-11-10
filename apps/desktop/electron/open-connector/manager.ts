@@ -82,8 +82,7 @@ export class ConnectorManager {
       !this.closed && this.options.active() && current &&
         current.uid === expected.uid &&
         current.token === expected.token &&
-        current.phone === expected.phone &&
-        current.expiresAt > Date.now()
+        current.phone === expected.phone
     )
   }
 

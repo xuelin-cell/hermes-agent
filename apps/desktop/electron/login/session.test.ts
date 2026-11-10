@@ -9,8 +9,8 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-it('只接受完整可信字段与未来期限，UID 不丢精度，失败始终没有身份', async () => {
-  const payload = { uid: 'fixture-uid', token: 'private-token', expiresAt: Date.now() + 60_000 }
+it('只接受完整可信字段和合法时间元数据，UID 不丢精度，失败始终没有身份', async () => {
+  const payload = { uid: 'fixture-uid', token: 'private-token', expiresAt: Date.now() - 60_000 }
   const request = vi.fn<typeof fetch>()
   const save = vi.fn()
   const session = new LoginSession(request, { save, load: vi.fn() })
@@ -32,8 +32,8 @@ it('只接受完整可信字段与未来期限，UID 不丢精度，失败始终
       { uid: {} },
       { token: '' },
       { expiresAt: undefined },
-      { expiresAt: Date.now() - 1 },
-      { expiresAt: Math.floor(Date.now() / 1000) },
+      { expiresAt: 0 },
+      { expiresAt: Number.MAX_SAFE_INTEGER },
       { expiresAt: 'tomorrow' },
       { expiresAt: undefined, expireIn: -1 }
     ].map(change => ({ code: 0, data: { ...payload, ...change } }))
@@ -118,7 +118,7 @@ it('短信验证码输错和失效返回不同原因，未知错误不透传正�
   expect(session.currentIdentity()).toBeNull()
 })
 
-it('并发只消费一次验证码；有效身份复用、过期清除，关闭时取消且迟到响应不能恢复', async () => {
+it('并发只消费一次验证码；到期后仍复用身份，关闭时取消且迟到响应不能恢复', async () => {
   vi.useFakeTimers()
   let resolve!: (response: Response) => void
 
@@ -143,24 +143,25 @@ it('并发只消费一次验证码；有效身份复用、过期清除，关闭�
   expect(request).toHaveBeenCalledTimes(1)
   expect(save).toHaveBeenCalledTimes(1)
   vi.advanceTimersByTime(60_000)
-  expect(session.currentIdentity()).toBeNull()
-  request.mockResolvedValueOnce(Response.json({ uid: 'uid', token: 'private-token', expires_in: 60 }))
-  expect((await session.login(input)).ok).toBe(true)
-  vi.advanceTimersByTime(60_000)
+  expect(session.currentIdentity()?.token).toBe('private-token')
+  expect(await session.login(input)).toEqual(result)
+  expect(request).toHaveBeenCalledTimes(1)
+  session.dispose()
+  const closing = new LoginSession(request, { save, load: vi.fn() })
   request.mockImplementationOnce(
     () =>
       new Promise(done => {
         resolve = done
       })
   )
-  const late = session.login(input)
-  session.dispose()
+  const late = closing.login(input)
+  closing.dispose()
   expect(request.mock.calls.at(-1)![1]!.signal!.aborted).toBe(true)
   resolve(Response.json({ code: 0, data: { uid: 'late', token: 'late-token', expireIn: 60 } }))
   expect(await late).toEqual({ ok: false })
-  expect(save).toHaveBeenCalledTimes(2)
-  expect(session.currentIdentity()).toBeNull()
-  expect(await session.login(input)).toEqual({ ok: false })
+  expect(save).toHaveBeenCalledTimes(1)
+  expect(closing.currentIdentity()).toBeNull()
+  expect(await closing.login(input)).toEqual({ ok: false })
 })
 
 it('持久化失败不完成登录，仅返回存储类别；再次提交成功后才建立身份', async () => {
@@ -210,8 +211,11 @@ it('恢复原 UID、token 和原期限，不发网络请求；重复读取不续
   })
   expect(credentials.load).toHaveBeenCalledTimes(1)
   vi.advanceTimersByTime(30_000)
-  expect(session.restore()).toEqual({ ok: false })
-  expect(session.currentIdentity()).toBeNull()
+  expect(session.restore()).toEqual({
+    ok: true,
+    account: { maskedPhone: record.maskedPhone, expiresAt: record.expiresAt }
+  })
+  expect(session.currentIdentity()?.token).toBe(record.token)
   const calls = credentials.load.mock.calls.length
   session.dispose()
   expect(session.restore()).toEqual({ ok: false })
@@ -220,7 +224,7 @@ it('恢复原 UID、token 和原期限，不发网络请求；重复读取不续
   expect(credentials.save).not.toHaveBeenCalled()
 })
 
-it('无记录、解密失败和到期记录均要求重新登录，不改写存储或调用上游', () => {
+it('无记录和解密失败要求重新登录，到期记录仍恢复原身份，不改写存储或调用上游', () => {
   const credentials = { save: vi.fn(), load: vi.fn() }
   const request = vi.fn<typeof fetch>()
   const session = new LoginSession(request, credentials)
@@ -237,8 +241,8 @@ it('无记录、解密失败和到期记录均要求重新登录，不改写存�
     expiresAt: Date.now() - 1,
     maskedPhone: '138****0000'
   })
-  expect(session.restore()).toEqual({ ok: false })
-  expect(session.currentIdentity()).toBeNull()
+  expect(session.restore()).toMatchObject({ ok: true, account: { maskedPhone: '138****0000' } })
+  expect(session.currentIdentity()?.token).toBe('token')
   expect(credentials.save).not.toHaveBeenCalled()
   expect(request).not.toHaveBeenCalled()
 })
@@ -277,7 +281,7 @@ it('套餐查询必须先有身份；有套餐、失败和空套餐不改变原�
   expect(credentials.save).not.toHaveBeenCalled()
 })
 
-it('并发套餐合并请求；到期或关闭后的迟到响应不能恢复身份或泄露套餐', async () => {
+it('并发套餐合并请求；跨越 JWT 到期仍接收结果，关闭后迟到响应不能恢复身份或泄露套餐', async () => {
   vi.useFakeTimers()
 
   const record = {
@@ -307,9 +311,9 @@ it('并发套餐合并请求；到期或关闭后的迟到响应不能恢复身�
   resolve(
     Response.json({ apiKey: 'key', models: { models: [{ model: 'late-model', base_url: 'https://models.invalid' }] } })
   )
-  expect(await pending).toEqual({ status: 'failed' })
-  expect(session.currentIdentity()).toBeNull()
-  expect(await session.queryPlan()).toEqual({ status: 'failed' })
+  expect(await pending).toEqual({ status: 'available', models: [{ name: 'late-model', isDefault: true }] })
+  expect(session.currentIdentity()?.token).toBe(record.token)
+  expect(session.currentPlan()).toMatchObject({ status: 'available' })
   expect(request).toHaveBeenCalledTimes(1)
 
   const second = new LoginSession(request, {

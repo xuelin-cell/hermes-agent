@@ -22,6 +22,10 @@ export const CRON_ROUTE = '/cron'
 export const PROFILES_ROUTE = '/profiles'
 export const AGENTS_ROUTE = '/agents'
 export const STARMAP_ROUTE = '/starmap'
+/** The notification list as a WORKSPACE PAGE (not an overlay): the account
+ *  block's bell navigates here and it fills the workspace pane like
+ *  capabilities/artifacts. */
+export const NOTIFICATIONS_ROUTE = '/notifications'
 
 export type AppView =
   | 'session-import'
@@ -37,6 +41,7 @@ export type AppView =
   // session-title dropdown while a plugin page was showing.
   | 'extension'
   | 'messaging'
+  | 'notifications'
   | 'profiles'
   | 'settings'
   | 'starmap'
@@ -52,6 +57,7 @@ export type AppRouteId =
   | 'cron'
   | 'messaging'
   | 'new'
+  | 'notifications'
   | 'profiles'
   | 'settings'
   | 'starmap'
@@ -74,6 +80,7 @@ export const APP_ROUTES = [
   { id: 'webhooks', path: WEBHOOKS_ROUTE, view: 'webhooks' },
   { id: 'artifacts', path: ARTIFACTS_ROUTE, view: 'artifacts' },
   { id: 'cron', path: CRON_ROUTE, view: 'cron' },
+  { id: 'notifications', path: NOTIFICATIONS_ROUTE, view: 'notifications' },
   { id: 'profiles', path: PROFILES_ROUTE, view: 'profiles' },
   { id: 'agents', path: AGENTS_ROUTE, view: 'agents' },
   { id: 'starmap', path: STARMAP_ROUTE, view: 'starmap' }
@@ -167,7 +174,6 @@ export const OVERLAY_VIEWS: ReadonlySet<AppView> = new Set([
   'session-import',
   'agents',
   'command-center',
-  'cron',
   'profiles',
   'settings',
   'starmap',
@@ -183,7 +189,8 @@ export function isOverlayView(view: AppView): boolean {
  *  Contributed full pages (`extension`) hide the app clusters only while the
  *  page actually mounts `titleBar.*` chrome — those slots are mount-scoped, so
  *  a plugin page with no titlebar contribution keeps the app controls.
- *  First-party workspace pages (capabilities/messaging/artifacts) keep the clusters. */
+ *  First-party workspace pages (capabilities/messaging/artifacts/notifications)
+ *  keep the clusters. */
 export function hidesFixedTitlebarClusters(view: AppView): boolean {
   return isOverlayView(view) || view === 'extension'
 }

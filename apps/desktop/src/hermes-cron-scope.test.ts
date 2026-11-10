@@ -104,6 +104,12 @@ describe('cron helpers are profile-scoped', () => {
     void getCronJobs()
     expect(api.mock.calls.at(-1)?.[0].path).toBe('/api/cron/jobs')
   })
+
+  it('run history accepts an explicit owner profile for a cross-profile job', () => {
+    void getCronJobRuns('job-1', 20, 'worker_alpha')
+
+    expect(api.mock.calls.at(-1)?.[0].path).toBe('/api/cron/jobs/job-1/runs?limit=20&profile=worker_alpha')
+  })
 })
 
 // Contract (#82527): the run rows a cron job returns are sessions like any

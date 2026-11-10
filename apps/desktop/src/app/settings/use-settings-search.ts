@@ -16,7 +16,7 @@ import { useOnProfileSwitch } from '../hooks/use-on-profile-switch'
 
 import { SECTIONS } from './constants'
 import { OTHER_SUBPAGES } from './other-subpages'
-import { SETTING_IDS, settingSearchTargets } from './settings-manifest'
+import { SETTING_IDS, settingDefinition, settingSearchTargets } from './settings-manifest'
 import { buildConfigSearchEntries, buildCredentialSearchEntries, type SettingsSearchEntry } from './settings-search'
 import { settingsSubpages } from './subpages'
 import type { SettingsView } from './types'
@@ -149,7 +149,8 @@ export function useSettingsSearchCatalog(enabled: boolean) {
   // Every hand-built settings row, straight from the manifest that also
   // routes and ids them — the palette cannot drift from the pages.
   const settingEntries: SettingsSearchEntry[] = settingSearchTargets(t)
-    .filter(({ id }) => developerMode || id !== SETTING_IDS.appearance.pet)
+    .filter(({ id, view }) => developerMode || !(view === 'config:appearance' &&
+      (['typography', 'window-layout', 'chat-display'].includes(settingDefinition(view, id)?.subpage ?? '') || new Set<string>([SETTING_IDS.appearance.resumeLastSession, SETTING_IDS.appearance.tips, SETTING_IDS.appearance.tours, SETTING_IDS.appearance.pet, SETTING_IDS.appearance.introSplash, SETTING_IDS.appearance.terminalFont]).has(id))))
     .map(({ id, view, ...entry }) => {
       const parent = parentOf(view)
 

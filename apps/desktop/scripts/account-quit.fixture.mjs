@@ -67,7 +67,7 @@ export async function exerciseQuit(root, userData) {
   const runningRecord=readFileSync(path.join(userData,'maas-logout-pending.json'))
   globalThis.fixtureDialogResponse=0
   app.quit()
-  await until(()=>globalThis.fixtureErrors.some(text=>text==='退出 Hermes Desktop MT？'),'统一退出提示')
+  await until(()=>globalThis.fixtureErrors.some(text=>text==='退出 元景数字员工？'),'统一退出提示')
   await delay(100)
   assert.equal(child.exitCode,null)
   assert.deepEqual(readFileSync(path.join(userData,'maas-logout-pending.json')),runningRecord)

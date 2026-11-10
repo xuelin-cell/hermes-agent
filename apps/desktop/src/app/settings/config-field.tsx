@@ -43,6 +43,9 @@ export function ConfigField({
 }) {
   const { t } = useI18n()
   const c = t.settings.config
+  const localizedOptionLabels: Record<string, string> | undefined = schemaKey === 'approvals.mode'
+    ? { manual: t.shell.approvalMode.manual, smart: t.shell.approvalMode.smart, off: t.shell.approvalMode.off, ...optionLabels }
+    : optionLabels
 
   const label =
     fieldCopyForSchemaKey(t.settings.fieldLabels, schemaKey) ??
@@ -151,7 +154,7 @@ export function ConfigField({
       <ComboboxInput
         className={CONTROL_TEXT}
         onChange={onChange}
-        optionLabels={optionLabels}
+        optionLabels={localizedOptionLabels}
         options={selectOptions.filter(o => o !== '')}
         placeholder={c.notSet}
         value={String(value ?? '')}
@@ -172,7 +175,7 @@ export function ConfigField({
           {selectOptions.map(option => (
             <SelectItem key={option || EMPTY_SELECT_VALUE} value={option || EMPTY_SELECT_VALUE}>
               {option
-                ? (optionLabels?.[option] ?? prettyName(option))
+                ? (localizedOptionLabels?.[option] ?? prettyName(option))
                 : schemaKey === 'display.personality'
                   ? c.none
                   : schemaKey === 'memory.provider'

@@ -19,6 +19,7 @@ import {
   appViewForPath,
   ARTIFACTS_ROUTE,
   CAPABILITIES_ROUTE,
+  CRON_ROUTE,
   MESSAGING_ROUTE,
   navigateToWorkspacePage,
   NEW_CHAT_ROUTE,
@@ -109,6 +110,13 @@ describe('syncWorkspaceRoute', () => {
     expect(fronted()).toBe(true)
   })
 
+  it('fronts on Scheduled Tasks, which is a workspace page rather than an overlay', () => {
+    syncWorkspaceRoute(CRON_ROUTE)
+
+    expect($workspaceIsPage.get()).toBe(true)
+    expect(fronted()).toBe(true)
+  })
+
   it('fronts when moving between two pages — the atom never changes, the tab must', () => {
     syncWorkspaceRoute(ARTIFACTS_ROUTE)
     vi.mocked(revealTreePane).mockClear()
@@ -153,6 +161,15 @@ describe('navigateToWorkspacePage', () => {
     navigateToWorkspacePage(navigate, CAPABILITIES_ROUTE)
 
     expect(navigate).toHaveBeenCalledWith(CAPABILITIES_ROUTE, undefined)
+    expect(fronted()).toBe(true)
+  })
+
+  it('fronts when Scheduled Tasks is opened again from the sidebar', () => {
+    const navigate = vi.fn()
+
+    navigateToWorkspacePage(navigate, CRON_ROUTE)
+
+    expect(navigate).toHaveBeenCalledWith(CRON_ROUTE, undefined)
     expect(fronted()).toBe(true)
   })
 

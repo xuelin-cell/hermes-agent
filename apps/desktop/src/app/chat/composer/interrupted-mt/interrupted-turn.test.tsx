@@ -20,7 +20,7 @@ import { useInterruptedComposer } from './use-interrupted-composer'
 vi.mock('../model-pill', () => ({ ModelPill: () => null }))
 
 const NOW = 1_800_000_000_000
-const TURN = { detectedAt: NOW, prompt: '整理季度报告', sessionId: 'stored-1' }
+const TURN = { detectedAt: NOW, prompt: '整理季度报告', sessionId: 'stored-1', executionId: 'a'.repeat(64) }
 
 const state: ChatBarState = {
   model: { canSwitch: false, model: '', provider: '' },
@@ -157,7 +157,9 @@ describe('点 ▶ 续跑', () => {
     expect(result.current.placeholder).toBe('上次回答因程序退出被中断，点击 ▶ 继续，或直接输入新内容')
     await act(async () => result.current.onContinue?.())
 
-    expect(onSubmit).toHaveBeenCalledWith(continueNote('整理季度报告'), { displayKind: 'hidden' })
+    expect(onSubmit).toHaveBeenCalledWith(continueNote('整理季度报告'), {
+      displayKind: 'hidden', usageResume: { executionId: TURN.executionId }
+    })
     expect(continueNote('x').startsWith(CONTINUE_PREFIX)).toBe(true)
     expect(bridge.dismiss).toHaveBeenCalledWith('stored-1')
     expect(result.current.onContinue).toBeUndefined()

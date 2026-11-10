@@ -7,6 +7,7 @@ import {
   IconFilter,
   IconFolder,
   IconLanguage,
+  IconMessageCirclePlus,
   IconMoon,
   IconMovie,
   IconPhone
@@ -27,6 +28,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { Tip } from '@/components/ui/tooltip'
 import {
   createCronJob,
   type CronJob,
@@ -41,12 +43,13 @@ import {
 } from '@/hermes'
 import { selectDesktopPaths } from '@/lib/desktop-fs'
 import { ChevronDown, MoreVertical, Pause, Pencil, Play, Plus, Trash2, X } from '@/lib/icons'
+import { relativeTime } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { $cronJobs, invalidateCronJobsRequests } from '@/store/cron'
 import { notify, notifyError } from '@/store/notifications'
 import { $profileScope, ALL_PROFILES } from '@/store/profile'
 
-import { Panel } from '../../overlays/panel'
+import { trySkillInNewChat } from '../../capabilities/skills-mt/try-skill'
 import { mutateAndRefreshCronJobs, refreshCronJobs } from '../cron-actions'
 
 import { useTasksCopy } from './copy'
@@ -65,11 +68,23 @@ import {
 import { TASK_TEMPLATES, type TaskTemplate, type TemplateIcon, templateSchedule } from './templates'
 
 type Filter = 'active' | 'all' | 'completed' | 'paused'
+type TaskPage = 'tasks' | 'history'
+type RunFilter = 'all' | 'failed' | 'running' | 'success'
 type JobWithDir = CronJob & { workdir?: null | string }
 
+interface TaskRun {
+  job: JobWithDir
+  run: SessionInfo
+}
+
+interface SelectedJob {
+  id: string
+  profile?: null | string
+}
+
 interface ScheduledTasksViewProps {
-  onClose: () => void
   onOpenSession?: (sessionId: string, session?: SessionInfo) => void
+  onRunTask?: (prompt: string) => Promise<boolean>
 }
 
 interface EditorState {
@@ -100,17 +115,91 @@ function jobBucket(job: CronJob): Exclude<Filter, 'all'> {
   return job.state === 'paused' || !job.enabled ? 'paused' : 'active'
 }
 
+function runStatusKind(run: SessionInfo): Exclude<RunFilter, 'all'> {
+  const title = run.title?.toLowerCase() ?? ''
+
+  if (run.is_active) {
+    return 'running'
+  }
+
+  if (title.startsWith('failed')) {
+    return 'failed'
+  }
+
+  return 'success'
+}
+
+function runStatus(run: SessionInfo, t: ReturnType<typeof useTasksCopy>): string {
+  const status = runStatusKind(run)
+
+  return status === 'running'
+    ? t('runStatusRunning')
+    : status === 'failed'
+      ? t('runStatusFailed')
+      : t('runStatusSuccess')
+}
+
+function runDuration(run: SessionInfo): string {
+  const end = run.ended_at ?? run.last_active
+  const seconds = Math.max(0, Math.round(end - run.started_at))
+
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+
+  return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`
+}
+
+function getRunsForJob(job: JobWithDir, limit: number): Promise<SessionInfo[]> {
+  return job.profile ? getCronJobRuns(job.id, limit, job.profile) : getCronJobRuns(job.id, limit)
+}
+
+function isRecurringJob(job: CronJob): boolean {
+  return job.schedule?.kind === 'cron' || job.schedule?.kind === 'interval'
+}
+
+function formatRunDate(run: SessionInfo): string {
+  const date = new Date(run.started_at * 1000)
+
+  return Number.isNaN(date.valueOf())
+    ? ''
+    : new Intl.DateTimeFormat(undefined, {
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        month: 'long',
+        weekday: 'short'
+      }).format(date)
+}
+
+function runPreview(run: SessionInfo, fallback: string): string {
+  return run.preview?.trim() || run.title?.trim() || fallback
+}
+
 /** 定时任务页（UniWork 样式）：任务卡片、筛选、从模板入手、新建 / 编辑弹窗。 */
-export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksViewProps) {
+export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksViewProps) {
   const t = useTasksCopy()
   const jobs = useStore($cronJobs) as JobWithDir[]
   const profile = cronProfile(useStore($profileScope))
   const [loading, setLoading] = useState(jobs.length === 0)
+  const [page, setPage] = useState<TaskPage>('tasks')
   const [filter, setFilter] = useState<Filter>('all')
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [templatesDismissed, setTemplatesDismissed] = useState(false)
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [pendingDelete, setPendingDelete] = useState<CronJob | null>(null)
+  const [runningJobId, setRunningJobId] = useState<string | null>(null)
+  const [runs, setRuns] = useState<TaskRun[] | null>(null)
+  const [runFilter, setRunFilter] = useState<RunFilter>('all')
+  const [selectedJob, setSelectedJob] = useState<SelectedJob | null>(null)
+  const [selectedJobRuns, setSelectedJobRuns] = useState<SessionInfo[] | null>(null)
+
+  const selectedJobRecord = selectedJob
+    ? (jobs.find(job => job.id === selectedJob.id && job.profile === selectedJob.profile) ?? null)
+    : null
 
   const words: ScheduleWords = useMemo(
     () => ({
@@ -147,6 +236,69 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
 
     return () => invalidateCronJobsRequests()
   }, [refresh])
+
+  useEffect(() => {
+    if (page !== 'history') {
+      return
+    }
+
+    let cancelled = false
+
+    setRuns(null)
+    void Promise.all(
+      jobs.map(async job =>
+        (await getRunsForJob(job, 20)).filter(run => run.source !== 'cron_output').map(run => ({ job, run }))
+      )
+    ).then(
+      results => {
+        if (!cancelled) {
+          setRuns(
+            results
+              .flat()
+              .sort((left, right) => right.run.started_at - left.run.started_at)
+              .slice(0, 100)
+          )
+        }
+      },
+      error => {
+        if (!cancelled) {
+          setRuns([])
+          notifyError(error, t('loadFailed'))
+        }
+      }
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [jobs, page, t])
+
+  useEffect(() => {
+    if (!selectedJobRecord) {
+      return
+    }
+
+    let cancelled = false
+
+    setSelectedJobRuns(null)
+    void getRunsForJob(selectedJobRecord, 20).then(
+      loadedRuns => {
+        if (!cancelled) {
+          setSelectedJobRuns(loadedRuns.filter(run => run.source !== 'cron_output'))
+        }
+      },
+      error => {
+        if (!cancelled) {
+          setSelectedJobRuns([])
+          notifyError(error, t('loadFailed'))
+        }
+      }
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedJobRecord, t])
 
   const mutate = useCallback(
     async (action: () => Promise<unknown>) => {
@@ -195,17 +347,39 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
     return t('customSchedule', job.schedule_display ?? job.schedule?.display ?? '')
   }
 
-  const openLatestRun = async (job: CronJob) => {
-    try {
-      const [run] = await getCronJobRuns(job.id, 1)
+  const openTask = async (job: JobWithDir) => {
+    if (isRecurringJob(job)) {
+      setSelectedJob({ id: job.id, profile: job.profile })
 
-      if (run && onOpenSession) {
+      return
+    }
+
+    try {
+      const [run] = await getRunsForJob(job, 1)
+
+      if (run && run.source !== 'cron_output' && onOpenSession) {
         onOpenSession(run.id, run)
       } else {
         notify({ kind: 'info', message: t('noRuns') })
       }
     } catch (error) {
       notifyError(error, t('loadFailed'))
+    }
+  }
+
+  const runNow = async (job: CronJob) => {
+    if (runningJobId) {
+      return
+    }
+
+    setRunningJobId(job.id)
+
+    try {
+      await onRunTask?.(job.prompt)
+    } catch (error) {
+      notifyError(error, t('actionFailed'))
+    } finally {
+      setRunningJobId(null)
     }
   }
 
@@ -216,72 +390,158 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
     paused: t('filterPaused')
   }
 
+  const runFilterLabel: Record<RunFilter, string> = {
+    all: t('runStatusAll'),
+    failed: t('runStatusFailed'),
+    running: t('runStatusRunning'),
+    success: t('runStatusSuccess')
+  }
+
   const canReveal = typeof window !== 'undefined' && typeof window.hermesDesktop?.revealPath === 'function'
 
   return (
-    <Panel onClose={onClose}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-8">
-        <header className="mb-5">
-          <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
-        </header>
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-(--ui-chat-surface-background)">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-8 py-7">
+        <header aria-label={t('title')} className="mb-7 flex items-center gap-4">
+          <div className="flex items-center gap-8" role="tablist">
+            <button
+              aria-selected={page === 'tasks'}
+              className={cn(
+                'text-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                page === 'tasks' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+              onClick={() => {
+                setPage('tasks')
+                setSelectedJob(null)
+              }}
+              role="tab"
+              type="button"
+            >
+              {t('title')}
+            </button>
+            <button
+              aria-selected={page === 'history'}
+              className={cn(
+                'text-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+                page === 'history' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+              onClick={() => {
+                setPage('history')
+                setSelectedJob(null)
+              }}
+              role="tab"
+              type="button"
+            >
+              {t('runHistory')}
+            </button>
+          </div>
 
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          {showTemplates ? (
-            <>
-              <Button
-                onClick={() => {
-                  setTemplatesOpen(false)
-                  setTemplatesDismissed(true)
-                }}
-                size="sm"
-                variant="outline"
-              >
-                {t('back')}
-              </Button>
-              <span className="text-sm text-muted-foreground">{t('templatesTitle')}</span>
-            </>
+          {page === 'tasks' ? (
+            <div className="ml-auto flex items-center gap-2">
+              {showTemplates ? (
+                <Button
+                  className="h-7 px-3 text-sm"
+                  onClick={() => {
+                    setTemplatesOpen(false)
+                    setTemplatesDismissed(true)
+                  }}
+                  size="sm"
+                  variant="outline"
+                >
+                  {t('back')}
+                </Button>
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="h-7 rounded-full px-3 text-sm" size="sm" variant="outline">
+                      <IconFilter size={14} />
+                      {filterLabel[filter]}
+                      <ChevronDown className="size-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuRadioGroup onValueChange={value => setFilter(value as Filter)} value={filter}>
+                      {(['all', 'active', 'paused', 'completed'] as const).map(option => (
+                        <DropdownMenuRadioItem key={option} value={option}>
+                          {filterLabel[option]}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <div className="flex h-7 overflow-hidden rounded-full border border-border">
+                <Button
+                  className="h-full rounded-r-none border-0 px-3 text-sm"
+                  onClick={() => setEditor({})}
+                  size="sm"
+                  variant="outline"
+                >
+                  <Plus className="size-4" />
+                  {t('create')}
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      aria-label={t('createMenu')}
+                      className="h-full rounded-l-none border-0 border-l border-border px-2"
+                      size="sm"
+                      title={t('createMenu')}
+                      variant="outline"
+                    >
+                      <ChevronDown className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => trySkillInNewChat(t('conversationPrompt'))}>
+                      <IconMessageCirclePlus className="size-4" />
+                      {t('fromConversation')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setTemplatesDismissed(false)
+                        setTemplatesOpen(true)
+                      }}
+                    >
+                      <IconClipboardList className="size-4" />
+                      {t('fromTemplate')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
           ) : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="rounded-full" size="sm" variant="outline">
-                  <IconFilter size={14} />
-                  {filterLabel[filter]}
-                  <ChevronDown className="size-3.5" />
+                <Button className="group ml-auto h-7 rounded-full px-3 text-sm" size="sm" variant="outline">
+                  {runFilterLabel[runFilter]}
+                  <ChevronDown className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuRadioGroup onValueChange={value => setFilter(value as Filter)} value={filter}>
-                  {(['all', 'active', 'paused', 'completed'] as const).map(option => (
+              <DropdownMenuContent align="end">
+                <DropdownMenuRadioGroup onValueChange={value => setRunFilter(value as RunFilter)} value={runFilter}>
+                  {(['all', 'running', 'success', 'failed'] as const).map(option => (
                     <DropdownMenuRadioItem key={option} value={option}>
-                      {filterLabel[option]}
+                      {runFilterLabel[option]}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          <div className="ml-auto flex gap-2">
-            <Button className="rounded-full" onClick={() => setEditor({})} size="sm" variant="outline">
-              <Plus className="size-4" />
-              {t('create')}
-            </Button>
-            <Button
-              className="rounded-full"
-              onClick={() => {
-                setTemplatesDismissed(false)
-                setTemplatesOpen(true)
-              }}
-              size="sm"
-              variant="outline"
-            >
-              <IconClipboardList size={15} />
-              {t('fromTemplate')}
-            </Button>
-          </div>
-        </div>
+        </header>
 
-        {showTemplates ? (
+        {selectedJobRecord ? (
+          <TaskRunCollection
+            job={selectedJobRecord}
+            onBack={() => setSelectedJob(null)}
+            onOpenSession={onOpenSession}
+            runs={selectedJobRuns}
+            t={t}
+          />
+        ) : page === 'history' ? (
+          <RunHistory onOpenSession={onOpenSession} runFilter={runFilter} runs={runs} t={t} />
+        ) : showTemplates ? (
           <div className="grid gap-4 sm:grid-cols-2">
             {TASK_TEMPLATES.map(template => {
               const Icon = TEMPLATE_ICONS[template.icon]
@@ -316,7 +576,7 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
               <article
                 className="flex cursor-pointer flex-col justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-5 transition-colors hover:bg-muted/40"
                 key={job.id}
-                onClick={() => void openLatestRun(job)}
+                onClick={() => void openTask(job)}
               >
                 <div className="min-w-0">
                   <div className="flex items-start justify-between gap-3">
@@ -352,13 +612,37 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
                     {footerText(job)}
                   </span>
                   <div className="flex shrink-0 items-center gap-1" onClick={event => event.stopPropagation()}>
-                    <Button onClick={() => void openLatestRun(job)} size="sm" variant="ghost">
+                    <Tip
+                      className="rounded-2xl px-4 py-2 text-sm font-semibold tracking-[0.01em] shadow-[0_8px_20px_rgb(0_0_0_/_0.22)]"
+                      label={t('runNow')}
+                      placement="control"
+                    >
+                      <Button
+                        aria-label={t('runNow')}
+                        className="rounded-xl transition-colors hover:bg-muted/80"
+                        disabled={runningJobId !== null || !onRunTask}
+                        onClick={() => void runNow(job)}
+                        size="icon-sm"
+                        variant="ghost"
+                      >
+                        <Play className="size-4" />
+                      </Button>
+                    </Tip>
+                    <Button onClick={() => void openTask(job)} size="sm" variant="ghost">
                       {t('view')}
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button aria-label={t('more')} size="icon-sm" title={t('more')} variant="ghost">
+                        <Button
+                          aria-label={t('more')}
+                          className="group relative overflow-visible rounded-xl transition-colors hover:bg-muted/80"
+                          size="icon-sm"
+                          variant="ghost"
+                        >
                           <MoreVertical className="size-4" />
+                          <span className="pointer-events-none absolute bottom-full left-1/2 z-(--z-over-modal) mb-1 -translate-x-1/2 rounded-2xl bg-foreground px-4 py-2 text-sm font-semibold tracking-[0.01em] whitespace-nowrap text-background opacity-0 shadow-[0_8px_20px_rgb(0_0_0_/_0.22)] transition-opacity group-hover:opacity-100">
+                            {t('more')}
+                          </span>
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
@@ -451,7 +735,125 @@ export function ScheduledTasksView({ onClose, onOpenSession }: ScheduledTasksVie
         open={pendingDelete !== null}
         title={t('deleteTitle')}
       />
-    </Panel>
+    </div>
+  )
+}
+
+function TaskRunCollection({
+  job,
+  onBack,
+  onOpenSession,
+  runs,
+  t
+}: {
+  job: JobWithDir
+  onBack: () => void
+  onOpenSession?: (sessionId: string, session?: SessionInfo) => void
+  runs: SessionInfo[] | null
+  t: ReturnType<typeof useTasksCopy>
+}) {
+  const label = job.name || job.prompt
+
+  return (
+    <section aria-label={label} className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-5 flex items-center gap-3">
+        <Button onClick={onBack} size="sm" variant="outline">
+          {t('back')}
+        </Button>
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-semibold text-foreground">{label}</h2>
+        </div>
+      </div>
+      {runs === null ? (
+        <p className="py-10 text-center text-sm text-muted-foreground">{t('loading')}</p>
+      ) : runs.length === 0 ? (
+        <p className="py-10 text-center text-sm text-muted-foreground">{t('noRuns')}</p>
+      ) : (
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-7">
+          {runs.map(run => (
+            <div key={run.id}>
+              <time
+                className="mb-3 block text-[length:var(--control-font-size,0.75rem)] font-semibold text-foreground"
+                dateTime={new Date(run.started_at * 1000).toISOString()}
+              >
+                {formatRunDate(run)}
+              </time>
+              <button
+                aria-label={t('openRun', label)}
+                className="block w-full rounded-3xl border border-border/60 bg-muted/20 px-6 py-7 text-left text-[length:var(--control-font-size,0.75rem)] leading-5 text-foreground shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                onClick={() => onOpenSession?.(run.id, run)}
+                type="button"
+              >
+                {runPreview(run, label)}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RunHistory({
+  onOpenSession,
+  runFilter,
+  runs,
+  t
+}: {
+  onOpenSession?: (sessionId: string, session?: SessionInfo) => void
+  runFilter: RunFilter
+  runs: TaskRun[] | null
+  t: ReturnType<typeof useTasksCopy>
+}) {
+  if (runs === null) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">{t('loading')}</p>
+  }
+
+  if (runs.length === 0) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">{t('noRuns')}</p>
+  }
+
+  const visibleRuns = runFilter === 'all' ? runs : runs.filter(({ run }) => runStatusKind(run) === runFilter)
+
+  if (visibleRuns.length === 0) {
+    return <p className="py-10 text-center text-sm text-muted-foreground">{t('noRuns')}</p>
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[40rem]">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(10rem,0.5fr)_minmax(10rem,0.5fr)_minmax(5rem,0.25fr)] border-b border-border/60 px-3 py-3 text-sm text-muted-foreground">
+          <span>{t('runName')}</span>
+          <span>{t('runStatus')}</span>
+          <span>{t('runTime')}</span>
+          <span className="text-right">{t('runDuration')}</span>
+        </div>
+        {visibleRuns.map(({ job, run }) => {
+          const label = job.name || job.prompt
+
+          const row = (
+            <>
+              <span className="truncate font-medium text-foreground">{label}</span>
+              <span className="text-foreground/85">{runStatus(run, t)}</span>
+              <span className="text-muted-foreground">{relativeTime(run.started_at * 1000)}</span>
+              <span className="text-right tabular-nums text-muted-foreground">{runDuration(run)}</span>
+            </>
+          )
+
+          return (
+            <button
+              aria-label={t('openRun', label)}
+              className="grid w-full grid-cols-[minmax(0,1fr)_minmax(10rem,0.5fr)_minmax(10rem,0.5fr)_minmax(5rem,0.25fr)] border-b border-border/50 px-3 py-4 text-left transition-colors hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              key={`${job.id}:${run.id}`}
+              onClick={() => onOpenSession?.(run.id, run)}
+              type="button"
+            >
+              {row}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

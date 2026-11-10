@@ -17,6 +17,7 @@ import { isEditableTarget } from '@/lib/keybinds/combo'
 import { composerFocusBlockedBySurface } from '@/lib/keybinds/composer-focus-keys'
 
 import { requestComposerAttachImages, requestComposerFocus, requestComposerInsert } from './focus'
+import { readCopiedMessageAttachments } from './message-clipboard'
 import { pathifyRefs } from './path-refs'
 import { extractClipboardImageBlobs } from './text-utils'
 import { linkifyUrls } from './url-refs'
@@ -24,8 +25,16 @@ import { linkifyUrls } from './url-refs'
 /** Route clipboard contents to the active composer. True when it carried
  *  something a composer can take (the caller should swallow the event). */
 export function routeClipboardToComposer(clipboard: DataTransfer): boolean {
-  const blobs = extractClipboardImageBlobs(clipboard)
   const text = sanitizeComposerInput(clipboard.getData('text').trim())
+  const attachments = readCopiedMessageAttachments(clipboard)
+
+  if (attachments.length) {
+    requestComposerInsert(pathifyRefs(linkifyUrls(text)), { attachments, mode: 'inline' })
+
+    return true
+  }
+
+  const blobs = extractClipboardImageBlobs(clipboard)
 
   if (blobs.length > 0) {
     requestComposerAttachImages(blobs)

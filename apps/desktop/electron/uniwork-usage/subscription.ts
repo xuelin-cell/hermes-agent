@@ -27,11 +27,15 @@ function parseMarketTicket(body: unknown): MarketTicket | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return null
   }
+
   const data = body as Record<string, unknown>
+
   const value = (key: string): string | null => {
     const field = data[key]
+
     return typeof field === 'string' && field.trim() && field.length <= 4096 ? field : null
   }
+
   const ticket = value('ticket')
   const customerId = value('customerId')
   const timestamp = value('timestamp')
@@ -51,7 +55,7 @@ export class PlanSubscriptionClient {
   async open(): Promise<PlanSubscriptionResult> {
     const identity = this.identity()
 
-    if (!identity || identity.expiresAt <= Date.now()) {
+    if (!identity) {
       return { status: 'failed', reason: 'auth' }
     }
 
@@ -89,8 +93,7 @@ export class PlanSubscriptionClient {
       if (
         !current ||
         current.uid !== identity.uid ||
-        current.token !== identity.token ||
-        current.expiresAt <= Date.now()
+        current.token !== identity.token
       ) {
         return { status: 'failed', reason: 'auth' }
       }

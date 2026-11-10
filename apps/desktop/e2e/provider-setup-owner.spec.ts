@@ -256,7 +256,9 @@ async function selectGateway(page: Page, id: string, label: string, profile: str
 }
 
 async function openProviderKeys(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Open settings', exact: true }).click()
+  // Settings opened from the titlebar gear no longer exists; the rebindable
+  // `nav.settings` shortcut (mod+,) is the remaining keyboard door.
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Comma' : 'Control+Comma')
   await page.getByRole('button', { name: 'Providers', exact: true }).click()
   await page.getByRole('button', { name: 'API keys', exact: true }).click()
   await expect(page.getByRole('button', { name: /^Local \/ custom endpoint/ })).toBeVisible()
@@ -346,9 +348,8 @@ test('Settings provider setup stays on its gateway/profile across A → B → A'
     page = await app.firstWindow()
     installErrorBannerGuard(page)
     watchRpc(page, receipts)
-    await expect(page.getByRole('button', { name: 'Open settings', exact: true })).toBeVisible({ timeout: 90_000 })
     await expect(page.locator('[data-slot="statusbar"]').getByText('ready', { exact: true })).toBeVisible({
-      timeout: 60_000
+      timeout: 90_000
     })
     const localConfig = fs.readFileSync(path.join(sandbox.hermesHome, 'config.yaml'), 'utf8')
     const remoteDefault = fs.readFileSync(path.join(remoteHermesHome, 'config.yaml'), 'utf8')

@@ -29,7 +29,6 @@ export type SidebarActions = Pick<
 export type ChatActions = Pick<
   ComponentProps<typeof ChatView>,
   | 'onAddContextRef'
-  | 'onAddUrl'
   | 'onAttachDroppedItems'
   | 'onAttachImageBlob'
   | 'onAttachPastedText'
@@ -41,7 +40,6 @@ export type ChatActions = Pick<
   | 'onPasteClipboardImage'
   | 'onPickFiles'
   | 'onPickFolders'
-  | 'onPickImages'
   | 'onReload'
   | 'onRemoveAttachment'
   | 'onRestoreToMessage'
@@ -67,6 +65,7 @@ export interface WiringActions extends SidebarActions, ChatActions {
   getGateway: () => ComponentProps<typeof ChatView>['gateway']
   openAgents: () => void
   openCommandCenterSection: (section: CommandCenterSection) => void
+  runCronTask: (prompt: string) => Promise<boolean>
   requestGateway: GatewayRequester
   selectModel: ComponentProps<typeof ModelMenuPanel>['onSelectModel']
   toggleCommandCenter: () => void

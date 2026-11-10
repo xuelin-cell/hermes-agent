@@ -75,7 +75,7 @@ it('运行中新助手合并准备，配置只走 API；补标题扩展并关原
   // expert-b 已手动停用标题扩展并关过原版命名：不重新启用，也不重复保存命名开关。
   const disabledPlugins: Record<string, string[]> = {
     'expert-a': ['desktop-deliverables'],
-    'expert-b': ['desktop-deliverables', 'uniwork-titles']
+    'expert-b': ['desktop-deliverables', 'uniwork-titles', 'uniwork-telemetry']
   }
 
   const saved: Record<string, any> = Object.fromEntries(
@@ -132,7 +132,7 @@ it('运行中新助手合并准备，配置只走 API；补标题扩展并关原
 
   for (const profile of ['expert-a', 'expert-b']) {
     expect(saved[profile].plugins).toEqual({
-      enabled: ['personal', 'desktop-artifact-share', ...(profile === 'expert-a' ? ['uniwork-titles'] : [])],
+      enabled: ['personal', 'desktop-artifact-share', ...(profile === 'expert-a' ? ['uniwork-titles', 'uniwork-telemetry'] : [])],
       disabled: disabledPlugins[profile]
     })
     expect(saved[profile].auxiliary).toEqual({ title_generation: { enabled: false } })

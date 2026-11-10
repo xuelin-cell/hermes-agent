@@ -11,6 +11,15 @@ const catalog = {
   ]
 }
 
+it('保留真实套餐和模型展示名供统计使用，不把目录 UUID 当作 modelId', async () => {
+  const result = await fetchPlan(async () => Response.json({ code: 0, data: {
+    apiKey: 'fixture-key', productId: 'package-1', productName: '办公套餐',
+    models: { models: [{ id: 'local-uuid', model: 'actual-model', display_name: '展示名', base_url: 'https://models.invalid' }] }
+  } }), 'fixture-user-token', new AbortController().signal)
+  expect(result).toMatchObject({ status: 'available', plan: { productId: 'package-1', productName: '办公套餐',
+    models: [{ id: 'local-uuid', name: 'actual-model', displayName: '展示名' }] } })
+})
+
 it('套餐上限遵循固定策略，其余接受正整数和纯数字字符串；看图只信任声明数组', async () => {
   const rows = [
     { model: 'DeepSeek-V4-Flash', context_window: 100000, supported_modalities: ['text'] },

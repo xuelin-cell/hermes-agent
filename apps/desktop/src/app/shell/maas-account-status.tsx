@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Codicon } from '@/components/ui/codicon'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useI18n } from '@/i18n'
 import { notify } from '@/store/notifications'
 
-import { PlanUsagePanel } from './plan-usage/panel'
-
 import type { LoginAccount } from '../../../electron/login/contract'
+
+import { messageCenterAvailable } from './message-center/availability'
+import { MessageCenterEntry } from './message-center/entry'
+import { PlanUsagePanel } from './plan-usage/panel'
 
 /** 头像卡片整合套餐和设置，退出仍统一确认后交给主进程处理停止与重启。 */
 function AccountLogout({ account }: { account: LoginAccount }) {
   const [open, setOpen] = useState(false)
-  const [expired, setExpired] = useState(false)
   const { t } = useI18n()
   const copy = t.desktopLogin
 
@@ -23,54 +24,17 @@ function AccountLogout({ account }: { account: LoginAccount }) {
     }
   }, [account.planAuthRejected, copy.planUsage.auth])
 
-  useEffect(() => {
-    if (expired) {
-      return
-    }
-
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let notified = false
-
-    /** 到期或唤醒后只提示一次，不注销、不停止任务、不移动焦点。 */
-    function checkExpiry(): void {
-      clearTimeout(timer)
-
-      if (notified) {
-        return
-      }
-
-      const remaining = account.expiresAt - Date.now()
-
-      if (remaining <= 0) {
-        notified = true
-        setExpired(true)
-        notify({ id: 'maas-login-expired', kind: 'warning', message: copy.expiredRunning, placement: 'bottom-right' })
-      } else {
-        timer = setTimeout(checkExpiry, Math.min(60_000, remaining))
-      }
-    }
-
-    checkExpiry()
-    window.addEventListener('focus', checkExpiry)
-
-    return () => {
-      clearTimeout(timer)
-      window.removeEventListener('focus', checkExpiry)
-    }
-  }, [account.expiresAt, copy.expiredRunning, expired])
-
   return (
     <>
       <PlanUsagePanel
         account={account}
         onLogout={() => setOpen(true)}
         trigger={
-          <Button data-slot="sidebar-account-trigger" aria-label={account.maskedPhone} variant="ghost" type="button">
-            <span data-slot="sidebar-account-avatar" aria-hidden="true">
+          <Button aria-label={account.maskedPhone} data-slot="sidebar-account-trigger" type="button" variant="ghost">
+            <span aria-hidden="true" data-slot="sidebar-account-avatar">
               <Codicon name="account" size="1rem" />
             </span>
             <span className="min-w-0 flex-1 truncate text-left">{account.maskedPhone}</span>
-            {expired && <span className="text-xs text-muted-foreground">{copy.expiredLabel}</span>}
           </Button>
         }
       />
@@ -87,7 +51,7 @@ function AccountLogout({ account }: { account: LoginAccount }) {
   )
 }
 
-/** 读取本次运行账号，保留到期账号和退出入口；不持久化身份、不执行注销。 */
+/** 读取本次运行账号和退出入口；不持久化身份、不执行注销。 */
 export function useMaasAccount(): LoginAccount | null {
   const [account, setAccount] = useState<LoginAccount | null>(null)
 
@@ -139,12 +103,20 @@ export function useMaasAccount(): LoginAccount | null {
   return account
 }
 
-/** 侧栏底部统一承载账号菜单，沿用主进程账号读取、到期提醒和安全退出。 */
+/** 侧栏底部统一承载账号菜单，沿用主进程账号读取和安全退出。
+ *  通知入口与账号控件同一水平行、紧邻其右：账号按钮占满剩余宽度，
+ *  铃铛固定宽度，所以账号名变长时只截断自己不挤动铃铛。 */
 export function MaasAccountSidebar() {
   const account = useMaasAccount()
+
   return account ? (
-    <div data-slot="sidebar-account" className="shrink-0 px-[6px] pb-0 pt-1">
-      <AccountLogout account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
+    <div className="shrink-0 px-[6px] pb-0 pt-1" data-slot="sidebar-account">
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          <AccountLogout account={account} key={`${account.maskedPhone}:${account.expiresAt}`} />
+        </div>
+        {messageCenterAvailable() && <MessageCenterEntry />}
+      </div>
     </div>
   ) : null
 }

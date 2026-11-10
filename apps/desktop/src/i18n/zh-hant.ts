@@ -354,9 +354,6 @@ export const zhHant = defineLocale({
     logoutTitle: '登出目前帳號？',
     logoutDescription: '將停止目前帳號的本機後端、訊息閘道及其託管工作，並返回登入頁。保留歷史、檔案與排程工作定義。',
     logoutBusy: '正在登出帳號…',
-    expired: '登入已到期，請重新登入。',
-    expiredLabel: '登入已到期',
-    expiredRunning: '登入已到期，目前工作繼續執行。您可以登出帳號後重新登入。',
     resendAfter: '{seconds} 秒後重發',
     smsSendError: '傳送失敗，請檢查輸入或重新整理圖片後重試。',
     smsLimited: '傳送過於頻繁，請稍後重試。',
@@ -737,7 +734,6 @@ export const zhHant = defineLocale({
     unreadSessions: count => (count === 1 ? '1 個未讀工作階段' : `${count} 個未讀工作階段`),
     muteHaptics: '靜音觸感回饋',
     unmuteHaptics: '開啟觸感回饋',
-    openSettings: '開啟設定',
     openStarmap: '開啟記憶圖譜',
     resetHudLayout: '重設 HUD 大小和位置'
   },
@@ -745,9 +741,10 @@ export const zhHant = defineLocale({
   messageCenter: {
     title: '訊息中心',
     unreadCount: count => `${count} 則未讀通知`,
-    markAllRead: '全部已讀',
     empty: '暫無通知',
-    untitled: '公告'
+    emptyHint: '收到的新公告會顯示在這裡。',
+    untitled: '公告',
+    open: '開啟訊息中心'
   },
 
   language: {
@@ -1020,7 +1017,7 @@ export const zhHant = defineLocale({
       tabStripAlways: '一律',
       tabStripNever: '永不',
       appActionsTitle: '應用操作',
-      appActionsDesc: '設定、版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
+      appActionsDesc: '版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
       appActionsLeft: '左側',
       appActionsRight: '右側',
       terminalFontTitle: '終端機字型',
@@ -3407,7 +3404,7 @@ export const zhHant = defineLocale({
   composer: {
     message: '訊息',
     addAttachment: '新增附件',
-    aiDisclaimer: 'AI 回覆可能不準確，請仔細核實重要資訊。',
+    aiDisclaimer: 'AI 回覆可能不準確，涉及醫療、金融等專業決策時，請仔細核實重要資訊。',
     wakingProfile: profile => `正在喚醒 ${profile}…`,
     placeholderStarting: '正在啟動 UniWork...',
     placeholderReconnecting: '正在重新連線至 UniWork…',
@@ -3584,8 +3581,8 @@ export const zhHant = defineLocale({
     themeTryPre: '試試 ',
     themeTryPost: '。',
     attachLabel: '附加',
-    files: '檔案…',
-    folder: '資料夾…',
+    files: '新增檔案',
+    folder: '新增資料夾',
     images: '圖片…',
     pasteImage: '貼上圖片',
     url: 'URL…',
@@ -3790,11 +3787,13 @@ export const zhHant = defineLocale({
       guiSkew: '請更新桌面應用程式',
       error: '更新已暫停'
     },
+    startingUpdate: '正在開始更新…',
     checking: '正在檢查更新…',
     checkFailedTitle: '無法檢查更新',
     tryAgain: '重試',
     notAvailableTitle: '更新不可用',
     unsupportedMessage: '此版本的 UniWork 無法在應用程式內自行更新。',
+    bridgeUnavailable: '桌面端更新服務無法使用，請重新啟動應用程式後再試。',
     connectionRetry: '請檢查網路連線後重試。',
     gitUnusable: 'UniWork 無法在這台電腦上執行 Git，因此無法檢查更新。',
     latestBody: '您正在執行最新版本。',
@@ -3860,6 +3859,7 @@ export const zhHant = defineLocale({
       restarting: '後端正在重新啟動以載入更新…',
       notAvailable: '此後端無法更新。',
       failed: '後端更新失敗。',
+      applied: '後端更新已完成。',
       noReturn: '後端未恢復連線。更新可能未完成——請檢查後端主機。'
     },
     // Restored About-card strings (moved from `settings.about.*` to `updates.*`).

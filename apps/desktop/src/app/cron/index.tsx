@@ -296,6 +296,7 @@ function matchesQuery(job: CronJob, q: string): boolean {
 interface CronViewProps extends React.ComponentProps<'section'> {
   onClose: () => void
   onOpenSession?: (sessionId: string, session?: SessionInfo) => void
+  onRunTask?: (prompt: string) => Promise<boolean>
   setStatusbarItemGroup?: SetStatusbarItemGroup
 }
 

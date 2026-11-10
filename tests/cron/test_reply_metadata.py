@@ -25,14 +25,14 @@ def test_cron_reply_metadata_survives_reopening_its_own_profile(tmp_path, monkey
             self.session_cache_write_tokens = 0
             self.db.create_session(session_id, source="cron")
 
-        def run_conversation(self, prompt, *, task_id):
+        def run_conversation(self, prompt, *, persist_user_message=None, task_id):
             if "without usage" not in prompt:
                 self.session_prompt_tokens += 40
                 self.session_completion_tokens += 8
                 self.session_total_tokens += 48
                 self.session_cache_read_tokens += 10
             messages = [
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": persist_user_message if persist_user_message is not None else prompt},
                 {"role": "assistant", "content": "Checking.", "tool_calls": [
                     {"id": "lookup", "type": "function", "function": {"name": "lookup", "arguments": "{}"}},
                 ]},
@@ -88,6 +88,8 @@ def test_cron_reply_metadata_survives_reopening_its_own_profile(tmp_path, monkey
                            if row["id"].startswith(f"cron_{job_id}_"))
             messages = _project_for_display(reopened.get_messages(session["id"]), home=home)
         assert messages[0]["timestamp"] > 0
+        assert messages[0]["content"] == ("Report with usage" if with_usage else "Report without usage")
+        assert "[IMPORTANT: You are running as a scheduled cron job." not in messages[0]["content"]
         assert "turn_model" not in (messages[1].get("display_metadata") or {})
         reply = messages[-1]
         assert reply["content"] == response

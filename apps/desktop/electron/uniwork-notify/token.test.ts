@@ -10,7 +10,7 @@ const NOW = 1_800_000_000_000
 
 function identity(overrides: Partial<LoginIdentity> = {}): LoginIdentity {
   return {
-    expiresAt: NOW + 3_600_000,
+    expiresAt: NOW - 1,
     maskedPhone: '138****0000',
     phone: '13800000000',
     token: 'login-jwt',
@@ -100,9 +100,9 @@ it('换取失败按状态码分类，登录态无效时不循环重试', async (
   await expect(offline.get()).rejects.toMatchObject({ reason: 'network' })
 })
 
-it('没有有效登录身份时不发请求', async () => {
+it('没有登录身份时不发请求', async () => {
   const request = vi.fn(async () => tokenResponse({ expires: 1_800_003_000, token: 'tk' }))
-  const client = new NtfyTokenClient(() => ({ ...identity(), expiresAt: NOW - 1 }), { now: () => NOW, request })
+  const client = new NtfyTokenClient(() => null, { now: () => NOW, request })
 
   await expect(client.get()).rejects.toMatchObject({ reason: 'auth' })
   expect(request).not.toHaveBeenCalled()

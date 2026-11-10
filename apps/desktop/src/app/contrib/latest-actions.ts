@@ -31,7 +31,6 @@ function latestOptional<A extends unknown[], R>(
 export function latestChatActions(actions: ChatActions): ChatActions {
   return {
     onAddContextRef: (...args) => actions.onAddContextRef(...args),
-    onAddUrl: (...args) => actions.onAddUrl(...args),
     onAttachDroppedItems: (...args) => actions.onAttachDroppedItems(...args),
     onAttachImageBlob: (...args) => actions.onAttachImageBlob(...args),
     onAttachPastedText: latestOptional(() => actions.onAttachPastedText),
@@ -43,7 +42,6 @@ export function latestChatActions(actions: ChatActions): ChatActions {
     onPasteClipboardImage: (...args) => actions.onPasteClipboardImage(...args),
     onPickFiles: (...args) => actions.onPickFiles(...args),
     onPickFolders: (...args) => actions.onPickFolders(...args),
-    onPickImages: (...args) => actions.onPickImages(...args),
     onReload: (...args) => actions.onReload(...args),
     onRemoveAttachment: (...args) => actions.onRemoveAttachment(...args),
     onRestoreToMessage: latestOptional(() => actions.onRestoreToMessage),

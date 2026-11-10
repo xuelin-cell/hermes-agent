@@ -5,7 +5,7 @@ export type TitlebarAppActionsSide = 'left' | 'right'
 
 const STORAGE_KEY = 'hermes.desktop.titlebarAppActions'
 
-/** Right is the original titlebar: Settings / Layout / HUD stay off the tab strip. */
+/** Right is the original titlebar: Layout / HUD stay off the tab strip. */
 export const TITLEBAR_APP_ACTIONS_DEFAULT: TitlebarAppActionsSide = 'right'
 
 const codec: Codec<TitlebarAppActionsSide> = {
@@ -27,21 +27,20 @@ export function setTitlebarAppActionsSide(side: TitlebarAppActionsSide) {
  * The fixed titlebar tools and which of them are instrumentation. ONE table:
  * the buttons spread their entry to render, the width reservation counts the
  * same entries, so a tool Simple hides also releases the space it held.
- * Settings and Layout never carry a tier — they are the way back.
+ * Layout never carries a tier — it is the way back.
  */
 export const TITLEBAR_FIXED_TOOLS = {
   'flip-panes': { tier: 'advanced' },
   hud: { tier: 'advanced' },
   layout: {},
-  'right-sidebar': { tier: 'advanced' },
-  settings: {},
+  'right-sidebar': {},
   sidebar: {}
 } satisfies Record<string, Tiered>
 
 export type TitlebarFixedToolId = keyof typeof TITLEBAR_FIXED_TOOLS
 
 /** The app actions that follow `side`; the sidebar toggle is always left, flip and the right-sidebar toggle always right. */
-const APP_ACTION_IDS: readonly TitlebarFixedToolId[] = ['settings', 'layout', 'hud']
+const APP_ACTION_IDS: readonly TitlebarFixedToolId[] = ['layout', 'hud']
 const RIGHT_FIXED_IDS: readonly TitlebarFixedToolId[] = ['flip-panes', 'right-sidebar']
 
 /** Button counts for the two titlebar clusters, for the mode that is rendering them. */

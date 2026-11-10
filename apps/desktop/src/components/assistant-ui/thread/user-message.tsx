@@ -1,8 +1,9 @@
 import { ActionBarPrimitive, BranchPickerPrimitive, MessagePrimitive, useAuiState } from '@assistant-ui/react'
 import { type FC, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 
+import { copyMessageWithAttachments } from '@/app/chat/composer/message-clipboard'
+import { useSessionView } from '@/app/chat/session-view'
 import { DirectiveContent } from '@/components/assistant-ui/directive-text'
-import { isAttachmentRef } from '@/components/assistant-ui/reference-kinds'
 import {
   messageAttachmentRefs,
   messageContentText,
@@ -24,6 +25,7 @@ import { registerPluginLocales, usePluginI18n } from '@/i18n/plugin-i18n'
 import { triggerHaptic } from '@/lib/haptics'
 import { StopFilled } from '@/lib/icons'
 import { LruCache } from '@/lib/lru-cache'
+import { isMessageAttachmentRef } from '@/lib/sent-attachments'
 import { cn } from '@/lib/utils'
 import { $gateway } from '@/store/gateway'
 import { notifyThreadEditOpen } from '@/store/thread-scroll'
@@ -248,6 +250,7 @@ export const UserMessage: FC<{
 }> = ({ onCancel, onRequestRestoreConfirm }) => {
   const { t } = useI18n()
   const copy = t.assistant.thread
+  const { $cwd } = useSessionView()
   const messageId = useAuiState(s => s.message.id)
   const content = useAuiState(s => s.message.content)
   const messageText = messageContentText(content)
@@ -381,10 +384,9 @@ export const UserMessage: FC<{
   }
 
   const hasBody = messageText.trim().length > 0
-  const fileRefs = attachmentRefs.filter(ref => ref.startsWith('@file:'))
-  const otherRefs = attachmentRefs.filter(ref => !ref.startsWith('@file:'))
+  const fileRefs = attachmentRefs.filter(isMessageAttachmentRef)
+  const otherRefs = attachmentRefs.filter(ref => !isMessageAttachmentRef(ref))
   const hasFiles = fileRefs.length > 0
-  const chipOnlyTurn = !hasBody && !hasFiles && otherRefs.length > 0 && otherRefs.every(isAttachmentRef)
   const isLatestUser = messageId === latestUserId
   const showStop = !readOnly && isLatestUser && threadRunning && Boolean(onCancel)
   // Restore (re-run this exact prompt) is available everywhere the Stop button
@@ -413,21 +415,14 @@ export const UserMessage: FC<{
         <UserMessageText className="wrap-anywhere" text={messageText} />
       </div>
     </div>
-  ) : (
-    // Folder-only references keep their original inline prompt treatment.
-    chipOnlyTurn && (
-      <div className="flex min-h-[1.25rem] flex-wrap gap-1">
-        <DirectiveContent text={otherRefs.join(' ')} />
-      </div>
-    )
-  )
+  ) : null
 
   return (
     <MessagePrimitive.Root asChild>
       <HumanMessageContainer
         attachments={
-          // Images and other references keep their original row below the bubble.
-          otherRefs.length > 0 && !chipOnlyTurn ? (
+          // 未上传的引用继续放在气泡外。
+          otherRefs.length > 0 ? (
             <div className="mb-2 flex flex-wrap gap-1" data-slot="aui_user-attachments">
               <DirectiveContent text={otherRefs.join(' ')} />
             </div>
@@ -471,9 +466,7 @@ export const UserMessage: FC<{
                 {hasFiles ? (
                   // 卡片和文字共享消息气泡；容器不作为按钮，预览与消息编辑分开。
                   <div className={cn(bubbleClassName, 'cursor-default')}>
-                    <div className="flex max-w-full flex-wrap gap-1">
-                      <UserAttachments refs={fileRefs} />
-                    </div>
+                    <UserAttachments refs={fileRefs} />
                     {hasBody && bubbleContent}
                   </div>
                 ) : readOnly ? (
@@ -602,7 +595,14 @@ export const UserMessage: FC<{
                       </button>
                     </ActionBarPrimitive.Edit>
                   </Tip>
-                  <CopyButton appearance="icon" buttonSize="icon-xs" label={copy.copy} side="top" text={messageText} />
+                  <CopyButton
+                    appearance="icon"
+                    buttonSize="icon-xs"
+                    label={copy.copy}
+                    side="top"
+                    text={messageText}
+                    write={hasFiles ? text => copyMessageWithAttachments(text, fileRefs, $cwd.get()) : undefined}
+                  />
                 </>
               )}
             </div>
