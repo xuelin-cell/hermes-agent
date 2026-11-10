@@ -659,6 +659,7 @@ def rewrite_llm_request(*, request=None, **context):
     """
     from . import workfolders
     from .image_hints import rewrite_request
+    from .image_urls import rewrite_request as image_url_request
     from .native_images import remember_request, runtime_scope
     from .reasoning import strip_reasoning_levels
 
@@ -666,9 +667,13 @@ def rewrite_llm_request(*, request=None, **context):
     remember_request(**context)
     with runtime_scope(context.get("session_id", ""), context.get("turn_id", "")):
         hinted = rewrite_request(request=request, **context)
-    if hinted:
-        request = hinted["request"]
-        reasons.append(hinted.get("reason") or "image-hint")
+        if hinted:
+            request = hinted["request"]
+            reasons.append(hinted.get("reason") or "image-hint")
+        linked = image_url_request(request=request, **context)
+        if linked is not None:
+            request = linked
+            reasons.append("image-url")
     stripped = strip_reasoning_levels(request)
     if stripped is not None:
         request = stripped
