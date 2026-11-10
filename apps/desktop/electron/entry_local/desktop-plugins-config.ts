@@ -5,7 +5,7 @@ import { isMap, isScalar, isSeq, type Node, parseDocument, type YAMLMap } from '
 
 import { writeSecretFileAtomic } from '../hardening'
 
-const PLUGINS = ['uniwork-kits', 'desktop-deliverables']
+const PLUGINS = ['uniwork-kits', 'desktop-deliverables', 'uniwork-telemetry']
 const OPTIONS = { version: '1.1' as const, intAsBigInt: true, prettyErrors: false, logLevel: 'silent' as const }
 
 /** 共享映射和合并键不改写，避免影响用户引用的其他配置。 */

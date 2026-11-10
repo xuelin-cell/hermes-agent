@@ -13,7 +13,7 @@ import type { MessagingPlatformInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { CheckCircle2, Loader2, QrCode, RefreshCw } from '@/lib/icons'
 
-import { PlatformCard } from './platform-card'
+import { hasPlatformBinding, PlatformCard } from './platform-card'
 
 const ACTIVE_STATES = new Set(['scanned', 'wait'])
 export const WEIXIN_POLL_MS = 1500
@@ -215,7 +215,8 @@ export function WeixinQrSetup({ onSaved, onUnbind, busy = false, pending, platfo
             >
               {platform.configured ? q.rescan : t.messaging.cards.configure}
             </Button>
-            {platform.configured && (
+            {/* 与其它渠道一致：凭据不完整但仍有残留时也保留解绑入口，解绑干净后才只剩配置。 */}
+            {hasPlatformBinding(platform) && (
               <Button disabled={starting || busy} onClick={() => setConfirmUnbind(true)} size="sm" variant="outline">
                 {q.unbind}
               </Button>
@@ -226,7 +227,7 @@ export function WeixinQrSetup({ onSaved, onUnbind, busy = false, pending, platfo
         pending={pending}
         platform={platform}
       >
-        {platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
+        {platform.enabled && platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
         {panelOpen && (
           <div className="mt-4 flex flex-col items-center gap-3 border-t border-dashed border-(--ui-stroke-secondary) pt-4">
             <p className="flex items-center gap-2 text-xs text-(--ui-text-secondary)">

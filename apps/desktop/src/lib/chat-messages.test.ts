@@ -195,6 +195,23 @@ describe('toChatMessages', () => {
     expect(bare.attachmentRefs).toEqual([paste])
   })
 
+  it('混合附件恢复时允许文件前后空行，正文和代码里的引用保留原位', () => {
+    const file = '@file:`C:\\Docs\\项目周报 (1).pdf`'
+
+    const [mixed, prose, code] = toChatMessages([
+      { role: 'user', content: `@image:/home/poster.png\n\n${file}\n\n@file:C:\\Docs\\IDEA.md\n\n请整理` },
+      { role: 'user', content: `我在说明路径\n${file}` },
+      { role: 'user', content: `\`\`\`\n${file}\n\`\`\`` }
+    ])
+
+    expect(chatMessageText(mixed)).toBe('请整理')
+    expect(mixed.attachmentRefs).toEqual([file, '@file:C:\\Docs\\IDEA.md', '@image:/home/poster.png'])
+    expect(chatMessageText(prose)).toBe(`我在说明路径\n${file}`)
+    expect(chatMessageText(code)).toBe(`\`\`\`\n${file}\n\`\`\``)
+    expect(prose.attachmentRefs).toBeUndefined()
+    expect(code.attachmentRefs).toBeUndefined()
+  })
+
   it('hides a persisted Discord triggering-message note but keeps the reply pointer (#114719)', () => {
     const note =
       '[Triggering message id: `1550380365858865156` — use as `message_id` for reply/react/pin via the discord tools.]'

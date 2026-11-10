@@ -54,7 +54,7 @@ import { $sessionTiles, $workingSessionIds, getRecentlySettledSessionIds } from 
 
 import { refreshCronJobs as refreshCronJobsStore } from '../../cron/cron-actions'
 
-// The recents list is local-only: cron rows have their own section, kanban
+// The recents list includes cron execution conversations, while kanban
 // dispatcher workers are read on the board, finite one-shot runs (`hermes -z`,
 // `chat -q`) are not conversations, and each messaging platform
 // (telegram, discord, …) is fetched separately into its own self-managed
@@ -66,7 +66,6 @@ import { refreshCronJobs as refreshCronJobsStore } from '../../cron/cron-actions
 // kept prune/archive away from them.
 const SIDEBAR_EXCLUDED_SOURCES = [
   'acp',
-  'cron',
   'kanban',
   'oneshot',
   'subagent',

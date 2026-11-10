@@ -142,7 +142,7 @@ test('Word/PPT 卡片未点击即完成真实预转换，点击直接复用账�
     page.on('pageerror', error => errors.push(String(error)))
     await page.route('https://fonts.googleapis.com/**', route => route.abort())
     await page.goto(pathToFileURL(index).href)
-    await expect(page.getByTestId('chat').getByRole('button', { name: 'Open preview', exact: true })).toHaveCount(2)
+    await expect(page.getByTestId('chat').getByRole('button', { name: /^Open preview: / })).toHaveCount(2)
     await expect
       .poll(
         () =>
@@ -157,8 +157,10 @@ test('Word/PPT 卡片未点击即完成真实预转换，点击直接复用账�
     // 点击前的检查保持隐藏，避免人工点击与“后台不自动开面板”的断言互相干扰。
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].showInactive())
     for (const name of ['word.docx', 'slides.pptx']) {
-      const card = page.getByText(name, { exact: true }).locator('..')
-      await card.getByRole('button', { name: 'Open preview', exact: true }).click()
+      await page
+        .getByTestId('chat')
+        .getByRole('button', { name: `Open preview: ${name}`, exact: true })
+        .click()
       const rail = page.getByTestId('rail')
       if (name === 'word.docx')
         await expect(rail.locator('.textLayer span[role="presentation"]').first()).toBeVisible({ timeout: 30000 })

@@ -244,6 +244,20 @@ describe('AboutSettings', (): void => {
     expect(requestUpdateCheck).toHaveBeenCalledTimes(1)
   })
 
+  // The card's label may already say "update now", but the CLIENT button is
+  // still a "check for updates" surface: it enters the one manual-check flow
+  // (check → download dialog → ready → launch) instead of applying directly,
+  // so About and the sidebar account card cannot drift apart.
+  it('routes the client update action through the manual check flow', (): void => {
+    $updateStatus.set({ supported: true, behind: 2 })
+    render(<AboutSettings />)
+
+    fireEvent.click(screen.getByRole('button', { name: en.updates.updateNow }))
+
+    expect(requestUpdateCheck).toHaveBeenCalledTimes(1)
+    expect(startActiveUpdate).not.toHaveBeenCalled()
+  })
+
   it('disables the manual check while one is already running', (): void => {
     $updateChecking.set(true)
     render(<AboutSettings />)

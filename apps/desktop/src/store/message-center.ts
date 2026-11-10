@@ -17,9 +17,6 @@ export const $announcements = atom<readonly AnnouncementRecord[]>([])
 
 export const $unreadAnnouncements = computed($announcements, list => list.filter(item => item.readAt === null).length)
 
-/** 铃铛弹出的消息中心是否展开。 */
-export const $messageCenterOpen = atom(false)
-
 /** 当前持久化归属（脱敏手机号）；空串表示没有登录账号。 */
 let scope = ''
 
@@ -103,7 +100,6 @@ export function openMessageCenterScope(account: string | null): void {
 
   scope = next
   $announcements.set(scope ? readScope(scope) : [])
-  $messageCenterOpen.set(false)
 }
 
 /** 收到公告：按 id 去重（回填与重连会重放），按发布时间倒序插入。 */
@@ -137,12 +133,7 @@ export function markAllAnnouncementsRead(): void {
   write(next)
 }
 
-export function toggleMessageCenter(open?: boolean): void {
-  $messageCenterOpen.set(open ?? !$messageCenterOpen.get())
-}
-
 /** 测试与账号清理用：不经过 scope 直接清空当前窗口的公告。 */
 export function resetMessageCenter(): void {
   $announcements.set([])
-  $messageCenterOpen.set(false)
 }

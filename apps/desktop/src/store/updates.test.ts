@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setApiRequestConnection, setApiRequestProfile } from '@/api/client'
 import type { DesktopUpdateStatus, DesktopVersionInfo } from '@/global'
+import { translateNow, TRANSLATIONS } from '@/i18n'
 import { en } from '@/i18n/en'
 
 const storage = new Map<string, string>()
@@ -116,7 +117,9 @@ const {
   dismissUpdateReady,
   prepareClientUpdate,
   startClientUpdateDownload,
+  installClientUpdate,
   isClientUpdateRunning,
+  $updateDownloading,
   BACKGROUND_UPDATE_CHECK_MS
 } = await import('./updates')
 
@@ -1027,10 +1030,51 @@ describe('applyUpdates terminal state', () => {
     delete (globalThis as unknown as { window?: unknown }).window
   })
 
+  // The regression this guards: a surface that re-enters on re-render (or any
+  // future listener on $updateReady) must not install a package the user never
+  // launched. applyUpdates() refuses unless a click armed it, and the ready
+  // package/surface stay exactly as they were.
+  it('never installs without an explicit user request', async () => {
+    applyMock.mockResolvedValue({ ok: true, handedOff: true })
+    $updateReady.set({ version: '1.2.4' })
+
+    const result = await applyUpdates()
+
+    expect(result).toMatchObject({ ok: false, error: 'install-not-requested' })
+    expect(applyMock).not.toHaveBeenCalled()
+    expect($updateApply.get().applying).toBe(false)
+    expect($updateReady.get()).toEqual({ version: '1.2.4' })
+    expect($updateOverlayOpen.get()).toBe(true)
+  })
+
+  // Publishing the ready package must stay inert: no listener may turn
+  // "bytes are on disk" into "install now".
+  it('publishes the ready package without applying anything', async () => {
+    applyMock.mockResolvedValue({ ok: true, handedOff: true })
+
+    $updateReady.set({ version: '1.2.4' })
+    await Promise.resolve()
+
+    expect(applyMock).not.toHaveBeenCalled()
+    expect($updateApply.get().applying).toBe(false)
+    expect($updateDownloading.get()).toBe(false)
+  })
+
+  // Status copy comes from the catalog: a literal here would surface as English
+  // in a Traditional Chinese session (zh-hant only overrides the keys it lists).
+  it('starts the apply with the catalog copy', async () => {
+    applyMock.mockResolvedValue({ ok: true, handedOff: true })
+
+    const started = installClientUpdate()
+
+    expect($updateApply.get().message).toBe(translateNow('updates.startingUpdate'))
+    await started
+  })
+
   it('holds the restart view when a relauncher hands off (no close, no toast)', async () => {
     applyMock.mockResolvedValue({ ok: true, handedOff: true })
 
-    const result = await applyUpdates()
+    const result = await installClientUpdate()
 
     expect(result.handedOff).toBe(true)
     // The detached relauncher will quit + reopen us; keep "applying" until then.
@@ -1041,7 +1085,7 @@ describe('applyUpdates terminal state', () => {
 
   it('does not claim an installation when the Store reports no remaining update', async () => {
     applyMock.mockResolvedValue({ ok: true, updateAvailable: false })
-    await applyUpdates()
+    await installClientUpdate()
     expect($updateApply.get().applying).toBe(false)
     expect($updateOverlayOpen.get()).toBe(false)
     expect(notifySpy).not.toHaveBeenCalled()
@@ -1052,7 +1096,7 @@ describe('applyUpdates terminal state', () => {
     // relaunch. Must not strand the overlay on a closeless spinner.
     applyMock.mockResolvedValue({ ok: true, backendUpdated: true })
 
-    await applyUpdates()
+    await installClientUpdate()
 
     expect($updateOverlayOpen.get()).toBe(false)
     expect($updateApply.get().applying).toBe(false)
@@ -1064,7 +1108,7 @@ describe('applyUpdates terminal state', () => {
   it('treats an aborted download as a user decision, not a failed update', async () => {
     applyMock.mockResolvedValue({ ok: false, cancelled: true })
 
-    const result = await applyUpdates()
+    const result = await installClientUpdate()
 
     expect(result.cancelled).toBe(true)
     expect($updateApply.get().applying).toBe(false)
@@ -1076,7 +1120,7 @@ describe('applyUpdates terminal state', () => {
   it('lands on a closeable error state when the apply resolves not-ok', async () => {
     applyMock.mockResolvedValue({ ok: false, error: 'rebuild-failed', message: 'rebuild failed' })
 
-    await applyUpdates()
+    await installClientUpdate()
 
     expect($updateDownloadFailure.get()).toMatchObject({ message: 'rebuild failed', source: 'apply' })
     expect($updateApply.get().applying).toBe(false)
@@ -1086,7 +1130,7 @@ describe('applyUpdates terminal state', () => {
   it('routes a thrown apply into the failure dialog instead of a stuck overlay', async () => {
     applyMock.mockRejectedValue(new Error('ipc broke'))
 
-    await applyUpdates()
+    await installClientUpdate()
 
     expect($updateDownloadFailure.get()).toMatchObject({ message: 'ipc broke', source: 'apply' })
     expect($updateApply.get().applying).toBe(false)
@@ -1096,7 +1140,7 @@ describe('applyUpdates terminal state', () => {
   it('keeps the manual command state for CLI installs with no staged updater', async () => {
     applyMock.mockResolvedValue({ ok: true, manual: true, command: 'hermes update' })
 
-    await applyUpdates()
+    await installClientUpdate()
 
     expect($updateApply.get().stage).toBe('manual')
     expect($updateApply.get().command).toBe('hermes update')
@@ -1116,7 +1160,7 @@ describe('applyUpdates terminal state', () => {
       message: 'Backend updated, but the desktop app package was not changed.'
     })
 
-    const result = await applyUpdates()
+    const result = await installClientUpdate()
 
     expect(result.guiUpdated).toBe(false)
     expect($updateApply.get().stage).toBe('guiSkew')
@@ -1139,7 +1183,7 @@ describe('applyUpdates terminal state', () => {
       message: 'Backend updated. Quit and reopen UniWork to finish.'
     })
 
-    const result = await applyUpdates()
+    const result = await installClientUpdate()
 
     expect(result.manualRestart).toBe(true)
     expect($updateApply.get().stage).toBe('manual')
@@ -1847,7 +1891,7 @@ describe('discontinued retirement notice', () => {
     expect(notifySpy.mock.calls[0]?.[0]).not.toMatchObject({ icon: 'gift' })
 
     // The generic update entry point refuses instead of dispatching an apply.
-    const result = await applyUpdates()
+    const result = await installClientUpdate()
     expect(result).toMatchObject({ ok: false, error: 'retirement-blocked' })
     expect(applyMock).not.toHaveBeenCalled()
   })
@@ -1991,6 +2035,7 @@ describe('prepareClientUpdate', () => {
 
 describe('startClientUpdateDownload', () => {
   const prepareMock = vi.fn()
+
   let releasePrepare: (value: unknown) => void = () => {}
 
   /** Holds the transfer open so the states between "started" and "ready" are observable. */
@@ -2007,6 +2052,7 @@ describe('startClientUpdateDownload', () => {
     $updateReady.set(null)
     $updateReadyDismissed.set(false)
     $updateDownloadFailure.set(null)
+    $updateDownloading.set(false)
     $updateStatus.set({ supported: true, updateAvailable: true, latestTag: 'v1.0.0' })
     ;(globalThis as unknown as { window: unknown }).window = {
       hermesDesktop: { updates: { check: vi.fn(), prepare: prepareMock } }
@@ -2023,6 +2069,7 @@ describe('startClientUpdateDownload', () => {
 
   // The manual check's only job is to get the download on screen: the dialog
   // opens on the transfer, and the install still waits for the launch click.
+  // Downloading is tracked separately from apply, which stays idle throughout.
   it('opens the overlay on the download and publishes the ready package', async () => {
     prepareMock.mockImplementation(holdPrepare)
 
@@ -2030,13 +2077,15 @@ describe('startClientUpdateDownload', () => {
 
     expect($updateOverlayOpen.get()).toBe(true)
     expect($updateOverlayTarget.get()).toBe('client')
-    expect($updateApply.get()).toMatchObject({ applying: true, stage: 'fetch' })
+    expect($updateDownloading.get()).toBe(true)
+    expect($updateApply.get().applying).toBe(false)
     expect(isClientUpdateRunning()).toBe(true)
 
     releasePrepare({ ok: true, supported: true, ready: true, version: '1.0.0' })
     await started
 
     expect($updateReady.get()).toEqual({ version: '1.0.0' })
+    expect($updateDownloading.get()).toBe(false)
     expect($updateApply.get().applying).toBe(false)
     expect(isClientUpdateRunning()).toBe(false)
   })
@@ -2063,6 +2112,7 @@ describe('startClientUpdateDownload', () => {
     expect(prepareMock).not.toHaveBeenCalled()
     expect($updateOverlayOpen.get()).toBe(true)
     expect($updateApply.get().applying).toBe(false)
+    expect($updateDownloading.get()).toBe(false)
   })
 
   // A failed transfer belongs to the download-failure dialog, which only shows
@@ -2074,6 +2124,7 @@ describe('startClientUpdateDownload', () => {
 
     expect($updateOverlayOpen.get()).toBe(false)
     expect($updateDownloadFailure.get()).toMatchObject({ message: 'blockmap mismatch', source: 'prepare' })
+    expect($updateDownloading.get()).toBe(false)
     expect($updateApply.get().applying).toBe(false)
   })
 
@@ -2220,7 +2271,7 @@ describe('cancelActiveUpdate', () => {
     expect(await prepareClientUpdate()).toBe(false)
     expect(prepareMock).not.toHaveBeenCalled()
 
-    await applyUpdates()
+    await installClientUpdate()
     expect(applyMock).toHaveBeenCalledTimes(1)
   })
 })
@@ -2281,5 +2332,30 @@ describe('retryUpdateDownload', () => {
     expect($updateDownloadFailure.get()).toBeNull()
     expect(prepareMock).not.toHaveBeenCalled()
     expect(applyMock).not.toHaveBeenCalled()
+  })
+})
+
+// Every status line the update store publishes resolves through the catalog.
+// zh-hant is a partial locale that falls back to EN, so a key missing from the
+// Chinese catalogs would show English in a Chinese session — the exact drift
+// these store-side literals used to cause.
+describe('update status copy', () => {
+  it('resolves the apply-status lines from every shipped locale', () => {
+    for (const locale of ['en', 'zh', 'zh-hant'] as const) {
+      const copy = TRANSLATIONS[locale].updates
+
+      expect(copy.startingUpdate.trim()).toBeTruthy()
+      expect(copy.bridgeUnavailable.trim()).toBeTruthy()
+      expect(copy.applyStatus.applied.trim()).toBeTruthy()
+      expect(copy.applyStatus.failed.trim()).toBeTruthy()
+      expect(copy.applyStatus.noReturn.trim()).toBeTruthy()
+    }
+
+    // The Chinese catalogs must override the lines the store publishes, not
+    // inherit the English fallback.
+    expect(TRANSLATIONS.zh.updates.startingUpdate).not.toBe(en.updates.startingUpdate)
+    expect(TRANSLATIONS['zh-hant'].updates.startingUpdate).not.toBe(en.updates.startingUpdate)
+    expect(TRANSLATIONS['zh-hant'].updates.bridgeUnavailable).not.toBe(en.updates.bridgeUnavailable)
+    expect(TRANSLATIONS['zh-hant'].updates.applyStatus.applied).not.toBe(en.updates.applyStatus.applied)
   })
 })

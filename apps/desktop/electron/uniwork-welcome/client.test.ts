@@ -54,7 +54,7 @@ it('requires the current login token for V3 and rejects unusable or extra-escape
     }
 
     let signedIn = false
-    const identity = { uid: 'test', token: 'private-token', maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }
+    const identity = { uid: 'test', token: 'private-token', maskedPhone: '138****0000', expiresAt: Date.now() - 60_000 }
 
     const client = new WelcomeCatalogClient(
       async (input, options) => {

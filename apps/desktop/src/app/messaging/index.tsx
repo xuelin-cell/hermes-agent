@@ -1,19 +1,20 @@
 import { useStore } from '@nanostores/react'
 import type { ComponentProps } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { $apiRequestScope } from '@/api/client'
 import type { WeixinRestartOutcome } from '@/api/weixin-qr'
-import { PageLoader } from '@/components/page-loader'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ErrorBanner } from '@/components/ui/error-state'
-import { getMessagingPlatforms, getStatus, type MessagingPlatformInfo } from '@/hermes'
+import type { MessagingPlatformInfo } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { AlertTriangle, Loader2, MessageCircle, RefreshCw, X } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
 import { $platformsChangeTick } from '@/store/live-sync'
 import { notify } from '@/store/notifications'
+import { $connection } from '@/store/session'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { PAGE_INSET_X } from '../layout-constants'
@@ -23,16 +24,11 @@ import type { SetStatusbarItemGroup } from '../shell/statusbar-controls'
 import { $dismissedMessagingFailureRevision, $messagingOperation } from './operation-store'
 import { DISPLAY_PLATFORM_IDS, hasPlatformBinding, PLATFORM_IDS, PlatformCard, type PlatformId } from './platform-card'
 import { PlatformConfigDialog } from './platform-config-dialog'
-import { restorePlatformErrors } from './platform-errors'
+import { messagingScope, usePlatforms } from './use-platforms'
 import { WeixinQrSetup } from './weixin-qr-setup'
 
 interface MessagingViewProps extends ComponentProps<'section'> {
   setStatusbarItemGroup?: SetStatusbarItemGroup
-}
-
-interface PlatformSnapshot {
-  platforms: MessagingPlatformInfo[]
-  operationRevision: number
 }
 
 // 专家助手没有独立消息平台，网关只服务主助手；页面固定读写主助手，不跟随设置页当前编辑的助手。
@@ -40,22 +36,29 @@ const MESSAGING_PROFILE = 'default'
 
 /** 消息平台只属于主助手：切到专家时也不会读到或写进专家复制来的旧凭据。 */
 export function MessagingView({ setStatusbarItemGroup: _setStatusbarItemGroup, ...props }: MessagingViewProps) {
-  return <MessagingPage scopeProfile={MESSAGING_PROFILE} {...props} />
+  const requestScope = useStore($apiRequestScope)
+  const connection = useStore($connection)
+  const scope = messagingScope(connection, requestScope.connectionId)
+
+  return <MessagingPage key={scope} scope={scope} scopeProfile={MESSAGING_PROFILE} {...props} />
 }
 
 /** 页面提交必要配置，主进程统一校验保存和网关动作，原版接口提供连接状态。 */
-function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & { scopeProfile: string | undefined }) {
+function MessagingPage({ scope, scopeProfile, ...props }: ComponentProps<'section'> & { scope: string; scopeProfile: string | undefined }) {
   const { t } = useI18n()
   const m = t.messaging
-  const [snapshot, setSnapshot] = useState<PlatformSnapshot | null>(null)
-  const platforms = snapshot?.platforms ?? null
   const [query, setQuery] = useState('')
-  const [loadError, setLoadError] = useState(false)
   const [requestFailed, setRequestFailed] = useState(false)
   const [rcsReconnecting, setRcsReconnecting] = useState(false)
   const [configuring, setConfiguring] = useState<Exclude<PlatformId, 'weixin'> | null>(null)
   const [disconnecting, setDisconnecting] = useState<MessagingPlatformInfo | null>(null)
   const operation = useStore($messagingOperation)
+  const platformsTick = useStore($platformsChangeTick)
+
+  const { platforms, refresh, loadError, confirmedRevision, snapshotRevision, checking } = usePlatforms(
+    scope, scopeProfile, operation.revision, platformsTick
+  )
+
   const failureDismissed = useStore($dismissedMessagingFailureRevision) === operation.revision
   const enabledPlatforms = platforms?.filter(platform => platform.enabled) ?? []
 
@@ -69,7 +72,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   // 解绑只确认目标清理及网关动作；其它渠道的连接问题继续由各自状态展示。
   const connectionRecovered = operation.phase === 'failed' && operation.saved && targetRecovered &&
     operation.error === 'connection_timeout' && sameProfile &&
-    !loadError && snapshot?.operationRevision === operation.revision &&
+    !loadError && confirmedRevision === operation.revision &&
     (operation.operation === 'disconnect' && operation.platform
       ? enabledPlatforms.length > 0
         ? platforms?.some(platform => platform.gateway_running)
@@ -80,51 +83,16 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   // 刚进入页面时还没读到最新平台状态；历史上的连接超时只是旧记录，此时不能当结论展示，
   // 否则平台其实早已连上，也会先闪一下“连接失败”。读取失败时无法核对，仍按记录显示。
   const verifying = operation.phase === 'failed' && operation.error === 'connection_timeout' &&
-    !loadError && snapshot?.operationRevision !== operation.revision
+    !loadError && confirmedRevision !== operation.revision
 
-  // 成功提示与卡片共用同一轮操作后的读取，不能先成功再显示旧的停机状态。
+  // 同一操作的缓存返回时静默刷新；新操作完成后仍须新快照，不能用前一操作的状态确认。
   const phase = connectionRecovered || verifying ? 'idle'
-    : operation.phase === 'completed' && snapshot?.operationRevision !== operation.revision
+    : operation.phase === 'completed' && snapshotRevision !== operation.revision
     ? 'checking' : operation.phase
 
-  const applying = ['saving', 'applying', 'restarting', 'stopping', 'checking'].includes(phase)
+  const applying = checking || ['saving', 'applying', 'restarting', 'stopping', 'checking'].includes(phase)
   const gatewayChanging = ['applying', 'restarting', 'stopping', 'checking'].includes(phase)
-  const platformsTick = useStore($platformsChangeTick)
-  const revisionRef = useRef(0)
   const activeRef = useRef(true)
-
-  /** 只接收最后一轮读取结果；失败保留已有卡片，且不把旧状态当作刷新成功。 */
-  const refresh = useCallback(async () => {
-    if (!activeRef.current) {
-      return
-    }
-
-    const revision = ++revisionRef.current
-    const operationRevision = $messagingOperation.get().revision
-
-    try {
-      // 同轮读取同一 Profile；诊断接口暂不可用时，也不能把整体退出原因当成渠道详情。
-      const [result, status] = await Promise.all([
-        getMessagingPlatforms(scopeProfile),
-        getStatus(scopeProfile).catch(() => null)
-      ])
-
-      if (!activeRef.current || revision !== revisionRef.current) {
-        return
-      }
-
-      setSnapshot({
-        platforms: restorePlatformErrors(result.platforms, status)
-          .filter(platform => DISPLAY_PLATFORM_IDS.some(id => id === platform.id)),
-        operationRevision
-      })
-      setLoadError(false)
-    } catch {
-      if (revision === revisionRef.current) {
-        setLoadError(true)
-      }
-    }
-  }, [scopeProfile])
 
   useRefreshHotkey(() => void refresh())
   // 仅记录组件是否仍存在，不镜像账号或响应式状态。
@@ -136,49 +104,6 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
       activeRef.current = false
     }
   }, [])
-
-  // 清理函数只让旧请求失效，不把响应式值同步到 ref。
-  // eslint-disable-next-line no-restricted-syntax
-  useEffect(() => {
-    void refresh()
-
-    /** 定时核对真实平台状态，隐藏窗口不发起轮询。 */
-    const tick = () => {
-      if (!document.hidden) {
-        void refresh()
-      }
-    }
-
-    const interval = window.setInterval(tick, 6000)
-
-    /** 回到页面时重新读取状态，不触发任何网关启动或重启。 */
-    const visible = () => {
-      if (!document.hidden) {
-        void refresh()
-      }
-    }
-
-    document.addEventListener('visibilitychange', visible)
-
-    return () => {
-      revisionRef.current += 1
-      window.clearInterval(interval)
-      document.removeEventListener('visibilitychange', visible)
-    }
-  }, [refresh])
-
-  useEffect(() => {
-    if (platformsTick > 0 && !document.hidden) {
-      void refresh()
-    }
-  }, [platformsTick, refresh])
-
-  // 任务由主进程继续；页面只在阶段变化后更新卡片，不参与任务生命周期。
-  useEffect(() => {
-    if (operation.revision > 0 && !document.hidden) {
-      void refresh()
-    }
-  }, [operation.revision, refresh])
 
   /** 等待主进程接收后立即关闭配置框；凭据校验和重启进度在页面展示。 */
   async function save(platform: MessagingPlatformInfo, env: Record<string, string>) {
@@ -270,6 +195,10 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
   const failed = operationFailed || disconnected
   const recovery = operationFailed || disconnected || reconnecting
 
+  // 解绑失败分两种：绑定还在就是没解成；绑定已清、只是网关动作没完成，如实说明而不冒充整体成功。
+  const unbindFailed = operation.saved && !(target && hasPlatformBinding(target))
+    ? m.connection.unbindApplyFailed : m.connection.unbindFailed
+
   const phaseMessages = {
     idle: '', saving: operation.operation === 'disconnect' ? m.weixinQr.unbinding : m.connection.saving,
     applying: operation.operation === 'restore' ? m.connection.restoring : m.connection.connecting,
@@ -278,6 +207,7 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
     completed: '',
     failed: operation.error === 'gateway_identity_unverified' ? m.connection.ownership
       : operation.operation === 'restore' ? m.connection.restoreFailed
+      : operation.operation === 'disconnect' ? unbindFailed
       : operation.saved ? m.connection.savedFailed : errors[operation.error || ''] || m.connection.saveFailed
   }
 
@@ -371,90 +301,87 @@ function MessagingPage({ scopeProfile, ...props }: ComponentProps<'section'> & {
               </AlertDescription>
             </Alert>
           )}
-          {!platforms && !loadError ? (
-            <PageLoader label={m.loading} />
-          ) : (
-            DISPLAY_PLATFORM_IDS
-              .filter(
-                id =>
-                  !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
-              )
-              .map(id => {
-                const platform = platforms?.find(row => row.id === id)
+          {DISPLAY_PLATFORM_IDS
+            .filter(
+              id =>
+                !search || (m.cards.titles[id] + ' ' + m.cards.descriptions[id]).toLocaleLowerCase().includes(search)
+            )
+            .map(id => {
+              const platform = platforms?.find(row => row.id === id)
 
-                const retryAllowed = platform?.enabled && platform.configured &&
-                  (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected',
-                    'pending_restart', 'retrying', 'connecting'].includes(platform.state ?? ''))
+              const retryAllowed = platform?.enabled && platform.configured &&
+                (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected',
+                  'pending_restart', 'retrying', 'connecting'].includes(platform.state ?? ''))
 
-                const rcsRetryAllowed = platform?.configured && platform.enabled &&
-                  (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
-                    .includes(platform.state ?? ''))
+              const rcsRetryAllowed = platform?.configured && platform.enabled &&
+                (!platform.gateway_running || ['fatal', 'startup_failed', 'error', 'stopped', 'disconnected', 'paused']
+                  .includes(platform.state ?? ''))
 
-                if (id === 'weixin' && platform) {
-                  return (
-                    <WeixinQrSetup
-                      busy={applying}
-                      key={id}
-                      onSaved={result => void settleWeixin(result)}
-                      onUnbind={() => disconnectPlatform('weixin')}
-                      pending={gatewayChanging}
-                      platform={platform}
-                      scopeProfile={scopeProfile}
-                    />
-                  )
-                }
-
+              if (id === 'weixin' && platform) {
                 return (
-                  <PlatformCard
-                    actions={
-                      id === 'uniagentgate' ? (
-                        rcsRetryAllowed ? (
-                          <Button disabled={applying || rcsReconnecting ||
-                            (scopeProfile !== undefined && scopeProfile !== 'default')}
-                            onClick={() => void reconnectRcs()} size="sm" variant="outline">
-                            {rcsReconnecting ? m.cards.reconnecting : m.cards.reconnect}
-                          </Button>
-                        ) : (
-                          <Button disabled size="sm" variant="outline">{m.cards.unbind}</Button>
-                        )
+                  <WeixinQrSetup
+                    busy={applying}
+                    key={id}
+                    onSaved={result => void settleWeixin(result)}
+                    onUnbind={() => disconnectPlatform('weixin')}
+                    pending={gatewayChanging}
+                    platform={platform}
+                    scopeProfile={scopeProfile}
+                  />
+                )
+              }
+
+              return (
+                <PlatformCard
+                  actions={
+                    id === 'uniagentgate' ? (
+                      rcsRetryAllowed ? (
+                        <Button disabled={applying || rcsReconnecting ||
+                          (scopeProfile !== undefined && scopeProfile !== 'default')}
+                          onClick={() => void reconnectRcs()} size="sm" variant="outline">
+                          {rcsReconnecting ? m.cards.reconnecting : m.cards.reconnect}
+                        </Button>
                       ) : (
-                        <>
-                          {retryAllowed && (
-                            <Button disabled={applying} onClick={() => void restart()} size="sm" variant="outline">
-                              {t.common.retry}
-                            </Button>
-                          )}
+                        <Button disabled size="sm" variant="outline">{m.cards.unbind}</Button>
+                      )
+                    ) : (
+                      <>
+                        {retryAllowed && (
+                          <Button disabled={applying} onClick={() => void restart()} size="sm" variant="outline">
+                            {t.common.retry}
+                          </Button>
+                        )}
+                        <Button
+                          disabled={!platform || applying}
+                          onClick={() => setConfiguring(id as Exclude<PlatformId, 'weixin'>)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          {m.cards.configure}
+                        </Button>
+                        {platform && hasPlatformBinding(platform) && (
                           <Button
-                            disabled={!platform || applying}
-                            onClick={() => setConfiguring(id as Exclude<PlatformId, 'weixin'>)}
+                            disabled={applying}
+                            onClick={() => setDisconnecting(platform)}
                             size="sm"
                             variant="outline"
                           >
-                            {m.cards.configure}
+                            {m.cards.unbind}
                           </Button>
-                          {platform && hasPlatformBinding(platform) && (
-                            <Button
-                              disabled={applying}
-                              onClick={() => setDisconnecting(platform)}
-                              size="sm"
-                              variant="outline"
-                            >
-                              {m.cards.unbind}
-                            </Button>
-                          )}
-                        </>
-                      )
-                    }
-                    id={id}
-                    key={id}
-                    pending={gatewayChanging}
-                    platform={platform}
-                  >
-                    {platform?.enabled && platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
-                  </PlatformCard>
-                )
-              })
-          )}
+                        )}
+                      </>
+                    )
+                  }
+                  checking={!platforms && !loadError}
+                  id={id}
+                  key={id}
+                  pending={gatewayChanging}
+                  platform={platform}
+                >
+                  {platform?.enabled && platform.error_message && <ErrorBanner className="mt-3">{platform.error_message}</ErrorBanner>}
+                </PlatformCard>
+              )
+            })}
         </div>
       </div>
       {selected && (

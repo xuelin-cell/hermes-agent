@@ -48,7 +48,6 @@ export function LoginPage() {
     | 'smsError'
     | 'requestError'
     | 'storageError'
-    | 'expired'
     | 'legalOpenError'
     | InvitationLoginError
     | SmsLoginError
@@ -117,33 +116,6 @@ export function LoginPage() {
       active = false
     }
   }, [account, bridge])
-
-  useEffect(() => {
-    if (!account) {
-      return
-    }
-
-    let timer: ReturnType<typeof setTimeout>
-
-    /** 到期回到空表单；长有效期分段等待，避免浏览器定时器上限。 */
-    function checkExpiry(): void {
-      const remaining = account!.expiresAt - Date.now()
-
-      if (remaining > 0) {
-        timer = setTimeout(checkExpiry, Math.min(remaining, 2_147_483_647))
-
-        return
-      }
-
-      setAccount(null)
-      setFields(EMPTY_FIELDS)
-      setError('expired')
-    }
-
-    checkExpiry()
-
-    return () => clearTimeout(timer)
-  }, [account])
 
   /** 修改输入时清除旧错误，验证码和手机号仅保留在当前页面内存中。 */
   function updateField(field: keyof LoginFields, value: string): void {

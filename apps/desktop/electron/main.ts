@@ -572,6 +572,7 @@ import {
 import { packagedResourceRoot } from './universal-resources'
 import { installNtfyIpc } from './uniwork-notify/ipc'
 import { createPlanRefresher } from './uniwork-notify/refresher'
+import { startTelemetryBridge } from './uniwork-telemetry/bridge'
 import { waitForUpdateClearance } from './update-gate'
 import { readLiveUpdateMarker, updateHandoffConflict, writeUpdateMarker } from './update-marker'
 import {
@@ -1136,7 +1137,7 @@ const BOOT_FAKE_STEP_MS = (() => {
   return Math.max(120, raw)
 })()
 
-const APP_NAME: string = process.env.HERMES_DESKTOP_APP_NAME || 'Hermes Desktop MT'
+const APP_NAME: string = process.env.HERMES_DESKTOP_APP_NAME || '元景数字员工'
 const HUD_WINDOW_TITLE = `${APP_NAME} HUD`
 const TITLEBAR_HEIGHT = 34
 const MACOS_TRAFFIC_LIGHTS_HEIGHT = 14
@@ -12018,7 +12019,7 @@ async function runPoolBackendStart(
   await allProfilesPreparation
   assertPoolEntryStillOwned(poolKey, entry, backendPool, localBackendLifecycle.signal)
   enableDesktopPlugins(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile), [
-    'desktop-deliverables'
+    'desktop-deliverables', 'uniwork-telemetry'
   ])
   prepareManagedTitleProfiles(profile)
   INTERRUPTED_TURNS.claim(profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile))
@@ -12057,6 +12058,7 @@ async function runPoolBackendStart(
           HERMES_DESKTOP: '1',
           ...(await artifactShareBridgeEnv()),
           ...(await titleBridgeEnv()),
+          ...(await telemetryBridgeEnv(profile)),
           // Exact parent identity lets the backend self-exit after an unclean
           // Desktop death without mistaking a reused PID for its owner. If the
           // optional marker probe fails, retain legacy PID-only tracking.
@@ -13137,6 +13139,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
             HERMES_DESKTOP: '1',
             ...(await artifactShareBridgeEnv()),
             ...(await titleBridgeEnv()),
+            ...(await telemetryBridgeEnv(profile)),
             // Exact parent identity lets the backend self-exit after an unclean
             // Desktop death without mistaking a reused PID for its owner. If the
             // optional marker probe fails, retain legacy PID-only tracking.
@@ -17569,6 +17572,34 @@ const stopArtifactShareCleanup = startArtifactShareCleanup(artifactShareService,
 )
 
 let artifactShareBridge: Promise<ArtifactShareBridge> | null = null
+let telemetryBridge: ReturnType<typeof startTelemetryBridge> | null = null
+
+ipcMain.handle('hermes:usage-input', async (event, input) => {
+  assertArtifactShareWindow(event)
+  const bridge = await telemetryBridge
+  bridge?.rememberInput(input)
+})
+
+/** Statistics are optional; bridge failure must not prevent a local chat backend from starting. */
+async function telemetryBridgeEnv(profile: string): Promise<Record<string, string>> {
+  try {
+    telemetryBridge ??= startTelemetryBridge({
+      home: ACCOUNT_RUNTIME.home, identity: currentDesktopIdentity,
+      plan: () => currentDesktopLogin()?.currentPlan() ?? { status: 'failed' },
+      active: () => currentDesktopLocalContext() === ACCOUNT_RUNTIME,
+      appVersion: app.getVersion(), platform: process.platform
+    })
+
+    return (await telemetryBridge).env(
+      profile === 'default' ? HERMES_HOME : path.join(HERMES_HOME, 'profiles', profile)
+    )
+  } catch {
+    telemetryBridge = null
+    rememberLog('[uniwork-telemetry] bridge unavailable; chat continues')
+
+    return {}
+  }
+}
 
 let titleBridge: ReturnType<typeof startTitleBridge> | null = null
 let titleProfilesPrepared = false
@@ -17782,8 +17813,12 @@ ipcMain.handle('hermes:selectPaths', async (_event, options: any = {}) => {
   return result.filePaths
 })
 
-ipcMain.handle('hermes:writeClipboard', (_event, text) => {
-  clipboard.writeText(String(text || ''))
+ipcMain.handle('hermes:writeClipboard', (_event, text, html) => {
+  if (typeof html === 'string') {
+    clipboard.write({ text: String(text || ''), html })
+  } else {
+    clipboard.writeText(String(text || ''))
+  }
 
   return true
 })
@@ -18020,6 +18055,7 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   stopArtifactShareCleanup()
   void titleBridge?.then(bridge => bridge.stop()).catch(() => undefined)
+  void telemetryBridge?.then(bridge => bridge.stop()).catch(() => undefined)
   stopDriveCredentialRenewal?.()
   void ACCOUNT_CONNECTORS.close()
   void ACCOUNT_DRIVE_MCP.close()
@@ -19341,7 +19377,7 @@ app.on('before-quit', event => {
     quitFinalization.arm()
     void logoutDesktopAccount('quit').catch(() => {
       restartAfterQuit = false
-      dialog.showErrorBox('Hermes Desktop MT', '无法开始安全退出，请重试。历史和登录记录未删除。')
+      dialog.showErrorBox('元景数字员工', '无法开始安全退出，请重试。历史和登录记录未删除。')
     })
 
     return

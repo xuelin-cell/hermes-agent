@@ -27,7 +27,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import background_rules, cli, code_packages, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, terminal_env, terminal_hints, tool_call_rules
+from . import background_rules, cli, code_packages, codex, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, terminal_env, terminal_hints, tool_call_rules
 
 
 def register(ctx) -> None:
@@ -36,6 +36,13 @@ def register(ctx) -> None:
     前两步出错只跳过，不能拦住插件加载；否则一个专家档案的问题会让所有档案都没有套件功能。
     """
     llm.set_context(ctx)
+    codex.set_context(ctx)
+    if codex.ENABLED:
+        ctx.register_command(
+            "codex", codex.command,
+            description="Run a coding task with the current UniWork model",
+            args_hint="<task>", argument_mode="text",
+        )
     try:
         from pathlib import Path
 
@@ -73,6 +80,9 @@ def register(ctx) -> None:
     ctx.register_system_prompt_section("uniwork.tool-call", tool_call_rules.section, max_chars=2000)
     ctx.register_hook("pre_llm_call", router.on_pre_llm_call)
     ctx.register_hook("pre_llm_call", terminal_hints.on_pre_llm_call)
+    if codex.ENABLED:
+        ctx.register_hook("pre_llm_call", codex.on_pre_llm_call)
+        ctx.register_hook("post_llm_call", codex.on_post_llm_call)
     ctx.register_hook("pre_tool_call", skill_paths.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", host_hooks.on_pre_tool_call)
     ctx.register_hook("pre_tool_call", package_hooks.on_pre_tool_call)

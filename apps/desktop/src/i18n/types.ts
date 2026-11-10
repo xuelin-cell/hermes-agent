@@ -62,15 +62,6 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
-  workspaceEditor: {
-    title: string
-    capabilities: string
-    openProject: string
-    selectFile: string
-    unsupported: string
-    refresh: string
-    save: string
-  }
   conversationShare: {
     sessionShare: string
     responseShare: string
@@ -264,9 +255,6 @@ export interface Translations {
     logoutTitle: string
     logoutDescription: string
     logoutBusy: string
-    expired: string
-    expiredLabel: string
-    expiredRunning: string
     resendAfter: string
     smsSendError: string
     smsLimited: string
@@ -1012,7 +1000,6 @@ export interface Translations {
     unreadSessions: (count: number) => string
     muteHaptics: string
     unmuteHaptics: string
-    openSettings: string
     openStarmap: string
     enterHud: string
     exitHud: string
@@ -1025,9 +1012,10 @@ export interface Translations {
   messageCenter: {
     title: string
     unreadCount: (count: number) => string
-    markAllRead: string
     empty: string
+    emptyHint: string
     untitled: string
+    open: string
   }
 
   keybinds: {
@@ -3926,11 +3914,15 @@ export interface Translations {
     bundleSwapPendingDesc: string
     bundleSwapPendingAction: string
     stages: Record<string, string>
+    /** The apply-start status line, shown until the first progress event lands. */
+    startingUpdate: string
     checking: string
     checkFailedTitle: string
     tryAgain: string
     notAvailableTitle: string
     unsupportedMessage: string
+    /** The preload's `hermesDesktop.updates` bridge is missing. */
+    bridgeUnavailable: string
     connectionRetry: string
     gitUnusable: string
     connectionSettings: string
@@ -4003,6 +3995,7 @@ export interface Translations {
       restarting: string
       notAvailable: string
       failed: string
+      applied: string
       noReturn: string
     }
     /** Update-status overlay + version-details (mechanism-aware update UI):

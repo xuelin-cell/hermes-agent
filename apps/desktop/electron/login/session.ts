@@ -16,6 +16,7 @@ export interface LoginIdentity {
   phone?: string
   uid: string
   token: string
+  /** 上游返回的 JWT 到期时间，仅作元数据；UniWork 网关允许过期 JWT。 */
   expiresAt: number
   maskedPhone: string
 }
@@ -62,7 +63,7 @@ function parseIdentity(body: unknown, phone: string): LoginIdentity | null {
   if (
     typeof expiresAt !== 'number' ||
     !Number.isSafeInteger(expiresAt) ||
-    expiresAt <= now ||
+    expiresAt <= 0 ||
     expiresAt > 8_640_000_000_000_000
   ) {
     return null
@@ -87,7 +88,7 @@ const SMS_LOGIN_ERRORS = new Map<string, SmsLoginError>([
   ['验证码失效，请重新发送短信', 'smsExpired']
 ])
 
-/** 管理短信登录和本地记录恢复的身份，关闭和过期后清除进程内凭据。 */
+/** 管理短信登录和本地记录恢复的身份，凭证是否失效由服务端判断。 */
 export class LoginSession {
   private identity: LoginIdentity | null = null
   private plan: MaasPlan | null = null
@@ -109,7 +110,7 @@ export class LoginSession {
 
   /** 仅供主进程读取有效身份，返回副本以避免外部改写已校验记录。 */
   currentIdentity(): LoginIdentity | null {
-    if (this.closed || !this.identity || this.identity.expiresAt <= Date.now()) {
+    if (this.closed || !this.identity) {
       this.identity = null
       this.plan = null
       this.planUsage = null
@@ -145,7 +146,7 @@ export class LoginSession {
     return this.currentIdentity() ? structuredClone(this.binding) : { status: 'missing' }
   }
 
-  /** 恢复经过存储模块校验且未到期的原账号；读取失败不改写记录。 */
+  /** 恢复经过存储模块校验的原账号；读取失败不改写记录。 */
   restore(): LoginResult {
     if (this.closed || this.pending) {
       return { ok: false }
@@ -160,7 +161,7 @@ export class LoginSession {
     try {
       const saved = this.credentials.load()
 
-      if (!saved || saved.expiresAt <= Date.now()) {
+      if (!saved) {
         return { ok: false }
       }
 
@@ -179,7 +180,7 @@ export class LoginSession {
     }
   }
 
-  /** 套餐与身份分开；合并并发请求，关闭或到期后的结果不能保留凭据。 */
+  /** 套餐与身份分开；合并并发请求，关闭后的结果不能保留凭据。 */
   queryPlan(): Promise<PlanResult> {
     const identity = this.currentIdentity()
 

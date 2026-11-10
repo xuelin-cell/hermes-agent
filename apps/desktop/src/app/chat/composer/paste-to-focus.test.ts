@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { onComposerAttachImagesRequest, onComposerFocusRequest, onComposerInsertRequest } from './focus'
+import { copyMessageWithAttachments } from './message-clipboard'
 import { handleWindowPaste, routeClipboardToComposer } from './paste-to-focus'
 
 /** Minimal DataTransfer stand-in: text/plain + optional image file items. */
-function clipboard({ files = [] as File[], text = '' } = {}): DataTransfer {
+function clipboard({ files = [] as File[], html = '', text = '' } = {}): DataTransfer {
   return {
     files: { item: (i: number) => files[i] ?? null, length: files.length },
-    getData: (type: string) => (type === 'text' || type === 'text/plain' ? text : ''),
+    getData: (type: string) => (type === 'text/html' ? html : type === 'text' || type === 'text/plain' ? text : ''),
     items: files.map(file => ({ getAsFile: () => file, kind: 'file', type: file.type }))
   } as unknown as DataTransfer
 }
@@ -29,9 +30,31 @@ function pasteEvent(clip: DataTransfer, target: EventTarget = document.body): Cl
 afterEach(() => {
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('routeClipboardToComposer', () => {
+  it('在聊天区域未聚焦输入框时也能粘贴纯附件', async () => {
+    const writeClipboard = vi.fn(async (_text: string, _html?: string) => true)
+    vi.stubGlobal('hermesDesktop', { writeClipboard })
+    await copyMessageWithAttachments('', ['@file:recording.wav'], '/source')
+    const [text, html] = writeClipboard.mock.calls[0]
+    const insert = vi.fn()
+    const off = onComposerInsertRequest(insert)
+
+    try {
+      expect(routeClipboardToComposer(clipboard({ text, html }))).toBe(true)
+      expect(insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: '',
+          attachments: [expect.objectContaining({ kind: 'file', path: '/source/recording.wav' })]
+        })
+      )
+    } finally {
+      off()
+    }
+  })
+
   it('routes pasted text to the composer as an insert', async () => {
     const inserts: string[] = []
     const off = onComposerInsertRequest(({ text }) => inserts.push(text))

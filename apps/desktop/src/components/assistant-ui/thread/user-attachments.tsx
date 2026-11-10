@@ -1,36 +1,31 @@
 import { AttachmentList } from '@/app/chat/composer/attachments'
 import { isPastedContentPath } from '@/app/chat/composer/large-paste'
-import { DirectiveContent, hermesDirectiveFormatter } from '@/components/assistant-ui/directive-text'
 import { useI18n } from '@/i18n'
-import { pathLabel } from '@/lib/chat-runtime'
+import { parseSentAttachment } from '@/lib/sent-attachments'
+import type { ComposerAttachment } from '@/store/composer'
 
-/** 已发送文档复用输入框的卡片与预览；图片及其他引用仍按原方式展示。 */
+/** 消息与编辑区共用等大的附件卡片，按原顺序显示。 */
 export function UserAttachments({ refs }: { refs: readonly string[] }) {
   const { t } = useI18n()
+  const attachments: ComposerAttachment[] = []
 
-  return refs.map((ref, index) => {
-    const segments = hermesDirectiveFormatter.parse(ref)
-    const segment = segments[0]
+  for (const [index, ref] of refs.entries()) {
+    const item = parseSentAttachment(ref)
 
-    if (segments.length !== 1 || segment?.kind !== 'mention' || segment.type !== 'file') {
-      return <DirectiveContent key={index} text={ref} />
+    if (!item) {
+      continue
     }
 
-    const path = segment.id
+    const { inline, kind, label, source } = item
+    const isImageUrl = kind === 'image' && (inline || /^https?:\/\//i.test(source))
 
-    return (
-      <AttachmentList
-        attachments={[
-          {
-            id: `file:${path}`,
-            kind: 'file',
-            label: isPastedContentPath(path) ? t.desktop.pastedContent : pathLabel(path),
-            detail: path,
-            path
-          }
-        ]}
-        key={index}
-      />
-    )
-  })
+    attachments.push({
+      id: `${kind}:${index}`,
+      kind,
+      label: isPastedContentPath(source) ? t.desktop.pastedContent : label,
+      ...(isImageUrl ? { previewUrl: source } : { detail: source, path: source })
+    })
+  }
+
+  return <AttachmentList attachments={attachments} tiles />
 }

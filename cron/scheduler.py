@@ -1937,7 +1937,15 @@ def _run_agent_with_watchdog(
     # Carry scheduler-scoped ContextVar state (e.g. env passthrough) into the worker thread.
     _cron_context = contextvars.copy_context()
     _cron_future = _cron_pool.submit(
-        _cron_context.run, agent.run_conversation, prompt, task_id=task_id)
+        _cron_context.run,
+        agent.run_conversation,
+        prompt,
+        # The model needs the assembled prompt's cron guardrail, but an execution
+        # conversation is user-facing history: its first bubble must be the task
+        # author wrote, never implementation-only delivery instructions.
+        persist_user_message=str(job.get("prompt") or ""),
+        task_id=task_id,
+    )
     if worker_state is not None:
         worker_state["future"] = _cron_future
     _inactivity_timeout = False

@@ -47,7 +47,7 @@ it('fetches authenticated cloud settings and applies them through the real Pytho
   let identity: LoginIdentity | null = {
     uid: 'a',
     token: 'login-token',
-    expiresAt: Date.now() + 60_000,
+    expiresAt: Date.now() - 60_000,
     maskedPhone: '***'
   }
 

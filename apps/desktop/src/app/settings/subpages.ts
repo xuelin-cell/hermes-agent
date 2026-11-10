@@ -97,7 +97,7 @@ export function settingsSubpageIcon(page: SettingsSubpage, fallback: IconCompone
 
 export function settingsSubpages(view: SettingsView, developerMode = true): readonly SettingsSubpage[] {
   if (view === 'config:appearance') {
-    return developerMode ? APPEARANCE_SUBPAGES : APPEARANCE_SUBPAGES.filter(page => page.id !== 'pet')
+    return developerMode ? APPEARANCE_SUBPAGES : APPEARANCE_SUBPAGES.filter(page => !['pet', 'typography', 'window-layout', 'chat-display'].includes(page.id))
   }
 
   if (view.startsWith('config:')) {

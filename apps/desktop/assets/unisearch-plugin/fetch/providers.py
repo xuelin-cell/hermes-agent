@@ -6,12 +6,17 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
+from contextvars import ContextVar
 import httpx
 from agent.secret_scope import get_secret
 from agent.web_search_provider import WebSearchProvider
 from hermes_constants import get_hermes_home
 from .. import cache
 from .validation import validate_url
+from .status import result_status
+
+_builtin_deadline = ContextVar("builtin_fetch_deadline", default=None)
 
 UNICRAWL_URL = (
     "https://maas-api.ai-yuanjing.com/openapi/v1/uniclaw/general/tool/firecrawl"
@@ -51,16 +56,30 @@ class FetchProvider(WebSearchProvider):
                 memo_key = cache.identity(
                     self.name, UNICRAWL_URL if key else "", key, url
                 )
+                if self.name == "builtin_parse":
+                    memo_key = cache.identity("builtin-quality-v13", memo_key)
                 previous = cache.get(memo_key, self._config)
                 if previous is not None:
                     return previous["data"]
                 try:
                     value = await self._fetch(url, key)
+                    if self.name == "builtin_parse":
+                        value.update(result_status(value))
+                        if value["fetch_status"] == "unavailable" and not value.get(
+                            "error"
+                        ):
+                            raise ValueError("unassessed or unusable worker result")
                     value["metadata"] = {
                         **value.get("metadata", {}),
                         "provider": self.name,
                     }
-                    cache.put(memo_key, {"success": True, "data": value}, self._config)
+                    if (
+                        self.name != "builtin_parse"
+                        or value["fetch_status"] == "usable"
+                    ):
+                        cache.put(
+                            memo_key, {"success": True, "data": value}, self._config
+                        )
                     return value
                 except asyncio.CancelledError:
                     raise
@@ -97,10 +116,31 @@ class BuiltinParseProvider(FetchProvider):
         # Third-party imports are lazy in a profile-scoped worker, never at discovery time.
         return True
 
+    # 每次调用的预算由上下文传递，不污染并行会话或共享Provider实例。
+    async def extract(self, urls, **kwargs):
+        token = _builtin_deadline.set(kwargs.get("deadline") or time.monotonic() + 115)
+        try:
+            return await super().extract(urls, **kwargs)
+        finally:
+            _builtin_deadline.reset(token)
+
+    # 本后端错误显式标记不可用，其他Provider错误格式保持不变。
+    def _error(self, url, message):
+        return {
+            **super()._error(url, message),
+            "fetch_status": "unavailable",
+            "reasons": ["extract_failed"],
+        }
+
     # 剥离凭证的Profile子进程运行本机解析，取消时回收。
     async def _fetch(self, url, key):
         from tools.environments.local import served_profile_child_env
 
+        parent_deadline = _builtin_deadline.get() or time.monotonic() + 115
+        remaining = parent_deadline - time.monotonic()
+        reserve = min(4.0, max(0.1, remaining * 0.2))
+        if remaining <= reserve:
+            raise TimeoutError("Builtin budget exhausted before worker start")
         env = served_profile_child_env(
             target_home=get_hermes_home(), inherit_credentials=False
         )
@@ -122,25 +162,35 @@ class BuiltinParseProvider(FetchProvider):
         )
         request = {
             "url": url,
+            "deadline": min(time.monotonic() + 110, parent_deadline - reserve),
             "allowed_hosts": self._config("fetch_allowed_hosts", []),
             "blocked_hosts": self._config("fetch_blocked_hosts", []),
         }
         try:
             stdout, _ = await asyncio.wait_for(
-                child.communicate(json.dumps(request).encode()), timeout=115
+                child.communicate(json.dumps(request).encode()),
+                timeout=max(0.01, parent_deadline - time.monotonic()),
             )
             if child.returncode or len(stdout) > 15 * 1024 * 1024:
                 raise ValueError("worker failed")
             value = json.loads(stdout)
-            if not isinstance(value, dict) or not value.get("content"):
+            if not isinstance(value, dict) or not (
+                value.get("content") or value.get("error")
+            ):
                 raise ValueError("empty worker result")
+            value.update(result_status(value))
+            if value["fetch_status"] == "unavailable" and not value.get("error"):
+                raise ValueError("invalid worker assessment")
             return value
         finally:
             if child.returncode is None:
                 # Let the worker close Chromium before a bounded hard stop.
                 child.terminate()
                 try:
-                    await asyncio.wait_for(child.wait(), timeout=3)
+                    await asyncio.wait_for(
+                        child.wait(),
+                        timeout=min(3.0, max(0.05, parent_deadline - time.monotonic())),
+                    )
                 except TimeoutError:
                     child.kill()
                     await child.wait()

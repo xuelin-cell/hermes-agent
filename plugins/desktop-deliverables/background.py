@@ -112,6 +112,14 @@ def returned_results(key):
         return [path for path, ready in (_results.get(key) or {}).items() if ready and path.is_file()]
 
 
+def unreturned_results(key):
+    """尚未收到完成通知的后台文件不能被插问那轮的目录观察提前认领。"""
+    from . import _lock
+
+    with _lock:
+        return {path for path, ready in (_results.get(key) or {}).items() if not ready}
+
+
 def forget_results(key, paths):
     """成品已补进回复，或文件已经不在，就删掉记录。"""
     from . import _lock

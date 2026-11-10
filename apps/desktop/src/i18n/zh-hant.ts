@@ -147,15 +147,6 @@ export const zhHant = defineLocale({
       }
     }
   },
-  workspaceEditor: {
-    title: '編輯器',
-    capabilities: '擴充功能',
-    openProject: '請先開啟專案中的對話，再瀏覽及編輯檔案。',
-    selectFile: '選擇檔案開始編輯。',
-    unsupported: '無法編輯二進位、截斷或過大的檔案。',
-    refresh: '重新整理',
-    save: '儲存'
-  },
   conversationShare: {
     sessionShare: '分享對話',
     responseShare: '分享回覆',
@@ -283,7 +274,7 @@ export const zhHant = defineLocale({
     officePreviewFailed: 'Office 檔案轉換失敗，請下載原始檔案查看。',
     artifactSensitive: '此檔案屬於敏感設定或憑證，不能上傳雲端硬碟。',
     uploadArtifact: '上傳至雲端硬碟',
-    uploadToLibrary: '上傳至資料庫',
+    uploadToLibrary: '上傳至雲端硬碟',
     uploadHere: '上傳至此資料夾',
     chooseUploadFolder: '選擇個人雲端硬碟中的儲存位置',
     artifactRemote: '暫時只能上傳目前桌面帳號的本機產物，遠端檔案和網路連結不支援直接上傳。',
@@ -354,9 +345,6 @@ export const zhHant = defineLocale({
     logoutTitle: '登出目前帳號？',
     logoutDescription: '將停止目前帳號的本機後端、訊息閘道及其託管工作，並返回登入頁。保留歷史、檔案與排程工作定義。',
     logoutBusy: '正在登出帳號…',
-    expired: '登入已到期，請重新登入。',
-    expiredLabel: '登入已到期',
-    expiredRunning: '登入已到期，目前工作繼續執行。您可以登出帳號後重新登入。',
     resendAfter: '{seconds} 秒後重發',
     smsSendError: '傳送失敗，請檢查輸入或重新整理圖片後重試。',
     smsLimited: '傳送過於頻繁，請稍後重試。',
@@ -737,7 +725,6 @@ export const zhHant = defineLocale({
     unreadSessions: count => (count === 1 ? '1 個未讀工作階段' : `${count} 個未讀工作階段`),
     muteHaptics: '靜音觸感回饋',
     unmuteHaptics: '開啟觸感回饋',
-    openSettings: '開啟設定',
     openStarmap: '開啟記憶圖譜',
     resetHudLayout: '重設 HUD 大小和位置'
   },
@@ -745,9 +732,10 @@ export const zhHant = defineLocale({
   messageCenter: {
     title: '訊息中心',
     unreadCount: count => `${count} 則未讀通知`,
-    markAllRead: '全部已讀',
     empty: '暫無通知',
-    untitled: '公告'
+    emptyHint: '收到的新公告會顯示在這裡。',
+    untitled: '公告',
+    open: '開啟訊息中心'
   },
 
   language: {
@@ -1020,7 +1008,7 @@ export const zhHant = defineLocale({
       tabStripAlways: '一律',
       tabStripNever: '永不',
       appActionsTitle: '應用操作',
-      appActionsDesc: '設定、版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
+      appActionsDesc: '版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
       appActionsLeft: '左側',
       appActionsRight: '右側',
       terminalFontTitle: '終端機字型',
@@ -3407,7 +3395,7 @@ export const zhHant = defineLocale({
   composer: {
     message: '訊息',
     addAttachment: '新增附件',
-    aiDisclaimer: 'AI 回覆可能不準確，請仔細核實重要資訊。',
+    aiDisclaimer: 'AI 回覆可能不準確，涉及醫療、金融等專業決策時，請仔細核實重要資訊。',
     wakingProfile: profile => `正在喚醒 ${profile}…`,
     placeholderStarting: '正在啟動 UniWork...',
     placeholderReconnecting: '正在重新連線至 UniWork…',
@@ -3506,6 +3494,7 @@ export const zhHant = defineLocale({
       '/context': '顯示詳細的上下文視窗，包括用量、分類明細、壓縮統計與吞吐量',
       '/whoami': '顯示你的斜線指令存取權限（admin / user）',
       '/profile': '切換作用中的 UniWork 設定檔',
+      '/codex': '使用目前對話所選模型執行編碼任務',
       '/codex-runtime': '切換 OpenAI/Codex 模型使用的 Codex app-server runtime',
       '/personality': '設定預先定義的人格',
       '/battery': '切換狀態列中的彩色電池指示器',
@@ -3584,8 +3573,8 @@ export const zhHant = defineLocale({
     themeTryPre: '試試 ',
     themeTryPost: '。',
     attachLabel: '附加',
-    files: '檔案…',
-    folder: '資料夾…',
+    files: '新增檔案',
+    folder: '新增資料夾',
     images: '圖片…',
     pasteImage: '貼上圖片',
     url: 'URL…',
@@ -3790,11 +3779,13 @@ export const zhHant = defineLocale({
       guiSkew: '請更新桌面應用程式',
       error: '更新已暫停'
     },
+    startingUpdate: '正在開始更新…',
     checking: '正在檢查更新…',
     checkFailedTitle: '無法檢查更新',
     tryAgain: '重試',
     notAvailableTitle: '更新不可用',
     unsupportedMessage: '此版本的 UniWork 無法在應用程式內自行更新。',
+    bridgeUnavailable: '桌面端更新服務無法使用，請重新啟動應用程式後再試。',
     connectionRetry: '請檢查網路連線後重試。',
     gitUnusable: 'UniWork 無法在這台電腦上執行 Git，因此無法檢查更新。',
     latestBody: '您正在執行最新版本。',
@@ -3860,6 +3851,7 @@ export const zhHant = defineLocale({
       restarting: '後端正在重新啟動以載入更新…',
       notAvailable: '此後端無法更新。',
       failed: '後端更新失敗。',
+      applied: '後端更新已完成。',
       noReturn: '後端未恢復連線。更新可能未完成——請檢查後端主機。'
     },
     // Restored About-card strings (moved from `settings.about.*` to `updates.*`).

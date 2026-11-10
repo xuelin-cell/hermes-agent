@@ -8,8 +8,9 @@ param(
     [switch]$NoAutoUpdate,
     # The web installer publishes a small bootstrapper plus a .7z payload whose
     # embedded blockmap lets electron-updater download updates differentially.
-    # The default full NSIS package stays offline-installable but always updates
-    # in full.
+    # The default full NSIS package stays offline-installable and is differential
+    # too, through the .exe.blockmap published next to it (the previous blockmap
+    # has to be cached locally, otherwise it falls back to a full download).
     [switch]$WebInstaller,
     # Release mode: requires signing configuration (Azure, UKey, or PFX).
     # Without -Release, the build produces an unsigned installer (development only).
@@ -138,6 +139,14 @@ try {
         $env:NO_PROXY = 'localhost,127.0.0.1,::1,registry.npmjs.org,files.pythonhosted.org'
         $env:NODE_USE_ENV_PROXY = '1'
         $env:ELECTRON_GET_USE_PROXY = '1'
+    }
+
+    if ($Release) {
+        $node = Get-Command node -ErrorAction Stop
+        & $node.Source (Join-Path $sourceRoot 'apps\desktop\scripts\check-windows-signer.mjs')
+        if ($LASTEXITCODE -ne 0) {
+            throw "Signing preflight failed with exit code $LASTEXITCODE."
+        }
     }
 
     # 国内镜像加速：Python 依赖走第一个可达的镜像，Electron 走 npmmirror。

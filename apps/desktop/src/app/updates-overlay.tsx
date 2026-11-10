@@ -31,16 +31,17 @@ import {
   $desktopVersion,
   $updateApply,
   $updateChecking,
+  $updateDownloading,
   $updateOverlayOpen,
   $updateOverlayTarget,
   $updateReady,
   $updateStatus,
   applyBackendUpdate,
-  applyUpdates,
   cancelActiveUpdate,
   checkBackendUpdates,
   checkUpdates,
   dismissDiscontinuedNotice,
+  installClientUpdate,
   resetUpdateApplyState,
   setUpdateOverlayOpen,
   type UpdateApplyState
@@ -72,13 +73,14 @@ export function UpdatesOverlay() {
   const backendApply = useStore($backendUpdateApply)
   const desktopVersion = useStore($desktopVersion)
   const ready = useStore($updateReady)
+  const downloading = useStore($updateDownloading)
 
   const isBackend = target === 'backend'
   const status = isBackend ? backendStatus : clientStatus
   const checking = isBackend ? backendChecking : clientChecking
   const apply = isBackend ? backendApply : clientApply
   const check = isBackend ? checkBackendUpdates : checkUpdates
-  const install = isBackend ? applyBackendUpdate : applyUpdates
+  const install = isBackend ? applyBackendUpdate : installClientUpdate
 
   useEffect(() => {
     if (open && !status && !checking) {
@@ -102,15 +104,38 @@ export function UpdatesOverlay() {
 
   const downloadInProgress = !isBackend && phase === 'applying' && isDownloadStage(apply.stage)
 
+  // The manual-check download owns the dialog without touching $updateApply:
+  // holding bytes is never an install, and the install stays a click away.
+  const downloadingPackage = !isBackend && downloading
+
+  // The progress surface for that transfer: same view as apply's download leg,
+  // no percent (the prefetch reports none) and no install behind it.
+  const downloadView: UpdateApplyState = {
+    applying: true,
+    stage: 'fetch',
+    message: '',
+    percent: null,
+    error: null,
+    command: null,
+    log: []
+  }
+
   // A package already on disk is not installed by opening this overlay: the
   // ready view's "launch" IS the start of the install, and it stays a user
   // decision. Packages still in flight render their transfer instead.
-  const launchReady = !isBackend && phase === 'idle' && Boolean(ready) && updateAvailable && !status?.retirement
+  const launchReady =
+    !isBackend && !downloadingPackage && phase === 'idle' && Boolean(ready) && updateAvailable && !status?.retirement
 
   const handleClose = (next: boolean) => {
     // Only the transfer is interruptible: abort it for real so the remaining
     // bytes stop arriving. Once the installer owns the window there is nothing
     // left to cancel, and closing it would hide the restart.
+    if (downloadingPackage) {
+      void cancelActiveUpdate()
+
+      return
+    }
+
     if (phase === 'applying') {
       if (downloadInProgress) {
         void cancelActiveUpdate()
@@ -139,15 +164,17 @@ export function UpdatesOverlay() {
           the close button and trigger its tooltip immediately on open. */}
       <DialogContent
         bodyClassName="overflow-hidden p-0 gap-0"
-        className={cn('max-w-sm', phase === 'applying' && 'max-w-lg')}
+        className={cn('max-w-sm', (phase === 'applying' || downloadingPackage) && 'max-w-lg')}
         onOpenAutoFocus={preventCloseButtonAutoFocus}
-        showCloseButton={phase !== 'applying' || downloadInProgress}
+        showCloseButton={downloadingPackage || phase !== 'applying' || downloadInProgress}
       >
+        {downloadingPackage && <ApplyingView apply={downloadView} onCancel={() => handleClose(false)} />}
+
         {phase === 'applying' && (
           <ApplyingView apply={apply} onCancel={isBackend ? undefined : () => handleClose(false)} />
         )}
 
-        {phase === 'idle' && launchReady && (
+        {phase === 'idle' && !downloadingPackage && launchReady && (
           <ReadyView onLater={() => handleClose(false)} onLaunch={handleInstall} version={ready?.version ?? null} />
         )}
 
@@ -175,7 +202,7 @@ export function UpdatesOverlay() {
             retirement={status.retirement}
           />
         )}
-        {phase === 'idle' && (isBackend || !status?.retirement) && !launchReady && (
+        {phase === 'idle' && !downloadingPackage && (isBackend || !status?.retirement) && !launchReady && (
           <IdleView
             behind={behind}
             checking={checking}

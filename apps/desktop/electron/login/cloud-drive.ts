@@ -66,7 +66,7 @@ export class CloudDriveClient {
     this.credentials.clear()
   }
 
-  /** 传输绑定发起时的账号和登录，切换或到期后立即停止落盘和发送。 */
+  /** 传输绑定发起时的账号和登录，切换或退出后立即停止落盘和发送。 */
   guardIdentity(): () => void {
     const original = this.identity()
 
@@ -77,8 +77,7 @@ export class CloudDriveClient {
         !original ||
         !current ||
         current.uid !== original.uid ||
-        current.token !== original.token ||
-        current.expiresAt <= Date.now()
+        current.token !== original.token
       ) {
         throw new CloudDriveOperationError('failed', 'AUTH_CHANGED')
       }
@@ -314,7 +313,7 @@ export class CloudDriveClient {
   private validateRequest(input: CloudDriveRequest) {
     const identity = this.identity()
 
-    if (!identity || identity.expiresAt <= Date.now()) {
+    if (!identity) {
       throw new Error('请重新登录 UniWork')
     }
 

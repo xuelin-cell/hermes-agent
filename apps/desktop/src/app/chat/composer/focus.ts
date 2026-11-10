@@ -30,6 +30,7 @@ export interface FocusDetail {
 }
 
 interface InsertDetail {
+  attachments?: ComposerAttachment[]
   mode: ComposerInsertMode
   target: ComposerTarget
   text: string
@@ -283,9 +284,20 @@ export const requestComposerFocus = (
 
 export const requestComposerInsert = (
   text: string,
-  { mode = 'block', target = 'active' }: { mode?: ComposerInsertMode; target?: ComposerTarget | 'active' } = {}
+  {
+    attachments,
+    mode = 'block',
+    target = 'active'
+  }: { attachments?: ComposerAttachment[]; mode?: ComposerInsertMode; target?: ComposerTarget | 'active' } = {}
 ) => {
   const trimmed = text.trim()
+
+  if (attachments?.length) {
+    // 文字和附件同步落到粘贴时的输入框，避免下一次会话切换抢走附件。
+    dispatchNow<InsertDetail>(INSERT_EVENT, { attachments, mode, target: resolve(target), text: trimmed })
+
+    return
+  }
 
   if (!trimmed) {
     return

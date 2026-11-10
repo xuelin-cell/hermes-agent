@@ -29,7 +29,7 @@ export class UniworkAsrSession {
       })
   ) {
     this.socket = connect(UPSTREAM, identity.key)
-    this.expiry = setTimeout(() => this.cancel(), Math.min(5 * 60_000, Math.max(0, identity.expiresAt - Date.now())))
+    this.expiry = setTimeout(() => this.cancel(), 5 * 60_000)
     this.socket.on('error', () => {
       this.failed = true
       this.cancel()
@@ -86,15 +86,14 @@ export class UniworkAsrSession {
     this.socket.once('close', callback)
   }
 
-  /** 校验当前登录所有者及 Key，过期或切换身份后不继续传输录音。 */
+  /** 校验当前登录所有者及 Key，退出或切换身份后不继续传输录音。 */
   private authorized(): boolean {
     const current = this.currentIdentity()
 
     return Boolean(
       current &&
       current.owner === this.identity.owner &&
-      current.key === this.identity.key &&
-      current.expiresAt > Date.now()
+      current.key === this.identity.key
     )
   }
 

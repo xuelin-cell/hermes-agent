@@ -117,7 +117,7 @@ export function showLocalStartupFailure(error: LocalStartupError, parent?: Brows
 
   const options: Electron.MessageBoxOptions = {
     type: 'error',
-    title: 'Hermes Desktop MT',
+    title: '元景数字员工',
     message: error.message,
     buttons: ['退出应用'],
     defaultId: 0,

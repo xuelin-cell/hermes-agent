@@ -56,6 +56,7 @@ import {
   planReload,
   planRestore,
   rebindSurvivorRowIds,
+  type RewindImages,
   runRewindSubmit,
   type SurvivorUserRowIds
 } from '../session/hooks/use-prompt-actions/rewind'
@@ -497,7 +498,8 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
       truncateMessageId?: string,
       truncateRowId?: number,
       sourceText?: string,
-      rebindRowIds?: readonly number[]
+      rebindRowIds?: readonly number[],
+      images?: RewindImages
     ) =>
       runRewindSubmit(
         requestSessionGateway,
@@ -512,7 +514,8 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
         },
         truncateRowId,
         sourceText,
-        rebindRowIds
+        rebindRowIds,
+        images
       ),
     [bindRecoveredRuntime, requestSessionGateway]
   )
@@ -658,7 +661,8 @@ export function useSessionTileActions({ requestGateway, runtimeId, scope, stored
             plan.truncateMessageId,
             plan.truncateRowId,
             plan.sourceText,
-            durableRowIdsForRebind(messages)
+            durableRowIdsForRebind(messages),
+            { cwd: readState()?.cwd, refs: plan.imageRefs }
           )
         )
       } catch (err) {

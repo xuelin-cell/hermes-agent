@@ -13,7 +13,6 @@ import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEff
 import { useLocation, useNavigate } from 'react-router'
 
 import { getSessionMessages as getUniSearchMessages } from '@/api/sessions'
-import { formatRefValue } from '@/components/assistant-ui/directive-text'
 import { BootFailureOverlay } from '@/components/boot-failure-overlay'
 import { ConfirmHost } from '@/components/confirm-host'
 import { DesktopInstallOverlay } from '@/components/desktop-install-overlay'
@@ -144,7 +143,7 @@ import { startWorkspaceSession } from '../session/workspace-session-target'
 import { PluginInstallModal } from '../settings/plugin-install-modal'
 import { useOverlayRouting } from '../shell/hooks/use-overlay-routing'
 import { useWindowControlsOverlayWidth } from '../shell/hooks/use-window-controls-overlay-width'
-import { messageCenterAvailable, MessageCenterSync } from '../shell/message-center'
+import { MessageCenterSync } from '../shell/message-center'
 import {
   TITLEBAR_CHROME_CHANGED_EVENT,
   titlebarControlsPosition,
@@ -186,7 +185,6 @@ import { POOL_LIMITS_SETTINGS_ROUTE } from './wiring-routing'
 // ChatRoutesSurface's and live in ./surfaces.
 const AgentsView = lazy(async () => ({ default: (await import('../agents')).AgentsView }))
 const CommandCenterView = lazy(async () => ({ default: (await import('../command-center')).CommandCenterView }))
-const CronView = lazy(async () => ({ default: (await import('../cron/tasks-mt')).CronEntry }))
 const WebhooksView = lazy(async () => ({ default: (await import('../webhooks')).WebhooksView }))
 const ProfilesView = lazy(async () => ({ default: (await import('../profiles')).ProfilesView }))
 const StarmapView = lazy(async () => ({ default: (await import('../starmap')).StarmapView }))
@@ -349,7 +347,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     closeOverlayToPreviousRoute,
     commandCenterInitialSection,
     commandCenterOpen,
-    cronOpen,
     currentView,
     openAgents,
     openCommandCenterSection,
@@ -1178,7 +1175,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   // while every handler still closes over the latest values.
   const nextActions: WiringActions = {
     onAddContextRef: composer.addContextRefAttachment,
-    onAddUrl: url => composer.addContextRefAttachment(`@url:${formatRefValue(url)}`, url),
     // The sidebar row menu reuses this verb in the Archived view too, where the
     // row is already archived — dispatch by state so the verb restores there
     // instead of re-archiving (#98813).
@@ -1209,6 +1205,11 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     onLoadMoreMessaging: loadMoreMessagingForPlatform,
     onLoadMoreSessions: loadMoreSessions,
     onRetrySessions: () => refreshSessions().catch(() => undefined),
+    runCronTask: async prompt => {
+      startFreshSessionDraft()
+
+      return submitText(prompt)
+    },
     onManageCronJob: jobId => {
       setCronFocusJobId(jobId)
       navigate(CRON_ROUTE)
@@ -1227,7 +1228,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     onPasteClipboardImage: opts => composer.pasteClipboardImage(opts),
     onPickFiles: () => void composer.pickContextPaths('file'),
     onPickFolders: () => void composer.pickContextPaths('folder'),
-    onPickImages: () => void composer.pickImages(),
     onReload: reloadFromMessage,
     onRemoveAttachment: id => void composer.removeAttachment(id),
     onRestoreToMessage: restoreToMessage,
@@ -1304,10 +1304,10 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     [chatRoutesNode, sidebarNode, statusbarNode, terminalNode]
   )
 
-  // The REAL titlebar tool clusters (sidebar/flip toggles, haptics, keybinds,
-  // settings gear) — fixed chrome positioned via the same CSS vars AppShell
-  // sets, computed here from the live connection. Page-registered tools
-  // (preview's monitor/devtools cluster, …) arrive as registry contributions.
+  // The REAL titlebar tool clusters (sidebar/flip toggles, haptics, keybinds)
+  // — fixed chrome positioned via the same CSS vars AppShell sets, computed
+  // here from the live connection. Page-registered tools (preview's
+  // monitor/devtools cluster, …) arrive as registry contributions.
   const leftTitlebarTools = useTitlebarToolContributions('left')
   const rightTitlebarTools = useTitlebarToolContributions('right')
   const connection = useStore($connection)
@@ -1333,12 +1333,8 @@ export function ContribWiring({ children }: { children: ReactNode }) {
   const paneToolCount = rightTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
   const leftExtraCount = leftTitlebarTools.filter(tool => !tool.hidden && shownTool(tool)).length
 
-  const clusters = titlebarAppActionsClusterCounts(
-    appActionsSide,
-    leftExtraCount,
-    messageCenterAvailable() ? 1 : 0,
-    interfaceMode
-  )
+  // 通知铃铛已从标题栏移到侧栏账号行，标题栏不再为它预留宽度。
+  const clusters = titlebarAppActionsClusterCounts(appActionsSide, leftExtraCount, 0, interfaceMode)
 
   const systemToolsWidth = titlebarToolsWidthCss(clusters.right)
 
@@ -1387,7 +1383,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
         {!isHudWindow() && !isBrowserWindow() && (
           <TitlebarControls
             leftTools={leftTitlebarTools}
-            onOpenSettings={() => navigate(SETTINGS_ROUTE)}
             tools={rightTitlebarTools}
           />
         )}
@@ -1505,12 +1500,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
       {agentsOpen && (
         <Suspense fallback={null}>
           <AgentsView onClose={closeOverlayToPreviousRoute} />
-        </Suspense>
-      )}
-
-      {cronOpen && (
-        <Suspense fallback={null}>
-          <CronView onClose={closeOverlayToPreviousRoute} onOpenSession={openStoredSession} />
         </Suspense>
       )}
 

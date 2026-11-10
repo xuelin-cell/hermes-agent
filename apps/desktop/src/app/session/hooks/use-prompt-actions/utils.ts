@@ -5,6 +5,7 @@ import { translateNow, type Translations } from '@/i18n'
 import type { ChatMessage } from '@/lib/chat-messages'
 import { type CommandsCatalogLike, filterDesktopCommandsCatalog } from '@/lib/desktop-slash-commands'
 import { isProviderSetupErrorMessage } from '@/lib/provider-setup-errors'
+import type { SkillTagUsage } from '@/lib/usage-input'
 import type { ComposerAttachment } from '@/store/composer'
 
 import { registerRecoveredRuntime, singleFlightSessionResume, takeRecoveredRuntime } from './single-flight-resume'
@@ -704,6 +705,10 @@ export function visibleUserIndexAtOrdinal(messages: readonly ChatMessage[], targ
 }
 
 export interface SubmitTextOptions {
+  /** An explicit continuation; a missing executionId means its statistics cannot be recovered. */
+  usageResume?: { executionId?: string }
+  /** Real welcome-catalog tag selected for this send, independent of any executed skill. */
+  skillTag?: SkillTagUsage
   attachments?: ComposerAttachment[]
   /** The composer scope key that was actually loaded when this text was
    *  submitted (see use-composer-draft's activeQueueSessionKeyRef). Compared

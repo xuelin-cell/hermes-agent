@@ -99,7 +99,6 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   onDeleteSelectedSession: () => void
   onCancel: () => Promise<void> | void
   onAddContextRef: (refText: string, label?: string, detail?: string) => void
-  onAddUrl: (url: string) => void
   onBranchInNewChat?: (messageId: string) => void
   maxVoiceRecordingSeconds?: number
   onAttachImageBlob: (blob: Blob, isCurrent?: () => boolean) => Promise<boolean | void> | boolean | void
@@ -108,7 +107,6 @@ interface ChatViewProps extends Omit<React.ComponentProps<'div'>, 'onSubmit'> {
   onPasteClipboardImage: (opts?: { silent?: boolean }) => Promise<boolean> | void
   onPickFiles: () => void
   onPickFolders: () => void
-  onPickImages: () => void
   onRemoveAttachment: (id: string) => void
   onSteer: (text: string) => Promise<boolean> | boolean
   onSteerHidden?: (text: string) => Promise<boolean> | boolean
@@ -452,7 +450,6 @@ const ChatViewContent = memo(function ChatViewContent({
   requestModelOptionsForOwner,
   onCancel,
   onAddContextRef,
-  onAddUrl,
   onAttachImageBlob,
   onAttachDroppedItems,
   onAttachPastedText,
@@ -461,7 +458,6 @@ const ChatViewContent = memo(function ChatViewContent({
   onPasteClipboardImage,
   onPickFiles,
   onPickFolders,
-  onPickImages,
   onRemoveAttachment,
   onSteer,
   onSteerHidden,
@@ -854,7 +850,6 @@ const ChatViewContent = memo(function ChatViewContent({
                 gateway={gateway}
                 maxRecordingSeconds={maxVoiceRecordingSeconds}
                 onAddContextRef={onAddContextRef}
-                onAddUrl={onAddUrl}
                 onAttachDroppedItems={onAttachDroppedItems}
                 onAttachImageBlob={onAttachImageBlob}
                 onAttachPastedText={onAttachPastedText}
@@ -862,7 +857,6 @@ const ChatViewContent = memo(function ChatViewContent({
                 onPasteClipboardImage={onPasteClipboardImage}
                 onPickFiles={onPickFiles}
                 onPickFolders={onPickFolders}
-                onPickImages={onPickImages}
                 onRemoveAttachment={onRemoveAttachment}
                 onSteer={onSteer}
                 onSteerHidden={onSteerHidden}

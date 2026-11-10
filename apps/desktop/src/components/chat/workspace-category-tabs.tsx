@@ -6,7 +6,6 @@ import { useEffect, useRef } from 'react'
 import { $resolvedWelcomeCatalog, loadWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
-import { $interfaceMode } from '@/store/interface-mode'
 import { $selectedWelcomeModules, selectWorkspaceModule } from '@/store/workspace-category'
 
 import { WelcomeIcon } from './welcome-icon'
@@ -21,7 +20,6 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
   const language = locale.startsWith('zh') ? 'zh-CN' : 'en'
   const { modules, status } = useStore($resolvedWelcomeCatalog[language])
   const selected = useStore($selectedWelcomeModules[language])
-  const mode = useStore($interfaceMode)
   const copy = workspaceCategoryCopy[locale]
   const ref = useRef<HTMLDivElement>(null)
 
@@ -32,7 +30,7 @@ export function WorkspaceCategoryTabs({ onSelect }: WorkspaceCategoryTabsProps =
     if (selected) {
       selectWorkspaceModule(language, selected)
     }
-  }, [language, selected, mode])
+  }, [language, selected])
 
   if (!modules.length) {
     return status === 'loading' ? null : (

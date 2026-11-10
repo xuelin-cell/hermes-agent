@@ -150,6 +150,8 @@ def before_turn(
     *, session_id="", turn_id="", task_id="", platform="", user_message=None, **kwargs
 ):
     """本轮开始时固定本机目录和附件排除表，并提醒中间文件放哪；消息平台只登记下载，不观察目录。"""
+    # 定时任务的本机成品沿用桌面交付流程，调度器的来源标识保持原样。
+    platform = "desktop" if platform == "cron" else platform
     message = platform in background.DELIVERY_PLATFORMS
     if not session_id or not (message or platform in {"desktop", "subagent"}):
         return
@@ -315,6 +317,8 @@ def after_tool(
 
 def transform(*, response_text="", session_id="", turn_id="", platform="", **kwargs):
     """只改本轮尚未存储的回复，统一筛选候选，最多自动补齐八张交付卡。"""
+    # 与开始观察时一致，将 cron 结果交给现有本机预览引用逻辑。
+    platform = "desktop" if platform == "cron" else platform
     if (
         platform not in {"desktop", "subagent", *background.DELIVERY_PLATFORMS}
         or not isinstance(response_text, str)
@@ -347,6 +351,7 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     # 用户指定或最终回复明确交付的文件，不因 assets 等素材目录名漏卡。
     # 代码块里的路径不算交付声明；隐藏目录、附件和未完成文件仍走原有过滤。
     declared = turn.declared | set(named_paths(mask_examples(response_text, inline=False), cwd))
+    waiting = background.unreturned_results(key)
     # 子代理只交付两项工具已缓存的成品，其他子代理的普通回复不新增卡片。
     paths = dict.fromkeys(
         turn.paths if turn.background else [*turn.paths, *declared]
@@ -355,6 +360,7 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
         path
         for path in paths
         if path not in turn.uploads
+        and path not in waiting
         and not background.managed_video(path)
         and fresh(path, turn.started, roots, explicit=path in declared)
     ]
@@ -392,12 +398,47 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     ]
     from .paths import priority
 
+    copies = copied_downloads(paths, generated, explicit_cards & (set(paths) | shown), shown)
+    paths = list(dict.fromkeys(copies.get(path, path) for path in paths))
     appended = [path for path in sorted(paths, key=priority) if path not in shown][:8]
-    background.forget_results(key, [path for path in returned if path in appended or path in shown])
-    moved = set(appended) | (managed & shown)
+    delivered = set(appended) | shown
+    replaced = {path for path, target in copies.items() if target in delivered}
+    background.forget_results(key, set(returned) & (delivered | replaced))
+    moved = set(appended) | (managed & shown) | replaced
     # 只移走将追加或已有另一展示位置的独立行，未选中卡片不能被误删。
     text = remove_media_lines(response_text, masked, cwd, moved)
     return appended_reply(original_response, text, appended)
+
+
+def copied_downloads(paths, generated, explicit, shown):
+    """只核对本轮下载或后台带回的缓存与明确交付副本；有界读取，无法确认时不合并。"""
+    from .downloads import MAX_BYTES
+    from .uploads import fingerprint
+
+    candidates = sorted(explicit - generated, key=lambda path: (path not in shown, str(path)))[:8]
+    copies, digests = {}, {}
+    for source in islice((path for path in paths if path in generated), 8):
+        for target in candidates:
+            if source.suffix.lower() != target.suffix.lower():
+                continue
+            try:
+                size = source.stat().st_size
+                if not 0 < size <= MAX_BYTES or target.stat().st_size != size:
+                    continue
+                for path in (source, target):
+                    if path not in digests:
+                        digests[path] = fingerprint(path)
+                if digests[source] == digests[target]:
+                    # 已有行内预览时保留它，否则优先最终交付的命名副本。
+                    if source in shown:
+                        if target not in shown:
+                            copies[target] = source
+                    else:
+                        copies[source] = target
+                    break
+            except (OSError, ValueError):
+                continue
+    return copies
 
 
 def appended_reply(response_text, text, appended):
@@ -432,11 +473,20 @@ def attach(key, turn, response_text, returned):
         resolve_path(match.group("path"), turn.cwd)
         for match in MEDIA_TAG_CLEANUP_RE.finditer(MEDIA.sub("", masked).replace(">", " "))
     }
+    explicit = {
+        path for match in MEDIA_TAG_CLEANUP_RE.finditer(masked.replace(">", " "))
+        if (path := resolve_path(match.group("path"), turn.cwd)) is not None
+        and fresh(path, turn.started, {turn.cwd}, explicit=True)
+    }
+    copies = copied_downloads(paths, set(paths), explicit, inline)
+    paths = list(dict.fromkeys(copies.get(path, path) for path in paths))
     appended = [path for path in sorted(paths, key=priority) if path not in inline][:8]
-    background.forget_results(key, [path for path in returned if path in appended or path in inline])
+    delivered = set(appended) | inline | explicit
+    replaced = {path for path, target in copies.items() if target in delivered}
+    background.forget_results(key, set(returned) & (delivered | replaced))
     # 模型自己写的独立行挪到末尾统一列出，同一文件不发两次。
     text = remove_media_lines(
-        response_text, masked, turn.cwd, set(appended) | (set(paths) & inline)
+        response_text, masked, turn.cwd, set(appended) | (set(paths) & inline) | replaced
     )
     return appended_reply(response_text, text, appended)
 

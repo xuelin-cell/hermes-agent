@@ -6,7 +6,9 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from .urls import document_base, web_reference
+from .evidence import PageEvidence, html_evidence
+from .article import primary_article, article_missing
 
 import trafilatura
 from bs4 import BeautifulSoup, Tag
@@ -84,12 +86,16 @@ class ExtractedContent:
     markdown: str
     title: str | None
     text_length: int
+    evidence: PageEvidence | None = None
 
 
 # 正文提取保留主要列表与链接，去掉导航噪声且不覆盖详情内容。
-def extract_content(html: str, url: str) -> ExtractedContent:
+def extract_content(
+    html: str, url: str, *, evidence: PageEvidence | None = None
+) -> ExtractedContent:
     """Extract readable Markdown and title from HTML."""
-    soup = BeautifulSoup(html, "lxml")
+    evidence = evidence or html_evidence(html)
+    soup = BeautifulSoup(evidence.html, "lxml")
     title = _extract_title(soup)
     _normalize_links(soup, url)
     _annotate_semantic_metadata(soup)
@@ -123,32 +129,49 @@ def extract_content(html: str, url: str) -> ExtractedContent:
     else:
         extracted = _append_missing_article_links(extracted, extraction_soup)
 
+    # 同页可见文章优先补回，保留原目录结果；不为提取器漏选正文发起网络请求。
+    article = primary_article(extraction_soup)
+    if article is not None and article_missing(article, extracted or ""):
+        extracted = _fallback_markdown(BeautifulSoup(str(article), "lxml")) + "\n\n" + (extracted or "")
+
     extracted = _append_pagination_links(extracted or "", soup)
     cleaned = _clean_markdown(
         extracted, deduplicate=not (preserve_repeated_blocks or used_html_fallback)
     )
     return ExtractedContent(
-        markdown=cleaned, title=title, text_length=len(_plain_text(cleaned))
+        markdown=cleaned,
+        title=title,
+        text_length=len(_plain_text(cleaned)),
+        evidence=evidence,
     )
 
 
 # 只在静态正文不足或动态挑战迹象明确时启动浏览器补抓。
-def needs_browser(raw_html: str, content: ExtractedContent) -> bool:
+def needs_browser(
+    raw_html: str, content: ExtractedContent, *, dynamic_only: bool = False
+) -> bool:
     """Return whether static extraction is too weak and JS rendering is worthwhile."""
-    lowered = raw_html.lower()
-    if any(marker in lowered for marker in _CHALLENGE_MARKERS):
-        return True
-    if content.text_length < _MIN_READABLE_LENGTH:
-        return True
-
-    paragraph_count = len(
-        re.findall(r"(?:^|\n)\s*[^#*|>\n][^\n]{60,}", content.markdown)
-    )
+    evidence = content.evidence or html_evidence(raw_html)
+    lowered = evidence.html.lower()
     dynamic_shell = any(marker in lowered for marker in _DYNAMIC_MARKERS) or bool(
         re.search(r"<div[^>]+id=[\"'](?:app|root|__next)[\"'][^>]*>\s*</div>", lowered)
     )
-    if dynamic_shell and content.text_length < _MIN_DYNAMIC_LENGTH:
+    dynamic_incomplete = dynamic_shell and content.text_length < _MIN_DYNAMIC_LENGTH
+    # 已有合格短正文时，只用动态迹象决定补抓，不再因字数少否定它。
+    if any(marker in lowered for marker in _CHALLENGE_MARKERS):
+        from .quality import is_access_page
+
+        if not dynamic_only or is_access_page(
+            BeautifulSoup(evidence.html, "lxml"), content.title, content.markdown
+        ):
+            return True
+    if dynamic_only:
+        return dynamic_incomplete
+    if content.text_length < _MIN_READABLE_LENGTH or dynamic_incomplete:
         return True
+    paragraph_count = len(
+        re.findall(r"(?:^|\n)\s*[^#*|>\n][^\n]{60,}", content.markdown)
+    )
     return (
         content.text_length < _MIN_SHORT_PAGE_LENGTH
         and paragraph_count < _MIN_PARAGRAPHS
@@ -177,19 +200,28 @@ def _extract_title(soup: BeautifulSoup) -> str | None:
     return None
 
 
-# 相对链接基于最终页面地址解析，保持正文引用可用。
+# 正文与发现链接共用HTML基准，不输出无效可点击地址。
 def _normalize_links(soup: BeautifulSoup, base_url: str) -> None:
+    base_url = document_base(soup, base_url)
     for tag_name, attribute in (("a", "href"), ("img", "src")):
         for node in soup.find_all(tag_name):
-            if not isinstance(node, Tag):
-                continue
             value = node.get(attribute)
-            if (
-                isinstance(value, str)
-                and value
-                and not value.startswith(("data:", "javascript:", "mailto:", "tel:"))
+            if not isinstance(value, str):
+                continue
+            if tag_name == "a" and value.strip().lower().startswith(
+                (
+                    "mailto:",
+                    "tel:",
+                )
             ):
-                node[attribute] = urljoin(base_url, value)
+                continue
+            if tag_name == "img" and value.strip().lower().startswith("data:"):
+                continue
+            absolute = web_reference(base_url, value)
+            if absolute is not None:
+                node[attribute] = absolute
+            else:
+                node.attrs.pop(attribute, None)
 
 
 # 把评分等非文字元数据保留成可读内容。

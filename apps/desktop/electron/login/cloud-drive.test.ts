@@ -1,19 +1,21 @@
 import { expect, it, vi } from 'vitest'
 
 import { CloudDriveClient } from './cloud-drive'
-import { LoginSession } from './session'
 import { MAAS_IDENTITY_NAMESPACE } from './credential-store'
+import { LoginSession } from './session'
 
-// 恢复已保存登录后直接认证云盘，重复进入仍复用云盘令牌；页面只获得脱敏账号。
+// 恢复已过期的登录 JWT 后仍认证云盘，重复进入复用独立的云盘令牌。
 it('uses the saved phone for cloud drive after restoring login', async () => {
   const saved = {
     namespace: MAAS_IDENTITY_NAMESPACE,
     uid: 'saved-user', token: 'saved-token', phone: '13800000000',
-    maskedPhone: '138****0000', expiresAt: Date.now() + 60_000
+    maskedPhone: '138****0000', expiresAt: Date.now() - 60_000
   }
+
   const request = vi.fn<typeof fetch>()
     .mockResolvedValueOnce(Response.json({ meta: { code: '' }, result: { accessToken: 'drive-token' } }))
     .mockImplementation(async () => Response.json({ ok: true, data: { items: [] } }))
+
   const session = new LoginSession(request, { save: vi.fn(), load: vi.fn().mockReturnValue(saved) })
   expect(session.restore()).toEqual({
     ok: true, account: { maskedPhone: saved.maskedPhone, expiresAt: saved.expiresAt }
