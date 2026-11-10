@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setApiRequestConnection, setApiRequestProfile } from '@/api/client'
 import type { DesktopUpdateStatus, DesktopVersionInfo } from '@/global'
+import { translateNow, TRANSLATIONS } from '@/i18n'
 import { en } from '@/i18n/en'
 
 const storage = new Map<string, string>()
@@ -1057,6 +1058,17 @@ describe('applyUpdates terminal state', () => {
     expect(applyMock).not.toHaveBeenCalled()
     expect($updateApply.get().applying).toBe(false)
     expect($updateDownloading.get()).toBe(false)
+  })
+
+  // Status copy comes from the catalog: a literal here would surface as English
+  // in a Traditional Chinese session (zh-hant only overrides the keys it lists).
+  it('starts the apply with the catalog copy', async () => {
+    applyMock.mockResolvedValue({ ok: true, handedOff: true })
+
+    const started = installClientUpdate()
+
+    expect($updateApply.get().message).toBe(translateNow('updates.startingUpdate'))
+    await started
   })
 
   it('holds the restart view when a relauncher hands off (no close, no toast)', async () => {
@@ -2310,5 +2322,30 @@ describe('retryUpdateDownload', () => {
     expect($updateDownloadFailure.get()).toBeNull()
     expect(prepareMock).not.toHaveBeenCalled()
     expect(applyMock).not.toHaveBeenCalled()
+  })
+})
+
+// Every status line the update store publishes resolves through the catalog.
+// zh-hant is a partial locale that falls back to EN, so a key missing from the
+// Chinese catalogs would show English in a Chinese session — the exact drift
+// these store-side literals used to cause.
+describe('update status copy', () => {
+  it('resolves the apply-status lines from every shipped locale', () => {
+    for (const locale of ['en', 'zh', 'zh-hant'] as const) {
+      const copy = TRANSLATIONS[locale].updates
+
+      expect(copy.startingUpdate.trim()).toBeTruthy()
+      expect(copy.bridgeUnavailable.trim()).toBeTruthy()
+      expect(copy.applyStatus.applied.trim()).toBeTruthy()
+      expect(copy.applyStatus.failed.trim()).toBeTruthy()
+      expect(copy.applyStatus.noReturn.trim()).toBeTruthy()
+    }
+
+    // The Chinese catalogs must override the lines the store publishes, not
+    // inherit the English fallback.
+    expect(TRANSLATIONS.zh.updates.startingUpdate).not.toBe(en.updates.startingUpdate)
+    expect(TRANSLATIONS['zh-hant'].updates.startingUpdate).not.toBe(en.updates.startingUpdate)
+    expect(TRANSLATIONS['zh-hant'].updates.bridgeUnavailable).not.toBe(en.updates.bridgeUnavailable)
+    expect(TRANSLATIONS['zh-hant'].updates.applyStatus.applied).not.toBe(en.updates.applyStatus.applied)
   })
 })
