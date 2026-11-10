@@ -251,6 +251,7 @@ def test_persisted_resume_merges_closed_segments_and_keeps_one_business_identity
     collector.observe("start", base)
     original = next(iter(collector.turns.values())).logical_id
     collector.observe("usage", {**base, "attempt": "first", "tokens": {"inputTokens": 10, "outputTokens": 3, "cachedTokens": 2}})
+    collector.observe("usage", {**base, "attempt": "timeout", "tokens": {}})
     collector.observe("tool", {**base, "tool_name": "mcp__plugin_office_docs__read", "tool_call_id": "reused-call-id", "success": True})
     collector.observe("wait_start", {**base, "surface": "desktop", "tool_call_id": "approval", "mono": 12})
     collector.observe("wait_end", {**base, "surface": "desktop", "tool_call_id": "approval", "mono": 17})
@@ -295,8 +296,35 @@ def test_persisted_resume_merges_closed_segments_and_keeps_one_business_identity
     collector.observe("end", {**fresh, "mono": 11, "completed": True, "failed": False, "interrupted": False})
     latest = json.loads(box.db.execute("SELECT payload FROM events ORDER BY rowid DESC LIMIT 1").fetchone()[0])
     assert latest["conversation"]["durationMs"] == 1000
-    assert not any(key in latest["usages"][0] for key in modules.protocol.TOKEN_FIELDS)
+    assert {key: latest["usages"][0][key] for key in modules.protocol.TOKEN_FIELDS} == {
+        "inputTokens": 7, "outputTokens": 2, "cachedTokens": 1}
     box.db.close()
+
+
+def test_confirmed_usage_preserves_known_fields_without_inventing_zero_or_overflow(modules):
+    model = {"modelId": "main", "modelName": "Main", "productId": "plan", "provider": "yuanjing",
+             "runtimeProvider": "custom", "baseUrl": "https://model.invalid/v1", "credential": "fingerprint"}
+    turn = modules.collector.Turn("s", "t", 0, modules.protocol.timestamp(), None, [model], model)
+    base = {"model": "main", "provider": "custom", "base_url": model["baseUrl"], "credential": "fingerprint"}
+
+    def add(tokens):
+        assert turn.add_usage({**base, "tokens": tokens})
+        return modules.protocol.usage_item(next(iter(turn.usages.values())))
+
+    for tokens in ({}, {"inputTokens": True, "outputTokens": -1, "cachedTokens": "0"}):
+        unknown = add(tokens)
+        assert not any(key in unknown for key in modules.protocol.TOKEN_FIELDS)
+    assert add({"inputTokens": 10, "outputTokens": 0, "cachedTokens": 2})["outputTokens"] == 0
+    partial = add({"outputTokens": 5})
+    assert {key: partial[key] for key in modules.protocol.TOKEN_FIELDS} == {
+        "inputTokens": 10, "outputTokens": 5, "cachedTokens": 2}
+    retried = add({"inputTokens": 20, "outputTokens": 3, "cachedTokens": 3})
+    assert {key: retried[key] for key in modules.protocol.TOKEN_FIELDS} == {
+        "inputTokens": 30, "outputTokens": 8, "cachedTokens": 5}
+    # An unrepresentable total must not wrap or restart from zero on the next receipt.
+    assert "inputTokens" not in add({"inputTokens": modules.protocol.MAX_INTEGER})
+    final = add({"inputTokens": 1})
+    assert "inputTokens" not in final and final["outputTokens"] == 8
 
 
 def test_failed_provider_attempt_preserves_the_exception_and_records_unknown_usage(modules):
@@ -462,6 +490,18 @@ def test_real_discovery_hooks_middleware_storage_and_profile_a_b_a(tmp_path, mon
                     actual = run_llm_execution_middleware({"messages": []}, lambda body: downstream_calls.append(body) or result,
                                                          **ids, api_request_id="same-native-request")
                     assert actual is result
+                    if len(downstream_calls) == 1:
+                        def fail(_request):
+                            raise TimeoutError("fixture provider timeout")
+                        with pytest.raises(TimeoutError):
+                            run_llm_execution_middleware({}, fail, **ids, api_request_id="same-native-request")
+                        manager.invoke_hook("post_auxiliary_call", **ids, aux_task="approval",
+                                            api_request_id="approval-retry", retry_count=0,
+                                            usage=None, error_type="TimeoutError")
+                        for _duplicate in range(2):
+                            manager.invoke_hook("post_auxiliary_call", **ids, aux_task="approval",
+                                                api_request_id="approval-retry", retry_count=1,
+                                                usage={"prompt_tokens": 5, "output_tokens": 2, "cache_read_tokens": 1})
                 assert len(downstream_calls) == 2
                 manager.invoke_hook("post_llm_call", **ids, assistant_response="done")
                 manager.invoke_hook("on_session_end", **ids, completed=True, failed=False, interrupted=False, turn_exit_reason="text_response(4 chars)")
@@ -469,12 +509,16 @@ def test_real_discovery_hooks_middleware_storage_and_profile_a_b_a(tmp_path, mon
                 wait_until(lambda: json.loads(command("status"))["events"].get("pending", 0) >= 1)
                 command("flush")
                 wait_until(lambda: json.loads(command("status"))["events"].get("pending", 0) == 0)
+                status = json.loads(command("status"))
+                assert status["tokenBasis"].startswith("已确认 Token 累计")
+                assert status["coverageGaps"]["usage_fields_unavailable"] >= 2
         assert len(uploaded) == 3
         assert [batch["events"][0]["conversation"]["sessionId"] for batch in uploaded] == ["session-a", "session-b", "session-a"]
         for batch in uploaded:
             assert batch["events"][0]["conversation"]["userInput"] == "hello😀"
-            assert batch["events"][0]["usages"][0]["inputTokens"] == 40
-            assert batch["events"][0]["usages"][0]["cachedTokens"] == 8
+            assert batch["events"][0]["usages"][0]["inputTokens"] == 45
+            assert batch["events"][0]["usages"][0]["outputTokens"] == 8
+            assert batch["events"][0]["usages"][0]["cachedTokens"] == 9
             assert "fixture-model-key" not in json.dumps(batch)
         with profile("a") as (home, manager):
             command = manager._plugin_commands["usage-report"]["handler"]

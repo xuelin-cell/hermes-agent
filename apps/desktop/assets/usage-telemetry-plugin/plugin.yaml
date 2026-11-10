@@ -21,4 +21,4 @@ config_schema:
   enabled:
     type: bool
     default: true
-    description: 上报办公统计和本轮输入摘要（最多 2000 个码点）；关闭后停止采集及发送。
+    description: 上报办公统计和本轮输入摘要（最多 2000 个码点）；Token 仅累计已返回的有效用量，未返回部分不估算，可能低于实际消耗；关闭后停止采集及发送。
