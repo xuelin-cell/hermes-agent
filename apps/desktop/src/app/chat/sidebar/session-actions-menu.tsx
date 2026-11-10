@@ -57,10 +57,17 @@ import { $sessionColorOverrides, setSessionColorOverride } from '@/store/session
 import { $sessionTiles, closeAllOpenSessionTiles } from '@/store/session-states'
 import { ackStoredSessionId } from '@/store/session-unread'
 import { canOpenSessionInTerminal, canOpenSessionWindow, openSessionInTerminal } from '@/store/windows'
+import { cn } from '@/lib/utils'
 
 import type { SessionTitleResponse } from '../../types'
 
 // Rename a session, preferring the gateway's session.title RPC over REST.
+// Unify every item in the session menu to the design system's control font
+// size and line height, so CopyButton, SubTrigger entries, MoveToProject
+// children, and regular action rows all read at one size.
+const sessionMenuTypographyClass =
+  'text-[length:var(--control-font-size,0.75rem)] leading-[var(--control-line-height,1rem)]'
+
 //
 // A freshly *branched* session (and any brand-new chat) lives only in the
 // gateway's in-memory _sessions map keyed by its RUNTIME id — no row is
@@ -179,13 +186,14 @@ function MoveToProjectItems({ kit, sessionId, profile }: { kit: MenuKit; session
   const targets = tree.filter(node => node.id !== currentProjectId && !node.isNoProject && projectRootCwd(node))
 
   if (targets.length === 0) {
-    return <kit.Item disabled>{p.moveNoProjects}</kit.Item>
+    return <kit.Item className={sessionMenuTypographyClass} disabled>{p.moveNoProjects}</kit.Item>
   }
 
   return (
     <>
       {targets.map(node => (
         <kit.Item
+          className={sessionMenuTypographyClass}
           key={node.id}
           onSelect={() => {
             triggerHaptic('selection')
@@ -249,7 +257,7 @@ function useSessionActions({
   // OPEN — where else this session can go. A tab surface IS a tab already,
   // so it only offers the window hop (and its own Close, below).
   const openItems: ActionItemSpec[] = [
-    ...(surface === 'row' && !alreadyTabbed
+    ...(developerMode && surface === 'row' && !alreadyTabbed
       ? [
           spec({
             disabled: !sessionId,
@@ -265,7 +273,7 @@ function useSessionActions({
           })
         ]
       : []),
-    ...(canOpenSessionWindow()
+    ...(developerMode && canOpenSessionWindow()
       ? [
           spec({
             disabled: !sessionId,
@@ -505,14 +513,22 @@ function useSessionActions({
     }
   ]
 
+  // Wrap renderActionItem so every regular action row picks up the unified
+  // font size and line height without touching the global menu primitives.
+  const renderSessionActionItem = (kit: MenuKit, item: ActionItemSpec) =>
+    renderActionItem(kit, {
+      ...item,
+      className: cn(sessionMenuTypographyClass, item.className)
+    })
+
   const renderItems = (kit: MenuKit) => (
     <>
-      {openItems.map(item => renderActionItem(kit, item))}
+      {openItems.map(item => renderSessionActionItem(kit, item))}
       {openItems.length > 0 && <kit.Separator />}
-      {identityItems.map(item => renderActionItem(kit, item))}
+      {identityItems.map(item => renderSessionActionItem(kit, item))}
       {developerMode && (
         <kit.Sub>
-          <kit.SubTrigger disabled={!sessionId}>
+          <kit.SubTrigger className={sessionMenuTypographyClass} disabled={!sessionId}>
             <Codicon name="symbol-color" size="0.875rem" />
             <span>{t.sidebar.projects.menuAppearance}</span>
           </kit.SubTrigger>
@@ -522,6 +538,7 @@ function useSessionActions({
         </kit.Sub>
       )}
       <CopyButton
+        className={sessionMenuTypographyClass}
         appearance={kit.copyAppearance}
         disabled={!sessionId}
         errorMessage={r.copyIdFailed}
@@ -532,9 +549,9 @@ function useSessionActions({
         text={sessionId}
       />
       <kit.Separator />
-      {workItems.map(item => renderActionItem(kit, item))}
+      {workItems.map(item => renderSessionActionItem(kit, item))}
       <kit.Sub>
-        <kit.SubTrigger disabled={!sessionId}>
+        <kit.SubTrigger className={sessionMenuTypographyClass} disabled={!sessionId}>
           <Codicon name="folder" size="0.875rem" />
           <span>{t.sidebar.projects.moveToProject}</span>
         </kit.SubTrigger>
@@ -545,15 +562,15 @@ function useSessionActions({
       {tabItems.length > 0 && (
         <>
           <kit.Separator />
-          {tabItems.map(item => renderActionItem(kit, item))}
+          {tabItems.map(item => renderSessionActionItem(kit, item))}
         </>
       )}
       <kit.Separator />
-      {dangerItems.map(item => renderActionItem(kit, item))}
+      {dangerItems.map(item => renderSessionActionItem(kit, item))}
       {onHideTabBar && (
         <>
           <kit.Separator />
-          {renderActionItem(kit, {
+          {renderSessionActionItem(kit, {
             disabled: false,
             icon: 'eye-closed',
             label: r.hideTabBar,
