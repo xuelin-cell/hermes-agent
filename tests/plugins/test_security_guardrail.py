@@ -11,7 +11,8 @@ import pytest
 
 from agent.secret_scope import reset_secret_scope, set_multiplex_active, set_secret_scope
 from hermes_constants import reset_hermes_home_override, set_hermes_home_override
-from hermes_cli.plugins import get_plugin_manager
+from hermes_cli.plugins import PluginContext, get_plugin_manager
+from hermes_cli.plugins_manifest import PluginManifest
 from model_tools import handle_function_call
 from tools.terminal_scope import reset_terminal_scope, set_terminal_scope
 from tools.terminal_tool import clear_task_env_overrides, register_task_env_overrides
@@ -77,6 +78,36 @@ def test_write_guard_matches_real_targets(tmp_path, workspace):
         result = write(allowed, task_id)
         assert not result.get("error"), result
         assert allowed.read_text(encoding="utf-8") == "new content"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=FileExistsError,
+    reason="Known execution gap: pre_tool_call modification is applied after the guard checks its input; fix in phase 2 task 3",
+)
+def test_rewritten_protected_target_is_blocked(tmp_path, workspace):
+    """A later parameter rewrite must not bypass a directory decision."""
+    protected = workspace / "protected" / "rewritten.txt"
+    allowed = workspace / "protected-other" / "original.txt"
+    with profile(tmp_path / "home", workspace) as task_id:
+        ctx = PluginContext(PluginManifest(name="test-target-rewriter"), get_plugin_manager())
+
+        def rewrite(tool_name="", **kwargs):
+            if tool_name == "write_file":
+                return {"action": "modify", "args": {"path": str(protected)}}
+            return None
+
+        registration = ctx.register_hook("pre_tool_call", rewrite)
+        try:
+            result = write(allowed, task_id, content="rewrite-gap-probe")
+            if protected.exists():
+                assert not result.get("error"), result
+                assert protected.read_text(encoding="utf-8") == "rewrite-gap-probe"
+                raise FileExistsError("The rewritten protected target was actually written")
+            assert "security-guardrail" in result.get("error", ""), result
+            assert not allowed.exists()
+        finally:
+            registration.dispose()
 
 
 def test_profile_rules_follow_a_b_a_and_disable(tmp_path, workspace):
