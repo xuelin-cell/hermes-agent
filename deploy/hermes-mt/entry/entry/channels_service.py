@@ -27,6 +27,9 @@ from .db import Database
 from .messaging_store import MessagingStore
 
 log = logging.getLogger('channels')
+# Readers (cloud-binding GET, login take-back, platform status) trust a connection_state
+# written within 15 s, so unchanged states are re-stamped well inside that window.
+STATE_REFRESH_SECONDS = 5
 
 
 class Channels:
@@ -36,6 +39,12 @@ class Channels:
         self.store = MessagingStore(self.database, CredentialCipher(settings.credential_key))
         self.clients, self.sockets, self.tasks = {}, {}, set()
         self.connection_ids = {}
+        # Thousands of bindings: start a few per one-second pass and share one registration/
+        # handshake budget, as UniClaw does, so restarts and gateway blips never stampede.
+        self.starts_per_pass = int(config.get('connect_starts_per_pass', 5))
+        self.admission = asyncio.Semaphore(int(config.get('uniagentgate_connect_concurrency', 10)))
+        self.states, self.states_refreshed = {}, 0.0
+        self.broken = {}
         self.owner = secrets.token_hex(16)
         self.protocol = importlib.import_module('apps.desktop.assets.uniagentgate-plugin.protocol')
         self.stream = importlib.import_module('apps.desktop.assets.uniagentgate-plugin.stream')
@@ -111,25 +120,61 @@ class Channels:
                     await socket[1].close(code=4401)
                 self.clients.pop(key, None)
                 self.connection_ids.pop(key, None)
+                self.states.pop(key, None)
+        self.broken = {key: revision for key, revision in self.broken.items() if key in wanted and wanted[key]['revision'] == revision}
+        started = 0
         for key, row in wanted.items():
-            if key in self.clients: continue
-            async def persist(envelope, binding=dict(row)):
-                request = self.protocol.parse_agent_request(envelope)
-                if not request or request.agent_id != binding['bot_key'] or not request.phone_number or (not request.text and not any(item.url for item in request.inputs)) or len(request.text)>20000 or any(item.type not in {'text','file_url','image_url','audio_url','video_url'} for item in request.inputs):
-                    raise ValueError('Only authenticated text messages are supported')
-                if await self.store.seen(binding['id'],binding['revision'],request.phone_number,request.message_id): return
-                # Persist the gateway references before ACK; downloads run under
-                # the delivery lease, outside the stream's two-second admission budget.
-                envelope = {key: value for key, value in envelope.items() if key != '_media_event'}
-                await self.store.ingest(binding['id'], binding['revision'], request.phone_number, request.message_id, envelope)
-            async def accepted(raw, context): pass  # Admission already committed; execution is scheduled independently.
-            client = TEXT_CLIENTS[row['platform']](row['bot_key'],self.store.cipher.decrypt(row['secret_enc']),self.store,dict(row),self.http) if row['platform'] in TEXT_CLIENTS else self.stream.UniAgentGateStreamClient(json.loads(row['config'])['gateway_url'], row['bot_key'], self.store.cipher.decrypt(row['secret_enc']), accepted, persist_inbound=persist,capabilities=['text','image'])
+            if key in self.clients or self.broken.get(key) == row['revision']: continue
+            if started >= self.starts_per_pass: break
+            started += 1
+            client = None
+            try:
+                client = self.client(row)
+                reconnect_id = json.loads(row['config']).get('reconnect_id')
+                await client.start()
+            except Exception as error:
+                # One undecryptable or malformed binding must not crash-loop every other connection;
+                # it stays down until its revision changes.
+                log.error('channels binding %s not started: %s', key, type(error).__name__)
+                if client: await asyncio.gather(client.stop(), return_exceptions=True)
+                self.broken[key] = row['revision']
+                async with self.database.acquire() as db:
+                    await db.execute("UPDATE messaging_bindings SET connection_state='failed',error_code='invalid_binding',updated_at=now() WHERE id=$1 AND revision=$2",key,row['revision'])
+                continue
             self.clients[key] = (row['revision'], client)
-            self.connection_ids[key] = json.loads(row['config']).get('reconnect_id')
-            await client.start()
-        for key, (revision, client) in self.clients.items():
+            self.connection_ids[key] = reconnect_id
+        await self.write_states()
+
+    def client(self, row):
+        async def persist(envelope, binding=dict(row)):
+            request = self.protocol.parse_agent_request(envelope)
+            if not request or request.agent_id != binding['bot_key'] or not request.phone_number or (not request.text and not any(item.url for item in request.inputs)) or len(request.text)>20000 or any(item.type not in {'text','file_url','image_url','audio_url','video_url'} for item in request.inputs):
+                raise ValueError('Only authenticated text messages are supported')
+            if await self.store.seen(binding['id'],binding['revision'],request.phone_number,request.message_id): return
+            # Persist the gateway references before ACK; downloads run under
+            # the delivery lease, outside the stream's two-second admission budget.
+            envelope = {key: value for key, value in envelope.items() if key != '_media_event'}
+            await self.store.ingest(binding['id'], binding['revision'], request.phone_number, request.message_id, envelope)
+        async def accepted(raw, context): pass  # Admission already committed; execution is scheduled independently.
+        secret = self.store.cipher.decrypt(row['secret_enc'])
+        if row['platform'] in TEXT_CLIENTS:
+            return TEXT_CLIENTS[row['platform']](row['bot_key'],secret,self.store,dict(row),self.http)
+        return self.stream.UniAgentGateStreamClient(json.loads(row['config'])['gateway_url'], row['bot_key'], secret, accepted,
+            persist_inbound=persist,capabilities=['text','image'],admission=self.admission)
+
+    async def write_states(self):
+        """Write changed connection states at once; re-stamp unchanged ones every few seconds in one statement."""
+        now = asyncio.get_running_loop().time()
+        refresh = now - self.states_refreshed >= STATE_REFRESH_SECONDS
+        rows = [(key, revision, client.health.state) for key, (revision, client) in self.clients.items()
+                if refresh or self.states.get(key) != (revision, client.health.state)]
+        if rows:
             async with self.database.acquire() as db:
-                await db.execute('UPDATE messaging_bindings SET connection_state=$3,updated_at=now() WHERE id=$1 AND revision=$2',key,revision,client.health.state)
+                await db.execute('''UPDATE messaging_bindings b SET connection_state=v.state,updated_at=now()
+                    FROM unnest($1::text[],$2::bigint[],$3::text[]) AS v(id,revision,state) WHERE b.id=v.id AND b.revision=v.revision''',
+                    [row[0] for row in rows],[row[1] for row in rows],[row[2] for row in rows])
+            self.states.update({key: (revision, state) for key, revision, state in rows})
+        if refresh: self.states_refreshed = now
 
     @staticmethod
     async def send_frame(ws, frame):

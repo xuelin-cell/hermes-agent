@@ -1,3 +1,7 @@
 # Connector-to-entry control plane; the reverse relay URL is configured in entry.env.
 entry_url: http://entry:9400
 port: 9500
+# Connection pacing for thousands of bindings (UniClaw defaults): new connections started per
+# one-second pass (about 16 minutes to restore 4,745), and the shared 5G registration+handshake slots.
+connect_starts_per_pass: 5
+uniagentgate_connect_concurrency: 10

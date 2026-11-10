@@ -430,7 +430,7 @@ PYKEY
 - `GET /api/channels/uniagentgate/cloud-binding/{user_id}`：返回 `bound`、`state`、`last_error`、`updated_at`，不返回地址或密钥。
 - `DELETE /api/channels/uniagentgate/cloud-binding/{user_id}`：解除该用户 5G 绑定，重复调用仍成功；其他平台和模型凭据保持原有配置。
 
-以上是 nginx 对外路径，同时支持 `/agents/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；接口的访问范围由部署网络或网关控制。中心服务直接提交请求体即可。
+以上是 nginx 对外路径，同时支持 `/agents/api/channels/uniagentgate/cloud-binding/{user_id}`。沿用 UniClaw cloud-vm-dev 的调用方式，不要求额外服务密钥或浏览器 cookie；中心服务直接提交请求体即可。该接口能建用户、写模型 key，生产须在 `entry.env` 设置 `MT_CHANNELS_BINDING_ALLOW`（账号服务地址，逗号分隔，IP 或网段），其他来源一律 403；来源取 nginx 写入的 `X-Real-IP`。留空则不限来源，只靠部署网络控制。
 
 部署保留 `MT_CHANNELS_KEY`，用于入口、channels 与实例之间的内部认证，不需要提供给调用 cloud-binding 的中心服务。发送 5G 附件时另填 `MT_CHANNELS_MEDIA_BASE_URL`（网关可访问的附件入口）。`MT_CHANNELS_GATEWAY_ORIGINS` 可留空，网关地址来自登录响应或下发请求。
 
@@ -453,6 +453,25 @@ PUT 请求体沿用 UniClaw 结构：
 `my_plan` 沿用 Hermes 当前用户级模型凭据：`apiKey` 必填并以 `sk-` 开头，`models` 是含非空模型数组的 JSON 字符串。网关与模型凭据在同一事务中保存并加密；校验失败或机器人已属于其他用户时，不会部分覆盖配置。模型配置在实例下一次唤醒或访问时沿用已有同步链路生效，不中断当前 Agent 对话。
 
 相同 5G 凭据重试 PUT 只同步模型配置，不改变连接 revision，也不取消正在执行的任务。变更 5G 凭据会轮换 revision，旧连接在 channels 调度时关闭，旧执行按原有 uncertain/cancelled 规则处理。`ok=true` 只表示保存和启用成功，必须继续 GET 确认 state 为 running。该功能只作用于云端入口和集中接入服务。
+
+### 从 UniClaw 云端导入 5G 用户
+
+UniClaw 每个用户一个 `config.users/<uid>.json`（5G 凭据和模型套餐明文存放），uid 与这里的短信登录 uid 相同。`entry.messaging_uniclaw_import` 把它们导入成**未启用**的绑定，再分批启用；启用即连接并从当前持有方接管 agent，所以必须先让 UniClaw 停止自动重连。在入口容器内执行：
+
+```bash
+E=<项目名>-entry
+# 从旧服务器直接流式导入，明文凭据不落新服务器磁盘；--dry-run 只出报告不写入
+ssh <旧服务器> 'tar -C /data/hexagent -cf - config.users' | docker exec -i $E python -m entry.messaging_uniclaw_import import - \
+  --model-origins https://maas-api.ai-yuanjing.com [--exclude /tmp/exclude.txt] [--dry-run]
+docker exec $E python -m entry.messaging_uniclaw_import enable --limit 200      # 分批启用；或 --users 文件
+docker exec $E python -m entry.messaging_uniclaw_import status                  # 按来源 / 启用 / 连接状态计数
+docker exec $E python -m entry.messaging_uniclaw_import disable --all-5g        # 回退：停掉本部署全部 5G 连接
+```
+
+- 只读 `<uuid>.json`；`*.develop.json` 等其他文件跳过。每个用户一个事务，可重复执行（补切换期间 UniClaw 收到的推送）。
+- 已有 5G 绑定的用户不动（`already_bound`）；已在这里登录过的用户只补绑定，保留其登录得到的模型配置（`imported_binding_only`）。
+- agent 已归属其他用户（含同一批文件里共用一个 agent）记为 `agent_owned_by_other_user`，不覆盖；排除名单、已停用用户、网关不在 `MT_CHANNELS_GATEWAY_ORIGINS`、模型地址不在 `--model-origins` 内的都不导入。
+- 每条模型自带的 `api_key` 丢弃，模型 key 取 `yuanjing_api_key`，加密保存。报告只含 uid 和结果，不含凭据。
 
 ### 排查与验收
 

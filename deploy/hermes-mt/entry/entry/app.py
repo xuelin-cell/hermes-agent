@@ -23,6 +23,7 @@ from .plan_routes import PlanRoutes
 from .welcome_routes import WelcomeRoutes
 from .timing_routes import TimingRoutes
 from .usage_routes import UsageRoutes
+from .client_events import ClientEvents
 from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
 from .crypto import CredentialCipher, CredentialError
 from .connector_oauth import ConnectorAccessLogger
@@ -178,6 +179,7 @@ class Entry:
         self.welcome_routes = WelcomeRoutes(self)
         self.timing_routes = TimingRoutes(self)
         self.usage_routes = UsageRoutes(self)
+        self.client_events = ClientEvents(self._sso_identity)
         self.skill_routes = SkillRoutes(self)
         self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
@@ -290,6 +292,7 @@ class Entry:
         """
         if self.credentials is None or self.maas is None:
             raise SsoRefused(503, "entry_not_ready", "入口还没准备好，请稍后重试")
+        started = time.monotonic()
         try:
             credential = await self.credentials.get(identity.sid)
         except CredentialFailure as exc:
@@ -302,12 +305,16 @@ class Entry:
             log.warning("sso: 12.4 answered another uid for this session; refused")
             self.credentials.drop(identity.sid)
             return None
+        got_credential = time.monotonic()
         plan = await self.maas.my_plan(credential.token)
+        # 切换账号慢时分得清是不是慢在这两步；sid 前 6 位和页面报的事件（client_events）对得上
+        timing = (f"sid={identity.sid[:6]} 12.4={got_credential - started:.1f}s "
+                  f"套餐={time.monotonic() - got_credential:.1f}s")
         api_key = plan.api_key if plan else ""
         if not api_key:
-            log.warning("user %s has no new plan key; keeping any stored credential", identity.uid)
+            log.warning("user %s has no new plan key; keeping any stored credential (%s)", identity.uid, timing)
         else:
-            log.info("user %s plan (sso): %s", identity.uid, plan.summary())
+            log.info("user %s plan (sso) %s: %s", identity.uid, timing, plan.summary())
         try:
             await self.store.finish_login(
                 user_id=identity.uid,
@@ -339,6 +346,7 @@ class Entry:
         if not self.s.uniwork_internal_token:
             log.error("sso: MT_UNIWORK_INTERNAL_TOKEN is not set; enterprise members cannot get a device token")
             raise SsoRefused(503, "entry_not_ready", "入口还没配好换设备令牌的密钥，请联系管理员")
+        started = time.monotonic()
         found = await self.store.find_member_user(identity.tenant_id, identity.uid)
         if found:
             user_id, device = found
@@ -375,6 +383,7 @@ class Entry:
                 raise self._platform_unavailable(exc) from None
             token, policy, status = grant.device_token, grant.policy, grant.access
             tenant_code, tenant_name = grant.tenant_code or tenant_code, grant.tenant_name or tenant_name
+        platform_s = time.monotonic() - started
         info = policy.get("enterprise") if isinstance(policy.get("enterprise"), dict) else {}
         tenant_name = tenant_name or str(info.get("name") or "")
         tenant_code = tenant_code or str(info.get("tenantCode") or "")
@@ -404,8 +413,8 @@ class Entry:
             enterprise=record,
             sid=identity.session_key,
         )
-        log.info("sso enterprise %s tenant=%s status=%s %s", user_id, tenant_code, status,
-                 plan.summary() if plan else "(no models)")
+        log.info("sso enterprise %s tenant=%s status=%s sid=%s 平台=%.1fs %s", user_id, tenant_code, status,
+                 identity.sid[:6], platform_s, plan.summary() if plan else "(no models)")
         if status == ACTIVE:
             self._spawn(self._warm(user_id))
         return await self.store.get_session(identity.session_key)
@@ -1371,6 +1380,8 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(api("/__entry/me"), entry.me)
     # 前端报来的耗时（两个版本都有，见 timing_routes.py）
     app.router.add_post(api("/__entry/timing"), entry.timing_routes.handle)
+    # 页面报的刷新原因、启动耗时、连接断开：两个版本都要，见 client_events.py
+    app.router.add_post(api("/__entry/client-event"), entry.client_events.handle)
     app.router.add_get(api("/__entry/captcha"), entry.captcha)
     app.router.add_post(api("/__entry/send-code"), entry.send_code)
     app.router.add_post(api("/__entry/login"), entry.login)

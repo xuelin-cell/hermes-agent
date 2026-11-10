@@ -10,6 +10,7 @@ import { LogView } from '@/components/ui/log-view'
 import type { DesktopConnectionConfig, DesktopOauthLoginResult } from '@/global'
 import { useI18n } from '@/i18n'
 import { isBrowserShell } from '@/lib/browser-shell'
+import { reloadFor } from '@/lib/client-events-mt'
 import { reestablishCloudAgentSession } from '@/lib/cloud-agent-session'
 import { DESKTOP_DOCS_URL } from '@/lib/docs'
 import { openExternalLink } from '@/lib/external-link'
@@ -256,7 +257,7 @@ export function BootFailureOverlay() {
   const retry = async () => {
     setBusy('retry')
     await window.hermesDesktop?.resetBootstrap().catch(() => undefined)
-    window.location.reload()
+    reloadFor('boot-retry')
   }
 
   const repair = async (): Promise<void> => {
@@ -279,7 +280,7 @@ export function BootFailureOverlay() {
         throw new Error(result?.error || t.boot.errors.desktopBootFailed)
       }
 
-      window.location.reload()
+      reloadFor('boot-repair')
     } catch (error) {
       notifyError(error, t.boot.failure.repairInstall)
     } finally {
@@ -346,7 +347,7 @@ export function BootFailureOverlay() {
         }
 
         notify({ kind: 'success', title: t.boot.failure.signedInTitle, message: t.boot.failure.signedInMessage })
-        window.location.reload()
+        reloadFor('boot-signed-in')
 
         return
       }

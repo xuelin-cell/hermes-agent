@@ -14,7 +14,7 @@
 #   - envd —— 平台创建沙箱时若带了环境变量，镜像里没有 envd 会导致**创建直接失败**，
 #     所以必须打进来，即使我们并不使用它的命令/文件/终端能力
 #   - 内置技能要用的程序和库（LibreOffice、Python 库、Playwright 的无头浏览器、pptxgenjs）。
-#     技能本身随基础镜像（/opt/hermes/skills/uniwork）
+#     技能本身随基础镜像（/opt/hermes/skills/uniwork），带了套件时按 seed/bundled-skills.list 收窄
 #   - 本分支对 hermes 源码的改动（overlay.list 列的仓库路径，按原路径覆盖进 /opt/hermes，见下面那段）
 #
 # 为什么 CMD 只起转发器、不起 hermes：
@@ -202,6 +202,14 @@ COPY scripts/image_overlay.py /opt/mt/image_overlay.py
 COPY .overlay/ /tmp/hermes-overlay/
 RUN python3 /opt/mt/image_overlay.py apply /tmp/hermes-overlay /opt/hermes \
     && rm -rf /tmp/hermes-overlay
+
+# ---- 预制技能对齐 UniClaw 生产（seed/bundled-skills.list） ------------------------
+# 上一步装进了配置仓库的套件，办公、设计类由套件提供，预制技能只留清单里的；没带套件就全部保留。
+# 实例引导时 sync_skills 按镜像里剩下的同步：用户没改过的删除，改过的移进 .retired-hermes。
+COPY seed/bundled-skills.list seed/prune_bundled_skills.py /tmp/bundled-skills/
+RUN python3 /tmp/bundled-skills/prune_bundled_skills.py /tmp/bundled-skills/bundled-skills.list \
+        /opt/hermes/skills/uniwork /opt/hermes/plugins/uniwork-kits/bundled/uniwork-bundled/plugins \
+    && rm -rf /tmp/bundled-skills
 
 # 联网搜索插件放进内置插件目录，和桌面打包时一样叫 unisearch（apps/desktop/scripts/stage-python-plugins.mjs），
 # 这样走内置插件的信任规则。是否启用由转发器每次引导时写进用户配置（seed/forward.py 的 _configure_unisearch）。

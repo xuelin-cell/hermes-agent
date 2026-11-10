@@ -17,6 +17,7 @@ import {
   type OfficePreviewErrorCode,
   type PdfDocumentSource
 } from '@/lib/browser-shell'
+import { installClientEvents, markBoot, noteLinkState, reloadFor } from '@/lib/client-events-mt'
 import { $enterpriseFeatures, $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
 import type { EnterpriseUsage } from '@/lib/enterprise-usage-mt'
 import {
@@ -1431,12 +1432,14 @@ export function installBrowserDevelopmentBridge(): boolean {
   ensureRandomUUID()
 
   if (productionBrowserBuild) {
+    installClientEvents(browserApiBase())
+    // Another tab of the same origin cleared local storage (null key) or changed this page's login. The login
+    // page and the admin console share the origin, so the reason is recorded: it may not be our own tab.
     window.addEventListener('storage', event => {
-      if (
-        event.key === null ||
-        (event.key === browserAuthKey(browserApiBase()) && event.oldValue !== event.newValue)
-      ) {
-        window.location.reload()
+      if (event.key === null) {
+        reloadFor('storage-cleared')
+      } else if (event.key === browserAuthKey(browserApiBase()) && event.oldValue !== event.newValue) {
+        reloadFor('storage-login-changed', { had: Boolean(event.oldValue), has: Boolean(event.newValue) })
       }
     })
   }
@@ -1674,7 +1677,13 @@ export function installBrowserDevelopmentBridge(): boolean {
   // is only mounted in the chat sidebar, and a page opened on the Bots tab never shows it: ask once at start.
   // desktop-mt: under the unified login the gateway is asked first (lib/sso-mt.ts); signed out, the page leaves.
   const boot: Promise<SsoBoot> = productionBrowserBuild ? bootSso(browserApiBase()) : Promise.resolve({ mode: 'off' })
-  const account = boot.then(started => startSso(bridge, started)).then(getMaasAccount).catch(() => null)
+  const account = boot
+    .then(started => {
+      markBoot('sso')
+      startSso(bridge, started)
+    })
+    .then(getMaasAccount)
+    .catch(() => null)
 
   if (productionBrowserBuild) {
     Object.assign(bridge, {
@@ -1689,7 +1698,10 @@ export function installBrowserDevelopmentBridge(): boolean {
           Object.assign(bridge, enterpriseCapabilities($enterpriseFeatures.get()))
         }
 
-        markPageStep('account') // desktop-mt: 打开页面的耗时，账号就绪这一段
+        markPageStep('account') // desktop-mt: 打开页面的耗时，账号就绪这一段（lib/timing-mt.ts）
+        markBoot('account')
+        // Loaded lazily: the bridge runs before the app and must not pull the stores in ahead of it.
+        void import('@/store/session').then(({ $gatewayState }) => $gatewayState.subscribe(noteLinkState))
       })
     })
   }

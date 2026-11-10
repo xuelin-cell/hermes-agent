@@ -1,6 +1,7 @@
 import { getRuntimeI18nLocale } from '@/i18n/runtime'
 import { storedBoolean } from '@/lib/storage'
 
+import { reloadFor } from './client-events-mt'
 import { $enterpriseShell } from './enterprise-mt'
 
 // The cloud entry's enterprise mode (deploy/hermes-mt with MT_UNIWORK_SERVER): see lib/enterprise-mt.ts.
@@ -156,7 +157,7 @@ export function isDeveloperMode(): boolean {
  * starts over rather than show a mix of both. */
 export function reloadAfterDeveloperModeToggle(): void {
   if (isBrowserShell()) {
-    window.location.reload()
+    reloadFor('developer-mode')
   }
 }
 

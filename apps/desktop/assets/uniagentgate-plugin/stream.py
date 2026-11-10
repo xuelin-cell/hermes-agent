@@ -122,6 +122,7 @@ class UniAgentGateStreamClient:
         *,
         persist_inbound: Callable[[dict], Awaitable[None]] | None = None,
         capabilities: list[str] | None = None,
+        admission: asyncio.Semaphore | None = None,
     ) -> None:
         self._gateway_url = gateway_url.rstrip("/")
         self._agent_id = agent_id
@@ -129,6 +130,9 @@ class UniAgentGateStreamClient:
         self._on_message = on_message
         self._persist_inbound = persist_inbound
         self._capabilities = capabilities
+        # A connector serving thousands of agents shares one budget for registration
+        # and WS handshakes, so a restart or gateway blip never reconnects them all at once.
+        self._admission = admission
 
         self._task: asyncio.Task[None] | None = None
         self._stopping = False
@@ -293,12 +297,29 @@ class UniAgentGateStreamClient:
                 return
             # Expired session or recoverable auth rejection: register afresh.
 
+    async def _admit(self) -> Callable[[], None]:
+        """Take one shared registration/handshake slot; the returned release is idempotent."""
+        if self._admission is None:
+            return lambda: None
+        admission = self._admission
+        await admission.acquire()
+        released = False
+
+        def release() -> None:
+            nonlocal released
+            if not released:
+                released = True
+                admission.release()
+        return release
+
     async def _register_with_retry(self) -> auth.RegisteredSession | None:
         server_error_attempts = 0
         while not self._stopping:
+            release = await self._admit()
             try:
                 return await auth.register(self._gateway_url, self._agent_id, self._agent_sk, capabilities=self._capabilities)
             except auth.UniAgentGateAuthError as exc:
+                release()
                 logger.warning(
                     "uniAgentGate register failed: code=%s status=%s",
                     exc.code, exc.http_status,
@@ -309,6 +330,8 @@ class UniAgentGateStreamClient:
                 if server_error_attempts >= MAX_REGISTER_SERVER_ERROR_RETRIES:
                     return None
                 await asyncio.sleep(1.0 * server_error_attempts)
+            finally:
+                release()
         return None
 
     async def _http_heartbeat_loop(self, ttl_sec: int) -> None:
@@ -355,6 +378,7 @@ class UniAgentGateStreamClient:
             "X-UAG-Protocol-Version": protocol.PROTOCOL_VERSION,
         }
         was_accepted = False
+        release = await self._admit()
         try:
             async with websockets.connect(
                 self._ws_url(),
@@ -372,6 +396,8 @@ class UniAgentGateStreamClient:
                         FIRST_FRAME_TIMEOUT_SECONDS,
                     )
                     return "error", False
+                # The handshake ends with the first frame; a served connection holds no slot.
+                release()
 
                 first = _safe_json_loads(first_raw)
                 if first is None:
@@ -432,6 +458,7 @@ class UniAgentGateStreamClient:
             logger.warning("uniAgentGate connect failed: error_type=%s", type(exc).__name__)
             return "error", was_accepted
         finally:
+            release()
             self._ws = None
             for future in list(self._pending_acks.values()):
                 if not future.done():
