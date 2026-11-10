@@ -8,8 +8,9 @@ param(
     [switch]$NoAutoUpdate,
     # The web installer publishes a small bootstrapper plus a .7z payload whose
     # embedded blockmap lets electron-updater download updates differentially.
-    # The default full NSIS package stays offline-installable but always updates
-    # in full.
+    # The default full NSIS package stays offline-installable and is differential
+    # too, through the .exe.blockmap published next to it (the previous blockmap
+    # has to be cached locally, otherwise it falls back to a full download).
     [switch]$WebInstaller,
     # Release mode: requires signing configuration (Azure, UKey, or PFX).
     # Without -Release, the build produces an unsigned installer (development only).

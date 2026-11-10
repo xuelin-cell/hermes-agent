@@ -266,10 +266,11 @@ module.exports = {
     include: 'nsis/installer.nsh'
   },
   nsisWeb: {
-    // Only the web installer embeds a blockmap: its .exe is a small bootstrapper
-    // and the app payload is a separately published .7z carrying the block index.
-    // That is the only NSIS shape electron-updater can download differentially;
-    // a full nsis .exe ships a standalone .blockmap that NsisUpdater never reads.
+    // Its .exe is a small bootstrapper and the app payload is a separately
+    // published .7z carrying an embedded block index. A full nsis build is
+    // differential as well, but through the standalone .blockmap published
+    // beside the installer (NsisUpdater.differentialDownloadInstaller), so the
+    // feed must ship that sidecar or every update silently downloads in full.
     // It inherits nsis.* (oneClick/perMachine/packElevateHelper/include).
   },
   msix: {
