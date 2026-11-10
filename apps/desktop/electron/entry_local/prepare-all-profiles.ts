@@ -82,6 +82,11 @@ export async function prepareAllProfiles(options: PreparationOptions): Promise<S
   const worker = async () => {
     while (cursor < targets.length) {
       const profile = targets[cursor++]
+      // Re-check at the moment we take the profile: one can start running while the pool works
+      // through the queue, and a running expert must not be rewritten.
+      if (options.busy(profile)) {
+        continue
+      }
       const home = profile === 'default' ? options.home : path.join(options.home, 'profiles', profile)
 
       try {
