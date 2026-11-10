@@ -221,8 +221,9 @@ async function api<T>(request: HermesApiRequest): Promise<T> {
     throw new Error(`${response.status}: ${text || response.statusText}`)
   }
 
-  if (method === 'GET' && path.split('?')[0] === '/api/sessions') {
-    markPageStep('sessions') // desktop-mt: 打开页面的耗时到会话列表出来为止（lib/timing-mt.ts）
+  // desktop-mt: 打开页面的耗时到会话列表出来为止（lib/timing-mt.ts）。侧栏取的是所有档案的会话（/api/profiles/sessions）
+  if (method === 'GET' && ['/api/sessions', '/api/profiles/sessions'].includes(path.split('?')[0])) {
+    markPageStep('sessions')
   }
 
   return maskMcpSecrets(method, path, (text ? JSON.parse(text) : {}) as T)

@@ -1132,6 +1132,7 @@ describe('the two cloud entries (desktop-mt)', () => {
 
   it('reads the enterprise quota through the enterprise entry; the personal edition keeps its plan usage', async () => {
     const quota = { available: true, binding: 'enterprise', levels: [] }
+
     const calls = await installFor({ enterprise: { status: 'active' }, user_id: 'ent:t:u' }, 200, url =>
       url.endsWith('/__entry/usage') ? jsonResponse(quota) : undefined
     )
@@ -1141,6 +1142,26 @@ describe('the two cloud entries (desktop-mt)', () => {
 
     await installFor({ user_id: 'u1' })
     expect(window.hermesDesktop.getEnterpriseUsage).toBeUndefined()
+  })
+
+  it('completes the page-open timing once the sidebar conversation list is in and the instance is linked', async () => {
+    const { markPageStep, resetTimingForTests } = await import('@/lib/timing-mt')
+
+    resetTimingForTests()
+    const calls = await installFor({ enterprise: { status: 'active' }, user_id: 'ent:t:u' })
+    const fetchMock = vi.mocked(globalThis.fetch)
+
+    // 侧栏取的是所有档案的会话列表，不是 /api/sessions
+    await window.hermesDesktop.api({ path: '/api/profiles/sessions?limit=40&offset=0&min_messages=0' })
+    expect(calls).not.toContain('/api/__entry/timing')
+    markPageStep('connect')
+    await Promise.resolve()
+
+    expect(calls.at(-1)).toBe('/api/__entry/timing')
+    const record = JSON.parse(String(fetchMock.mock.calls.at(-1)?.[1]?.body))
+
+    expect(record.kind).toBe('page.open')
+    expect(Object.keys(record.steps)).toEqual(expect.arrayContaining(['account', 'sessions', 'connect']))
   })
 
   it('sends the timings to whichever entry serves the page, enterprise or personal', async () => {
