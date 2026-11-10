@@ -173,6 +173,9 @@ class FakeCube:
         self.restored: dict[str, str] = {}           # 状态管家报的「恢复自」
         self.seeds: dict[str, list] = {}             # 引导时送的种子文件
         self.owner_reported: dict[str, str] = {}     # 状态管家报的主人；默认是实例自己
+        self.boot_extra: dict[str, dict] = {}        # 引导时的其余参数（enterprise_spec、api_server…）
+        self.boot_reply: dict = {}                   # 引导回包里另加的（enterprise、timing）
+        self.timing: dict | None = None              # 排空、重新加载回包里的 timing；None = 老转发器，不报
 
     def host_for(self, sandbox_id, port):
         return f"{port}-{sandbox_id}.cube.app"
@@ -207,8 +210,9 @@ class FakeCube:
         self.calls.append(("wait_forwarder", sandbox_id))
 
     async def bootstrap(self, sandbox_id, port, *, token, files, ready_timeout_s=240, state=None, **extra):
-        self.calls.append(("bootstrap", sandbox_id, state))  # extra：平台运行环境的 api_server 等，这里不看
+        self.calls.append(("bootstrap", sandbox_id, state))  # extra：平台运行环境的 api_server、企业资源清单等
         self.seeds[sandbox_id] = files
+        self.boot_extra[sandbox_id] = extra
         if self.boot_failures:
             raise self.boot_failures.pop(0)
         self.hermes_ready.add(sandbox_id)
@@ -216,7 +220,7 @@ class FakeCube:
             return {"ok": True, "already": True}
         self.restored[sandbox_id] = (state or {}).get("restore_from", "")
         return {"ok": True, "state": {"restored_from": (state or {}).get("restore_from", ""), "archive": "a.tar.gz",
-                                      "counts": {"state.db": {"messages": 3}}, "notes": []}}
+                                      "counts": {"state.db": {"messages": 3}}, "notes": []}, **self.boot_reply}
 
     async def wait_hermes(self, sandbox_id, port, timeout_s=240, unreachable_limit_s=None):
         self.silent_limits.append(unreachable_limit_s)
@@ -232,6 +236,8 @@ class FakeCube:
         body: dict = {"ok": True, "archive": {"archive": archive}}
         if self.activity is not None:
             body["activity"] = dict(self.activity)
+        if self.timing is not None:
+            body["timing"] = dict(self.timing)
         return body
 
     async def status(self, sandbox_id, port):
@@ -275,7 +281,7 @@ class FakeCube:
         self.calls.append(("reload", sandbox_id, next(f["content"] for f in files if f["path"] == ".env")))
         if self.reload_error is not None:
             raise self.reload_error
-        return {"ok": True, "hermes": True, "written": [".env"]}
+        return {"ok": True, "hermes": True, "written": [".env"], **({"timing": self.timing} if self.timing else {})}
 
 
 def _manager(store, cube, **overrides) -> TenantManager:
@@ -350,6 +356,97 @@ async def test_member_and_already_bootstrapped_instances_leave_the_service_spec_
     cube.already.add("sb1")
     await _manager(store, cube).ensure_running("svc:t:agent-a")
     assert not any(c[0] == "set_service_spec" for c in store.calls)
+
+
+def _boot_hooks(manager: TenantManager, spec: dict | None) -> list:
+    """接上 EnterpriseSync 的两个钩子（app.py 启动时接的那两个）：给定的清单，记下 boot_applied 的调用。"""
+    applied: list = []
+    manager.boot_spec = lambda user_id: (spec, "digest-1") if spec is not None else None
+    manager.boot_applied = lambda user_id, key, digest: applied.append((user_id, key, digest))
+    return applied
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_sends_the_enterprise_spec_and_marks_it_applied(monkeypatch) -> None:
+    """企业版：引导时把企业资源清单一起送进去，转发器在起 hermes 之前装好；全装好了就记成这台实例已装，
+    启动后不再送、hermes 不再为它重启（11-10 真机：装在启动之后，平台运行环境重建一次多 38 秒）。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    cube.boot_reply = {"enterprise": {"ok": True, "errors": [], "changed": {"profiles": {"uw-a1": ["SOUL.md"]}}},
+                       "timing": {"steps": {"restore": 1.2, "enterprise": 2.5, "ready": 9.1}}}
+    manager = _manager(store, cube)
+    applied = _boot_hooks(manager, {"v": 1, "agents": [{"id": "a1"}]})
+    tenant = await manager.ensure_running("u")
+    assert cube.boot_extra["sb1"]["enterprise_spec"] == {"v": 1, "agents": [{"id": "a1"}]}
+    assert applied == [("u", tenant.host_header, "digest-1")]  # 和 EnterpriseSync 认实例用的是同一个值
+    restore = next(details for event, details in store.audits if event == "tenant.restore")
+    assert restore["timing"] == {"steps": {"restore": 1.2, "enterprise": 2.5, "ready": 9.1}}
+    assert ("enterprise.apply", {"profiles": {"uw-a1": ["SOUL.md"]}, "boot": True}) in store.audits
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("result", [None, {"ok": False, "errors": ["技能：下载超过时限，留到下次同步再装"], "changed": {}}])
+async def test_bootstrap_leaves_the_spec_to_the_later_push_unless_everything_installed(monkeypatch, result) -> None:
+    """没装全，或者老转发器不认这一项（回包里没有 enterprise）：不记成已装，实例起来后照旧再送一次。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    cube.boot_reply = {"enterprise": result} if result is not None else {}
+    manager = _manager(store, cube)
+    applied = _boot_hooks(manager, {"v": 1, "agents": []})
+    await manager.ensure_running("u")
+    assert cube.boot_extra["sb1"]["enterprise_spec"] == {"v": 1, "agents": []}
+    assert applied == []
+    assert not any(event == "enterprise.apply" for event, _ in store.audits)
+
+
+@pytest.mark.asyncio
+async def test_bootstrap_without_a_spec_sends_none(monkeypatch) -> None:
+    """个人版不接钩子；企业版这个人的策略还没拉回来（入口刚重启）：引导请求不带清单，照旧启动后再送。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    for hooked in (False, True):
+        store, cube = FakeStore(), FakeCube()
+        manager = _manager(store, cube)
+        applied = _boot_hooks(manager, None) if hooked else []
+        await manager.ensure_running("u")
+        assert "enterprise_spec" not in cube.boot_extra["sb1"] and applied == []
+
+
+@pytest.mark.asyncio
+async def test_forwarder_timing_goes_into_the_drain_and_reload_audits(monkeypatch) -> None:
+    """排空、重新加载的各段用时（停 hermes 有没有等满被强杀）记进审计：查重启为什么慢（11-10 一次 38～41 秒）。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("running", "sbOld", "tpl-old", 2, "sbOld", "x.tar.gz", ""))
+    cube = FakeCube({"sbOld": {"sandboxID": "sbOld", "templateID": "tpl-old", "state": "running"}})
+    cube.timing = {"steps": {"hermes_stop": 30.0, "archive": 3.1}, "killed": ["hermes"]}
+    manager = _manager(store, cube)
+    await manager.ensure_running("u")
+    drain = next(details for event, details in store.audits if event == "tenant.drain")
+    assert drain["timing"] == {"steps": {"hermes_stop": 30.0, "archive": 3.1}, "killed": ["hermes"]}
+    store.api_key = "k2"  # 重新登录换了令牌：重新加载
+    await manager.ensure_running("u")
+    reload = next(details for event, details in store.audits if event == "tenant.reload")
+    assert reload["timing"]["killed"] == ["hermes"]
+    cube.timing = None  # 老转发器不报：记成空的，不出错
+    store.api_key = "k3"
+    manager._reload_tried.clear()
+    await manager.ensure_running("u")
+    assert [details["timing"] for event, details in store.audits if event == "tenant.reload"][-1] == {}
+
+
+@pytest.mark.asyncio
+async def test_service_reload_and_restart_audits_carry_the_forwarder_timing(monkeypatch) -> None:
+    """平台改了人设后的重新加载、平台的「重启」：转发器报的各段用时记进 service.reload / service.restart。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(context=_service_context()), FakeCube()
+    manager = _manager(store, cube)
+    await manager.ensure_running("svc:t:agent-a")
+    cube.timing = {"steps": {"gateway_stop": 30.0, "ready": 8.4}, "killed": ["gateway"]}
+    store.context = _service_context("# A\n\n改了\n")
+    assert await manager.apply_service_spec("svc:t:agent-a", store.spec_sha256) is True
+    await manager.restart_service("svc:t:agent-a")
+    audits = {event: details for event, details in store.audits}
+    assert audits["service.reload"] == {"reason": "spec", "timing": cube.timing}
+    assert audits["service.restart"] == {"timing": cube.timing}
 
 
 @pytest.mark.asyncio

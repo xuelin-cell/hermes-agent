@@ -1210,6 +1210,10 @@ class Entry:
             else:
                 self.docker = Docker(self.s.docker_sock)
             self.tenants = TenantManager(self.s, self.docker, self.store, self.http, self.cube)
+            if self.ent is not None:
+                # 引导新实例时一起送企业资源清单，hermes 起来就是装好的，不用再重启（见 tenants._bootstrap_cube）
+                self.tenants.boot_spec = self.ent.boot_spec
+                self.tenants.boot_applied = self.ent.boot_applied
         except Exception:
             if self.http is not None:
                 await self.http.close()

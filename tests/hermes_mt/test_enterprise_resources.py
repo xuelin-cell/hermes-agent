@@ -13,6 +13,7 @@ import json
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -424,3 +425,58 @@ def test_profile_names_are_valid_and_distinct() -> None:
     names = {mtent.profile_name(x) for x in ("agent_e2e_data", "Agent_E2E_Data", "数据", "a" * 80, "x/../y")}
     assert len(names) == 5
     assert all(mtent._PROFILE_NAME_RE.match(n) for n in names)  # noqa: SLF001
+
+
+# ---------------------------------------------------------------- 引导时装：下载限时
+
+def test_downloads_at_boot_have_a_per_package_and_a_total_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """引导新实例时就装企业资源（seed/forward.py 的 _apply_at_boot）：单个包最多等 timeout_s，总共超过 budget_s
+    就不再下载、记成装不上，启动后那次送清单再补，平台不通时不把 hermes 的启动拖上几分钟。不给 budget 的照旧。"""
+    waits: list[float] = []
+
+    class Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, limit):
+            return b"zip"
+
+    def urlopen(req, timeout):
+        waits.append(timeout)
+        return Resp()
+
+    clock = [100.0]
+    monkeypatch.setattr(mtent, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setattr(mtent.urllib.request, "urlopen", urlopen)
+    fetch = mtent.make_fetch("tok", 15, 30)
+    assert fetch(f"{PLATFORM}/a", "a") == b"zip" and waits == [15]
+    clock[0] += 20  # 只剩 10 秒：这一个最多等 10 秒
+    fetch(f"{PLATFORM}/b", "b")
+    assert waits == [15, 10]
+    clock[0] += 11  # 用完了：不再下载
+    with pytest.raises(mtent.EnterpriseError, match="超过时限"):
+        fetch(f"{PLATFORM}/c", "c")
+    assert len(waits) == 2
+    mtent.make_fetch("tok")(f"{PLATFORM}/d", "d")
+    assert waits[-1] == mtent.FETCH_TIMEOUT_S
+
+
+def test_apply_passes_the_download_limits_on(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """引导时给的限时一路传到下载；下载超时的项记进 errors，不用下载的照装。"""
+    seen: list = []
+
+    def make_fetch(token, timeout_s=mtent.FETCH_TIMEOUT_S, budget_s=None):
+        seen.append((token, timeout_s, budget_s))
+
+        def fetch(url, what):
+            raise mtent.EnterpriseError("下载超过时限，留到下次同步再装")
+        return fetch
+
+    monkeypatch.setattr(mtent, "make_fetch", make_fetch)
+    report = mtent.apply(home, _spec(), fetch_timeout_s=15, fetch_budget_s=30)
+    assert seen == [("tok-1", 15, 30)]
+    assert report["ok"] is False and any("超过时限" in error for error in report["errors"])
+    assert (home / "profiles" / "uw-agent_e2e_data" / "SOUL.md").is_file()

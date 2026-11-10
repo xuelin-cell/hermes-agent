@@ -177,6 +177,25 @@ async def test_wait_hermes_gives_up_early_only_when_the_forwarder_never_answers(
 PROXY_502 = "<html>\n<head><title>502 Bad Gateway</title></head>\n<body>\n<center><h1>502 Bad Gateway</h1></center>\n<hr><center>openresty</center>\n</body>\n</html>\n"
 
 
+@pytest.mark.asyncio
+async def test_bootstrap_carries_the_enterprise_spec_and_waits_longer_for_it(monkeypatch) -> None:
+    """企业资源清单随引导一起送（转发器起 hermes 之前装好）：载荷里带上，引导请求多等
+    BOOTSTRAP_ENTERPRISE_EXTRA_S（转发器下载最多 30 秒）。没有清单的引导请求不变。"""
+    cube, _ = _cube()
+    seen: list = []
+
+    async def tenant_req(method, sandbox_id, port, path, *, json_body=None, timeout_s=30, **kwargs):
+        seen.append((path, json_body, timeout_s))
+        return 200, {"ok": True}
+
+    monkeypatch.setattr(cube, "_tenant_req", tenant_req)
+    await cube.bootstrap("sb1", 9121, token="t", files=[], ready_timeout_s=180, enterprise_spec={"v": 1})
+    await cube.bootstrap("sb1", 9121, token="t", files=[], ready_timeout_s=180)
+    assert seen[0] == ("/__mt/bootstrap", {"token": "t", "files": [], "ready_timeout_s": 180, "enterprise_spec": {"v": 1}},
+                       180 + 30 + cube_api.BOOTSTRAP_ENTERPRISE_EXTRA_S)
+    assert seen[1] == ("/__mt/bootstrap", {"token": "t", "files": [], "ready_timeout_s": 180}, 210)
+
+
 def _bootstrap_posts(fake: _FakeHttp) -> int:
     return sum(1 for c in fake.calls if c[1].endswith("/__mt/bootstrap"))
 

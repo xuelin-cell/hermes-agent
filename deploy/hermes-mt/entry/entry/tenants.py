@@ -70,6 +70,12 @@ class _ReadyTiming:
         return body
 
 
+def _timing_of(body: dict | None) -> dict:
+    """转发器回包里的各段用时（seed/forward.py 的 _Timing：``{"steps", "killed"}``），原样记进审计；老转发器没有就是空。"""
+    timing = (body or {}).get("timing")
+    return timing if isinstance(timing, dict) else {}
+
+
 class RequestAbandoned(Exception):
     """排队等这个用户的实例时，发请求的浏览器已经断开了。"""
 
@@ -314,6 +320,10 @@ class TenantManager:
         # 每个用户实例里的 hermes 是用哪把 key 起的（sha256），省得每个请求都查库；以库里的为准
         self._hermes_keys: dict[str, str] = {}
         self._reload_tried: dict[str, float] = {}
+        # 企业版：引导新实例时一起送企业资源清单（EnterpriseSync.boot_spec / boot_applied，app.py 启动时接上）。
+        # 转发器在起 hermes 之前装好，hermes 只启动一次；个人版不接，照旧。
+        self.boot_spec: Callable[[str], tuple[dict, str] | None] | None = None
+        self.boot_applied: Callable[[str, str, str], None] | None = None
 
     @property
     def use_cube(self) -> bool:
@@ -1157,6 +1167,7 @@ class TenantManager:
     async def _bootstrap_cube(self, user_id: str, slug: str, sandbox_id: str, token: str, context,
                               epoch: int, restore_from: str) -> None:
         assert self.cube is not None
+        boot = self.boot_spec(user_id) if self.boot_spec is not None else None
         body = await self.cube.bootstrap(
             sandbox_id,
             self.s.forward_port,
@@ -1173,11 +1184,14 @@ class TenantManager:
             # 企业模式：转发器不起普通版的崩溃恢复；连接器看 features 里有没有 connectors（见 seed/forward.py）
             **({"enterprise": True, "features": sorted(self.s.enterprise_features)} if self.s.enterprise else {}),
             **({"connectors": connectors} if (connectors := await self._connector_states(user_id)) else {}),
+            # 企业资源清单：起 hermes 之前装好（见 _note_boot_enterprise）
+            **({"enterprise_spec": boot[0]} if boot else {}),
         )
         if body.get("already"):
             await self._adopt_bootstrapped(user_id, slug, sandbox_id)
             return
         report = body.get("state") or {}
+        timing = _timing_of(body)
         # 恢复完成：这台实例成为当前主人。它用了哪份归档、行数多少，一并记下。
         await self.store.set_state_owner(
             user_id, sandbox_id, str(report.get("archive") or ""),
@@ -1190,14 +1204,37 @@ class TenantManager:
             "archive": report.get("archive", ""),
             "notes": report.get("notes", []),
             "migration": report.get("migration", ""),
+            # 引导各段用时：恢复、写种子、同步技能、装企业资源、起进程、等就绪（seed/forward.py 的 _Timing）
+            "timing": timing,
         })
-        log.info("tenant %s: 实例 %s 引导完成，恢复自 %s / %s", slug, sandbox_id[:12],
-                 (report.get("restored_from") or "-")[:12], report.get("archive") or "-")
+        log.info("tenant %s: 实例 %s 引导完成，恢复自 %s / %s %s", slug, sandbox_id[:12],
+                 (report.get("restored_from") or "-")[:12], report.get("archive") or "-", timing.get("steps") or "")
+        if boot:
+            await self._note_boot_enterprise(user_id, slug, sandbox_id, boot[1], body.get("enterprise"))
         if getattr(context, "service", False):
             # 平台的运行环境：引导时转发器先恢复归档、再按这份规格落人设和模型，然后才起 hermes，所以这份规格已经
             # 生效。不记下来，准备运行环境时会拿上一台实例记的规格来比，再重启一遍 hermes 和 gateway（11-10 真机
             # 重建一次多花 38 秒，见 docs/企业版对接/1110/39 第 4 节）。
             await self.store.set_service_spec(user_id, self.service_digest(context))
+
+    async def _note_boot_enterprise(self, user_id: str, slug: str, sandbox_id: str, digest: str, result) -> None:
+        """引导回包里企业资源装得怎么样。全装好了：告诉 EnterpriseSync 这台实例已装，启动后不再送，hermes 也就不用
+        为它再重启。没装全（下载超时、平台不通），或者老转发器不认这一项（回包里没有）：不记，照旧启动后再送。"""
+        if not isinstance(result, dict):
+            return
+        changed = result.get("changed") if isinstance(result.get("changed"), dict) else {}
+        if changed:
+            log.info("tenant %s: 引导时装好了企业资源：%s", slug, json.dumps(changed, ensure_ascii=False)[:600])
+            await self.store.write_audit(user_id, "enterprise.apply", {**changed, "boot": True})
+        if result.get("ok") is True:
+            if self.boot_applied is not None:
+                assert self.cube is not None
+                # 和 EnterpriseSync._instance_key 认的是同一个值：Tenant.host_header
+                self.boot_applied(user_id, self.cube.host_for(sandbox_id, self.s.forward_port), digest)
+            return
+        errors = [str(item) for item in result.get("errors") or []]
+        log.warning("tenant %s: 引导时企业资源有 %d 项没装上，实例起来后再送：%s", slug, len(errors),
+                    "; ".join(errors)[:400])
 
     async def _adopt_bootstrapped(self, user_id: str, slug: str, sandbox_id: str, st: dict | None = None) -> None:
         """实例早已引导完成，库里记的数据主人却还不是它：上一次引导其实做成了、回包没回来（被代理挡回、
@@ -1339,7 +1376,8 @@ class TenantManager:
         await self.store.set_state_archive(user_id, str(summary.get("archive") or ""), summary)
         await self._note_cron(user_id, body.get("activity"))
         await self.store.set_lifecycle(user_id, "drained")
-        await self.store.write_audit(user_id, "tenant.drain", {"sandbox": sandbox_id, "archive": summary.get("archive", ""), "reason": reason})
+        await self.store.write_audit(user_id, "tenant.drain", {"sandbox": sandbox_id, "archive": summary.get("archive", ""), "reason": reason,
+                                                               "timing": _timing_of(body)})
         await self.store.set_lifecycle(user_id, "deleting")
         try:
             await self.cube.remove_sandbox(sandbox_id)
@@ -1625,7 +1663,8 @@ class TenantManager:
         # 新的 .env 已经写进去、hermes 已经按它重启：不用再经 /api/env 送一遍
         self._synced_key_digests[user_id] = hashlib.sha256(api_key.encode("utf-8")).digest()
         await self.store.write_audit(user_id, "tenant.reload",
-                                     {"sandbox": sandbox_id, "reason": "model_key", "written": body.get("written", [])})
+                                     {"sandbox": sandbox_id, "reason": "model_key", "written": body.get("written", []),
+                                      "timing": _timing_of(body)})
         log.info("tenant %s: 模型 key 换了，实例 %s 已重新加载（hermes 已重启）", slug, sandbox_id[:12])
 
     async def _sync_langfuse(self, cname: str, user_id: str) -> bool:
@@ -1751,11 +1790,12 @@ class TenantManager:
         if want == applied_sha256:
             return False
         slug = tenant_slug(user_id)
+        body: dict = {}
         if self.use_cube:
             assert self.cube is not None
             rt = await self.store.get_runtime(user_id)
             token = await self.store.ensure_tenant_token(user_id)
-            await self.cube.reload(
+            body = await self.cube.reload(
                 rt.sandbox_id, self.s.forward_port, token,
                 files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog,
                                             getattr(context, "limits", None), persona=self._persona_of(context),
@@ -1776,20 +1816,21 @@ class TenantManager:
                 await self.docker.stop_container(cname)
             await self.ensure_running(user_id)
         await self.store.set_service_spec(user_id, want)
-        await self.store.write_audit(user_id, "service.reload", {"reason": "spec"})
+        await self.store.write_audit(user_id, "service.reload", {"reason": "spec", "timing": _timing_of(body)})
         log.info("service %s: 平台改了人设或模型，实例已重新加载", slug)
         return True
 
     async def restart_service(self, user_id: str) -> None:
         """平台的「重启」：不删卷，重写配置后重启 hermes 和 gateway。"""
         slug = tenant_slug(user_id)
+        body: dict = {}
         if self.use_cube:
             assert self.cube is not None
             await self.ensure_running(user_id)
             context = await self.store.get_tenant_context(user_id)
             rt = await self.store.get_runtime(user_id)
             token = await self.store.ensure_tenant_token(user_id)
-            await self.cube.reload(
+            body = await self.cube.reload(
                 rt.sandbox_id, self.s.forward_port, token,
                 files=self._cube_seed_files(context.api_key, context.endpoint, context.catalog,
                                             getattr(context, "limits", None), persona=self._persona_of(context),
@@ -1802,7 +1843,7 @@ class TenantManager:
                 if info and info.get("State", {}).get("Running"):
                     await self.docker.stop_container(self.container_name(slug))
             await self.ensure_running(user_id)
-        await self.store.write_audit(user_id, "service.restart", {})
+        await self.store.write_audit(user_id, "service.restart", {"timing": _timing_of(body)})
 
     async def restart_container(self, user_id: str) -> Tenant:
         """Docker 路径：重启这个用户的容器（hermes 是容器的主进程，转发器重启不了它），等它重新就绪。

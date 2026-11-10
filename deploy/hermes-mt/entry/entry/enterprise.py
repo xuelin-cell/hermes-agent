@@ -221,6 +221,21 @@ class EnterpriseSync:
         self._applied.pop(user_id, None)
         self._tenants.pop(user_id, None)
 
+    # ---- 引导时一起送（tenants._bootstrap_cube） ----------------------------------------
+
+    def boot_spec(self, user_id: str) -> tuple[dict, str] | None:
+        """引导新实例时一起送进去的 (清单, 摘要)：转发器在起 hermes 之前装好，省掉装完再重启 hermes 那一次。
+
+        还没有就是 None：入口刚重启、这个人的策略还没拉回来（每个请求在后台复查一次，见 app.py 的 _recheck_soon）。
+        那就照旧，实例起来后再送。平台的运行环境先记策略再准备实例（service.py 的 put_runtime），总有清单。"""
+        return self._specs.get(user_id)
+
+    def boot_applied(self, user_id: str, instance_key: str, digest: str) -> None:
+        """引导时装好的是摘要为 ``digest`` 的那份清单：记成这台实例已装。启动后 after_ready、apply_now 拿它和当前的
+        清单比，一样就不再送；引导期间清单又变了（长轮询、复查拿到了新策略），对不上，照常送新的那份。"""
+        self._applied[user_id] = (instance_key, digest)
+        self._retry_at.pop(user_id, None)
+
     # ---- 送进实例 --------------------------------------------------------------------
 
     def after_ready(self, user_id: str, tenant: Tenant) -> None:
@@ -275,7 +290,10 @@ class EnterpriseSync:
                 self._applied[user_id] = (key, digest)
                 self._retry_at.pop(user_id, None)
             if body.get("restarted"):
-                log.info("enterprise: %s 的企业资源要重启 hermes 才生效，实例里已重启", user_id)
+                timing = body.get("timing") if isinstance(body.get("timing"), dict) else {}
+                log.info("enterprise: %s 的企业资源要重启 hermes 才生效，实例里已重启 %s", user_id, timing.get("steps") or "")
+                # 停、起各段用时和有没有等满被强杀（见 seed/forward.py 的 _Timing）：查重启为什么慢
+                await self.e.store.write_audit(user_id, "enterprise.restart", {"timing": timing})
             if report.get("errors"):
                 log.warning("enterprise: %s 有 %d 项资源没装上：%s", user_id, len(report["errors"]),
                             "; ".join(report["errors"])[:400])

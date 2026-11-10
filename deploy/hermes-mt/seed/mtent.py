@@ -35,6 +35,7 @@ import os
 import re
 import shutil
 import stat
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -177,12 +178,23 @@ def env_value(env_path: Path, name: str) -> str:
 
 # ---------------------------------------------------------------- 下载和解包
 
-def make_fetch(token: str) -> Fetch:
-    """按设备令牌下载平台上的文件；超过上限就不读了。"""
+def make_fetch(token: str, timeout_s: float = FETCH_TIMEOUT_S, budget_s: float | None = None) -> Fetch:
+    """按设备令牌下载平台上的文件；超过上限就不读了。
+
+    ``budget_s``：从现在起，下载总共最多花这么久，超了的项记成装不上、留给下一次同步。引导新实例时用
+    （seed/forward.py 的 _apply_at_boot）：平台不通时不能把 hermes 的启动拖上几分钟。"""
+    deadline = time.monotonic() + budget_s if budget_s is not None else None
+
     def fetch(url: str, _what: str) -> bytes:
+        wait = timeout_s
+        if deadline is not None:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise EnterpriseError("下载超过时限，留到下次同步再装")
+            wait = min(wait, left)
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
         try:
-            with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S) as resp:  # noqa: S310 —— 地址已核对过前缀
+            with urllib.request.urlopen(req, timeout=wait) as resp:  # noqa: S310 —— 地址已核对过前缀
                 data = resp.read(MAX_PACKAGE_BYTES + 1)
         except urllib.error.HTTPError as exc:
             raise EnterpriseError(f"下载失败：平台返回 HTTP {exc.code}") from exc
@@ -860,11 +872,13 @@ def sync_plugins(home: Path) -> list[str]:
 
 # ---------------------------------------------------------------- 入口
 
-def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
+def apply(home: Path, spec: dict, fetch: Fetch | None = None, *, fetch_timeout_s: float = FETCH_TIMEOUT_S,
+          fetch_budget_s: float | None = None) -> dict:
     """按清单装企业资源，返回报告：
 
     ``{"ok", "profiles": {名: [改了的文件]}, "installed", "removed", "retired", "restored",
     "mcp_changed": [默认 profile 写成 "default"], "errors"}``。一项装不上记进 errors，不影响其他项。
+    ``fetch_timeout_s`` / ``fetch_budget_s``：下载单个包、全部下载最多等多久（见 :func:`make_fetch`）。
     """
     if int(spec.get("v") or 0) != SPEC_VERSION:
         raise EnterpriseError(f"清单版本不对：{spec.get('v')!r}")
@@ -877,7 +891,7 @@ def apply(home: Path, spec: dict, fetch: Fetch | None = None) -> dict:
     server = str(spec.get("server") or "")
     token_env = str(spec.get("token_env") or "")
     token = env_value(home / ".env", token_env)
-    fetch = fetch or make_fetch(token)
+    fetch = fetch or make_fetch(token, fetch_timeout_s, fetch_budget_s)
     try:
         state = json.loads((home / STATE_FILE).read_text(encoding="utf-8"))
     except (OSError, ValueError):

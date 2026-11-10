@@ -100,6 +100,9 @@ class ReadyTrace:
 # 引导请求被平台代理挡回时重发：间隔、总时长。见 ``proxy_hiccup``。
 BOOTSTRAP_RETRY_S = 30.0
 BOOTSTRAP_RETRY_INTERVAL_S = 1.0
+# 引导时一起装企业资源，引导请求多等这么久：转发器下载最多 30 秒（seed/forward.py 的 BOOT_FETCH_BUDGET_S），
+# 再加解包、写文件。
+BOOTSTRAP_ENTERPRISE_EXTRA_S = 60
 
 
 def proxy_hiccup(exc: CubeError) -> bool:
@@ -437,10 +440,14 @@ class Cube:
         enterprise: bool = False,
         features: list[str] | None = None,
         connectors: list[dict] | None = None,
+        enterprise_spec: dict | None = None,
     ) -> dict:
         """把会话令牌和种子文件送进容器，并让它把 hermes 拉起来。
 
         ``api_server``：平台的运行环境（docs/企业版对接/15）要另开 gateway 的 API 服务，见 seed/forward.py。
+
+        ``enterprise_spec``：企业资源清单（entry/enterprise.py 算的那份）。转发器在起 hermes 之前装好，省掉装完再重启
+        hermes 那一次；装得怎么样在回包的 ``enterprise``。老转发器不认识这一项，原样忽略。
 
         这是绕开平台时序限制的那条通道：平台下发创建时环境变量是在容器进程
         已经起来之后，而 hermes 缺了令牌会直接退出、导致实例根本建不起来。
@@ -474,6 +481,10 @@ class Cube:
         if connectors:
             # 入口库里的连接器状态；老转发器不认识这一项，原样忽略（见 seed/forward.py）
             payload["connectors"] = connectors
+        wait_s = ready_timeout_s + 30
+        if enterprise_spec:
+            payload["enterprise_spec"] = enterprise_spec
+            wait_s += BOOTSTRAP_ENTERPRISE_EXTRA_S
         deadline = time.monotonic() + BOOTSTRAP_RETRY_S
         while True:
             try:
@@ -483,7 +494,7 @@ class Cube:
                     port,
                     "/__mt/bootstrap",
                     json_body=payload,
-                    timeout_s=ready_timeout_s + 30,
+                    timeout_s=wait_s,
                 )
                 return body if isinstance(body, dict) else {}
             except CubeError as exc:

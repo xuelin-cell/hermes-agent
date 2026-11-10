@@ -358,6 +358,7 @@ async def test_bootstrap_syncs_skills_before_hermes_starts(forward, monkeypatch:
     monkeypatch.setattr(forward, "_spawn_hermes", spawn)
     monkeypatch.setattr(forward, "_hermes_alive", alive)
     monkeypatch.setattr(forward, "_supervise", idle)
+    monkeypatch.setattr(forward.mtent, "apply", lambda *args, **kwargs: pytest.fail("入口没送清单，不该装企业资源"))
     writer = _Writer()
     payload = {"token": "tok", "files": [], "skills": {"keep_categories": ["uniwork"], "keep": []}}
 
@@ -366,6 +367,7 @@ async def test_bootstrap_syncs_skills_before_hermes_starts(forward, monkeypatch:
     assert order == ["sync", "spawn"]
     body = writer.body()
     assert body["ok"] is True and body["skills"] == {"ok": True, "retired_pristine": ["excel"]}
+    assert "enterprise" not in body and {"seed", "skills", "ready"} <= set(body["timing"]["steps"])
 
 
 @pytest.mark.asyncio
@@ -436,6 +438,170 @@ async def test_enterprise_bootstrap_starts_connectors_only_when_the_entry_opened
     assert seen == [opened]
 
 
+@pytest.mark.asyncio
+async def test_bootstrap_installs_enterprise_resources_before_hermes_starts(
+    forward, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """入口带了企业资源清单：同步完自带技能、起 hermes 之前装好，下载限时。hermes 一起来就有 Agent 的 profile，
+    入口之后再送同一份清单也不用重启（11-10 真机：装在启动之后，平台运行环境重建一次多重启 38 秒）。"""
+    order: list[str] = []
+    real_apply = forward.mtent.apply
+
+    async def sync():
+        order.append("sync")
+        return {"ok": True}
+
+    async def spawn(token):
+        order.append("spawn")
+        assert (tmp_path / "profiles" / "uw-a1" / "SOUL.md").is_file()  # 起之前就装好了
+        forward._note_boot_homes()  # 真的 _spawn_hermes 在这里数 profile
+        return {"steps": {"hermes_exec": 0.1}}
+
+    async def alive():
+        return True
+
+    async def idle():
+        return None
+
+    def apply(home, spec, fetch=None, **limits):
+        order.append("apply")
+        assert limits == {"fetch_timeout_s": forward.BOOT_FETCH_TIMEOUT_S, "fetch_budget_s": forward.BOOT_FETCH_BUDGET_S}
+        return real_apply(home, spec, fetch, **limits)
+
+    monkeypatch.setattr(forward, "_sync_bundled_skills", sync)
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_alive", alive)
+    monkeypatch.setattr(forward, "_supervise", idle)
+    monkeypatch.setattr(forward.mtent, "apply", apply)
+    payload = {"token": "tok", "files": [], "enterprise": True, "enterprise_spec": _enterprise_spec()}
+    writer = _Writer()
+
+    await forward._bootstrap(writer, json.dumps(payload).encode("utf-8"))
+
+    assert order == ["sync", "apply", "spawn"]
+    reply = writer.body()
+    assert reply["ok"] is True and reply["enterprise"]["ok"] is True and reply["enterprise"]["errors"] == []
+    assert reply["enterprise"]["changed"]["profiles"]["uw-a1"]
+    assert {"seed", "skills", "enterprise", "hermes_exec", "ready"} <= set(reply["timing"]["steps"])
+
+    # 实例起来后，入口再送同一份清单：什么都没变，不用重启
+    stops: list[str] = []
+
+    async def stop(grace_s: float = 30.0):
+        stops.append("stop")
+
+    async def quiet():
+        return {"turns": []}
+
+    monkeypatch.setattr(forward.mtent, "apply", real_apply)
+    monkeypatch.setattr(forward, "_stop_hermes", stop)
+    monkeypatch.setattr(forward, "_activity", quiet)
+    headers, body = _post({"spec": _enterprise_spec(), "restart": True})
+    writer = _Writer()
+    await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, writer)
+    reply = writer.body()
+    assert reply["restarted"] is False and reply["restart_needed"] is False and stops == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["raises", "partial"])
+async def test_bootstrap_starts_hermes_even_if_enterprise_resources_did_not_install(
+    forward, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    """装不上（出错）或没装全（下载超时）：不挡启动，照常起 hermes；回包里 ok 为假，入口启动后再送一次。"""
+    started: list[str] = []
+
+    async def sync():
+        return {"ok": True}
+
+    async def spawn(token):
+        started.append(token)
+
+    async def alive():
+        return True
+
+    async def idle():
+        return None
+
+    def apply(home, spec, fetch=None, **limits):
+        if outcome == "raises":
+            raise OSError("disk full")
+        return {"ok": False, "profiles": {}, "installed": [], "removed": [], "retired": [], "restored": [],
+                "mcp_changed": [], "errors": ["技能「周报」：下载超过时限，留到下次同步再装"]}
+
+    monkeypatch.setattr(forward, "_sync_bundled_skills", sync)
+    monkeypatch.setattr(forward, "_spawn_hermes", spawn)
+    monkeypatch.setattr(forward, "_hermes_alive", alive)
+    monkeypatch.setattr(forward, "_supervise", idle)
+    monkeypatch.setattr(forward.mtent, "apply", apply)
+    payload = {"token": "tok", "files": [], "enterprise": True, "enterprise_spec": _enterprise_spec()}
+    writer = _Writer()
+
+    await forward._bootstrap(writer, json.dumps(payload).encode("utf-8"))
+
+    assert started == ["tok"]
+    reply = writer.body()
+    assert reply["ok"] is True and reply["enterprise"]["ok"] is False
+    assert ("disk full" if outcome == "raises" else "下载超过时限") in reply["enterprise"]["errors"][0]
+
+
+class _Proc:
+    """假的子进程：polite = 收到 SIGTERM 就退；否则一直不退，等被强杀。"""
+
+    def __init__(self, polite: bool) -> None:
+        self.polite = polite
+        self.returncode: int | None = None
+        self.signals: list = []
+        self._exited = asyncio.Event()
+
+    def send_signal(self, sig) -> None:
+        self.signals.append(sig)
+        if self.polite:
+            self.returncode = 0
+            self._exited.set()
+
+    def kill(self) -> None:
+        self.signals.append("kill")
+        self.returncode = -9
+        self._exited.set()
+
+    async def wait(self) -> int | None:
+        await self._exited.wait()
+        return self.returncode
+
+
+@pytest.mark.asyncio
+async def test_stopping_reports_which_process_had_to_be_killed(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    """停 hermes、API 服务先发 SIGTERM，等满时限还不退才强杀：强杀的记进 killed，入口记进审计
+    （查 11-10 起重启一次 hermes 为什么从 15 秒变成 38～41 秒）。"""
+    async def nothing():
+        return None
+
+    monkeypatch.setattr(forward._messaging_gateway, "stop", nothing)
+    monkeypatch.setattr(forward._connectors, "close", nothing)
+    stubborn = _Proc(polite=False)
+    monkeypatch.setattr(forward, "_hermes_proc", stubborn)
+    timing = await forward._stop_hermes(grace_s=0.05)
+    assert timing["killed"] == ["hermes"] and stubborn.signals[-1] == "kill"
+    assert {"messaging_stop", "connectors_stop", "hermes_stop"} <= set(timing["steps"])
+
+    monkeypatch.setattr(forward, "_hermes_proc", _Proc(polite=True))
+    timing = await forward._stop_hermes(grace_s=5)
+    assert "killed" not in timing and "hermes_stop" in timing["steps"]
+
+    monkeypatch.setattr(forward, "_gateway_proc", _Proc(polite=False))
+    assert (await forward._stop_gateway(grace_s=0.05))["killed"] == ["gateway"]
+    monkeypatch.setattr(forward, "_gateway_proc", _Proc(polite=True))
+    assert "killed" not in await forward._stop_gateway(grace_s=5)
+
+    # 合进一次重启的计时：各段累加，强杀的名字不重复
+    total = forward._Timing()
+    total.merge({"steps": {"hermes_stop": 30.0}, "killed": ["hermes"]})
+    total.merge(None)
+    total.merge({"steps": {"hermes_stop": 0.5, "gateway_stop": 0.2}, "killed": ["hermes", "gateway"]})
+    assert total.as_dict() == {"steps": {"hermes_stop": 30.5, "gateway_stop": 0.2}, "killed": ["hermes", "gateway"]}
+
+
 # ---------------------------------------------------------------- /__mt/reload：重写配置并重启 hermes
 
 def _post(payload: dict, token: str = "tok") -> tuple[dict, bytes]:
@@ -488,7 +654,10 @@ async def test_reload_rewrites_seed_files_then_restarts_hermes(forward, tmp_path
     await forward._handle_mt("POST", "/__mt/reload", headers, body, None, writer)
 
     assert order == ["stop", "spawn:tok"]
-    assert writer.body() == {"ok": True, "hermes": True, "written": [".env"]}
+    reply = writer.body()
+    timing = reply.pop("timing")
+    assert reply == {"ok": True, "hermes": True, "written": [".env"]}
+    assert {"seed", "tokens", "ready"} <= set(timing["steps"])  # 各段用时，入口记进审计 tenant.reload / service.reload
     assert (tmp_path / ".env").read_text(encoding="utf-8") == "USER_KEY=mine\nHERMES_CUSTOM_YUANJING_API_KEY=new\n"
     assert forward._reloading is False
 
@@ -630,6 +799,7 @@ async def test_enterprise_restarts_hermes_once_when_idle(forward, tmp_path: Path
     reply = writer.body()
     assert reply["restarted"] is True and reply["restart_needed"] is False
     assert order == ["stop", "spawn:tok"] and forward._boot_homes == 2
+    assert {"apply", "ready"} <= set(reply["timing"]["steps"])  # 入口记进审计 enterprise.restart
 
     writer = _Writer()
     await forward._handle_mt("POST", "/__mt/enterprise", headers, body, None, writer)

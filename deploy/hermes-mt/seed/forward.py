@@ -97,6 +97,9 @@ HERMES_INSTALL = Path(os.environ.get("MT_HERMES_INSTALL", "/opt/hermes"))
 UNISEARCH_CONFIGURE = HERMES_INSTALL / "plugins/unisearch/configure.py"
 UNISEARCH_CONFIGURE_TIMEOUT_S = 30.0
 SKILLS_SYNC_TIMEOUT_S = 60.0
+# 引导时就装企业资源（见 _apply_at_boot）：单个包最多等 15 秒，下载总共最多 30 秒，超了的留给启动后那次送清单补装。
+BOOT_FETCH_TIMEOUT_S = 15.0
+BOOT_FETCH_BUDGET_S = 30.0
 # 回包只要名字和计数：删掉了哪些、归档了哪些（用户改过的）、新发了哪些。
 SKILLS_SYNC_SCRIPT = (
     "import json, sys; sys.path.insert(0, '.'); from tools.skills_sync import sync_skills; "
@@ -146,6 +149,33 @@ _restart_pending = False  # 企业资源要重启 hermes 才完全生效，但�
 
 
 # ---------------------------------------------------------------- 工具
+
+class _Timing:
+    """一次引导、重启或排空里各段花了多久（秒，一位小数），以及哪些进程没有自己退出、等满时限被强杀。
+
+    放进回包的 ``timing``，入口记进审计：准备慢、打开页面慢时按它查卡在哪一段。11-10 真机重启一次 hermes
+    从 15 秒变成 38～41 秒，没有分段就说不清是停得慢还是起得慢。"""
+
+    def __init__(self) -> None:
+        self.steps: dict[str, float] = {}
+        self.killed: list[str] = []
+        self._mark = time.monotonic()
+
+    def lap(self, step: str) -> None:
+        now = time.monotonic()
+        self.steps[step] = round(self.steps.get(step, 0.0) + now - self._mark, 1)
+        self._mark = now
+
+    def merge(self, part: dict | None) -> None:
+        """并进 _stop_hermes、_stop_gateway、_spawn_hermes 自己记的分段，计时起点挪到现在。"""
+        for step, seconds in ((part or {}).get("steps") or {}).items():
+            self.steps[step] = round(self.steps.get(step, 0.0) + seconds, 1)
+        self.killed += [name for name in (part or {}).get("killed") or [] if name not in self.killed]
+        self._mark = time.monotonic()
+
+    def as_dict(self) -> dict:
+        return {"steps": dict(self.steps), **({"killed": list(self.killed)} if self.killed else {})}
+
 
 async def _port_alive(port: int) -> bool:
     try:
@@ -344,14 +374,17 @@ async def _configure_unisearch(env: dict[str, str]) -> None:
         _log(f"联网搜索配置没写上，沿用现有设置: {err.decode('utf-8', 'replace').strip()[-300:]}")
 
 
-async def _spawn_hermes(token: str) -> None:
+async def _spawn_hermes(token: str) -> dict:
+    """拉起 hermes，不等它就绪。返回各段用时（见 _Timing）。"""
     global _hermes_proc
+    timing = _Timing()
     _connectors.profile_token = token
     if _connectors_on():
         try:
             await _connectors.restore()
         except (OSError, RuntimeError, ValueError):
             _log('连接器尚未恢复，后台将重试；其他实例功能继续启动。')
+        timing.lap("connectors_start")
     env = dict(os.environ)
     env.update(_hermes_env)
     env["HERMES_DASHBOARD_SESSION_TOKEN"] = token
@@ -362,6 +395,7 @@ async def _spawn_hermes(token: str) -> None:
     env["HERMES_DESKTOP"] = "1"
     if not _enterprise_mode:
         await _configure_unisearch(env)
+        timing.lap("unisearch")
         recovery = await asyncio.create_subprocess_exec(
             HERMES_PYTHON, '-c',
             "import runpy,sys; from pathlib import Path; runpy.run_path(sys.argv[1])['claim_all'](Path(sys.argv[2]))",
@@ -370,6 +404,7 @@ async def _spawn_hermes(token: str) -> None:
         )
         if await recovery.wait() != 0:
             raise RuntimeError('Cloud crash recovery preparation failed')
+        timing.lap("recovery")
     _note_boot_homes()
     _hermes_proc = await asyncio.create_subprocess_exec(
         "hermes", "serve",
@@ -378,27 +413,36 @@ async def _spawn_hermes(token: str) -> None:
         "--skip-build",
         env=env,
     )
+    timing.lap("hermes_exec")
+    return timing.as_dict()
 
 
-async def _stop_hermes(grace_s: float = 30.0) -> None:
-    """先 SIGTERM 等它自己退，超时再 SIGKILL。"""
+async def _stop_hermes(grace_s: float = 30.0) -> dict:
+    """先 SIGTERM 等它自己退，超时再 SIGKILL。返回各段用时（见 _Timing），等满被强杀的记进 killed。"""
+    timing = _Timing()
     await _messaging_gateway.stop()
+    timing.lap("messaging_stop")
     await _connectors.close()
+    timing.lap("connectors_stop")
     proc = _hermes_proc
     if proc is None or proc.returncode is not None:
-        return
+        return timing.as_dict()
     try:
         proc.send_signal(signal.SIGTERM)
     except ProcessLookupError:
-        return
+        return timing.as_dict()
     try:
         await asyncio.wait_for(proc.wait(), timeout=grace_s)
     except asyncio.TimeoutError:
+        timing.killed.append("hermes")
         try:
             proc.kill()
         except ProcessLookupError:
-            return
+            timing.lap("hermes_stop")
+            return timing.as_dict()
         await proc.wait()
+    timing.lap("hermes_stop")
+    return timing.as_dict()
 
 
 async def _supervise() -> None:
@@ -462,22 +506,28 @@ async def _spawn_gateway() -> None:
     _gateway_proc = await asyncio.create_subprocess_exec("hermes", "gateway", "run", env=env)
 
 
-async def _stop_gateway(grace_s: float = 30.0) -> None:
+async def _stop_gateway(grace_s: float = 30.0) -> dict:
+    """同 _stop_hermes：先 SIGTERM，等满再 SIGKILL。返回用时，等满被强杀的记进 killed。"""
+    timing = _Timing()
     proc = _gateway_proc
     if proc is None or proc.returncode is not None:
-        return
+        return timing.as_dict()
     try:
         proc.send_signal(signal.SIGTERM)
     except ProcessLookupError:
-        return
+        return timing.as_dict()
     try:
         await asyncio.wait_for(proc.wait(), timeout=grace_s)
     except asyncio.TimeoutError:
+        timing.killed.append("gateway")
         try:
             proc.kill()
         except ProcessLookupError:
-            return
+            timing.lap("gateway_stop")
+            return timing.as_dict()
         await proc.wait()
+    timing.lap("gateway_stop")
+    return timing.as_dict()
 
 
 async def _supervise_gateway() -> None:
@@ -581,6 +631,31 @@ async def _activity() -> dict:
     return result
 
 
+async def _apply_at_boot(spec: dict) -> dict:
+    """引导时、起 hermes 之前，按入口一起送来的清单装企业资源。和 /__mt/enterprise 装的一样，只是不用重启：
+    hermes 还没起。
+
+    下载限时（BOOT_FETCH_TIMEOUT_S、BOOT_FETCH_BUDGET_S）：平台不通也只多等几十秒，没装上的记进 errors，
+    入口在启动后再送一次补上。返回给入口的摘要 ``{"ok", "errors", "changed"}``：``ok`` 为真，入口才把这份清单
+    记成这台实例已装，启动后不再送。"""
+    global _enterprise_lock
+    if _enterprise_lock is None:
+        _enterprise_lock = asyncio.Lock()
+    async with _enterprise_lock:
+        try:
+            report = await asyncio.to_thread(mtent.apply, HERMES_HOME, spec, None,
+                                             fetch_timeout_s=BOOT_FETCH_TIMEOUT_S, fetch_budget_s=BOOT_FETCH_BUDGET_S)
+        except Exception as exc:  # noqa: BLE001 —— 装不上不挡启动
+            error = str(exc) if isinstance(exc, mtent.EnterpriseError) else f"{type(exc).__name__}: {exc}"
+            _log(f"引导时没装上企业资源，启动后再装：{error[:300]}")
+            return {"ok": False, "errors": [error[:300]]}
+    errors = [str(item) for item in report.get("errors") or []]
+    if errors:
+        _log(f"引导时企业资源有 {len(errors)} 项没装上，启动后再装：{'; '.join(errors)[:500]}")
+    changed = {key: report[key] for key in ("profiles", "installed", "removed", "retired", "restored") if report.get(key)}
+    return {"ok": not errors, "errors": errors[:20], "changed": changed}
+
+
 async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
     """``POST /__mt/bootstrap`` —— 收令牌、种子文件和状态段，恢复、落盘、拉起 hermes。
 
@@ -596,6 +671,9 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
 
     恢复失败**不算引导成功**：hermes 不会被拉起，``_bootstrapped`` 保持 False，入口可以
     带 force 重试，或者判定这台实例不可用。
+
+    ``enterprise_spec``（企业版，入口手里有这个人的清单时才带）：起 hermes 之前装好企业资源，见 _apply_at_boot，
+    结果放在回包的 ``enterprise``。回包的 ``timing`` 是各段用时（恢复、写种子、同步技能、装企业资源、起进程、等就绪）。
     """
     global _bootstrapped, _boot_lock, _state, _state_lock, _archiver_task, _supervisor_task, _hermes_token, _enterprise_mode
     global _enterprise_features
@@ -621,6 +699,7 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             _reply(writer, 400, {"ok": False, "error": "缺少 token"})
             return
 
+        timing = _Timing()
         report: dict = {}
         state = payload.get("state") or None
         if state:
@@ -647,6 +726,7 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
                 report = rep.as_dict()
                 _state = mgr
                 _hermes_env["HERMES_WRITE_SAFE_ROOT"] = f"{HERMES_HOME}{os.pathsep}{vol / 'workspace'}"
+                timing.lap("restore")
             except mtstate.RefuseStart as exc:
                 _reply(writer, 409, {"ok": False, "error": str(exc), "refused": True})
                 return
@@ -674,16 +754,27 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
                     _log(f"连接器状态按入口库恢复: {', '.join(adopted)}")
             except (KeyError, TypeError, ValueError, OSError, sqlite3.Error) as exc:
                 _log(f"连接器状态没装上，沿用归档里的: {type(exc).__name__}")
+        timing.lap("seed")
 
         # 用户目录已经从上一代恢复：这时再按发行规则同步自带技能，见 _sync_bundled_skills。
         skills = await _sync_bundled_skills()
+        timing.lap("skills")
+
+        # 企业资源（Agent 档案、技能、连接器、知识检索、工具开关）在起 hermes 之前装好：hermes 只在启动时连 MCP、
+        # 决定托管几个 profile，装在启动之后就得再重启一次（11-10 真机：平台运行环境重建一次多 38 秒）。
+        # 装不上不挡启动，照常起 hermes；入口看回包里的 enterprise，没装全就启动后再送一次。老入口不送这一项。
+        boot_enterprise = None
+        if isinstance(payload.get("enterprise_spec"), dict):
+            boot_enterprise = await _apply_at_boot(payload["enterprise_spec"])
+            timing.lap("enterprise")
 
         _hermes_token = token
         _enterprise_mode = _enterprise_mode or bool(payload.get("enterprise"))
         try:
-            await _spawn_hermes(token)
+            timing.merge(await _spawn_hermes(token))
             if payload.get("api_server"):
                 await _start_api_server()
+                timing.lap("gateway_start")
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 500,
                    {"ok": False, "error": f"拉起 hermes 失败: {type(exc).__name__}: {exc}"})
@@ -697,9 +788,12 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
 
     # 等 hermes 真正开始监听，好让入口一收到 200 就能直接转发。
     deadline = time.monotonic() + float(payload.get("ready_timeout_s", 180))
+    extra = {"enterprise": boot_enterprise} if boot_enterprise is not None else {}
     while time.monotonic() < deadline:
         if await _ready():
-            reply = {"ok": True, "hermes": True, "written": written, "state": report}
+            timing.lap("ready")
+            reply = {"ok": True, "hermes": True, "written": written, "state": report, **extra,
+                     "timing": timing.as_dict()}
             if _api_enabled:
                 reply["api"] = True
             if skills is not None:
@@ -707,15 +801,19 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             _reply(writer, 200, reply)
             return
         if _hermes_proc is not None and _hermes_proc.returncode is not None:
+            timing.lap("ready")
             _reply(writer, 500, {
                 "ok": False,
                 "error": f"hermes 启动后立刻退出，退出码 {_hermes_proc.returncode}",
                 "written": written,
                 "state": report,
+                "timing": timing.as_dict(),
             })
             return
         await asyncio.sleep(0.5)
-    _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written, "state": report})
+    timing.lap("ready")
+    _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written, "state": report,
+                         "timing": timing.as_dict()})
 
 
 async def _sync(writer: asyncio.StreamWriter) -> None:
@@ -756,9 +854,11 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
     _state.phase = "draining"
     if _archiver_task is not None:
         _archiver_task.cancel()
+    timing = _Timing()
     await mtuser.close_all_terminals()
-    await _stop_hermes()
-    await _stop_gateway()
+    timing.lap("terminals")
+    timing.merge(await _stop_hermes())
+    timing.merge(await _stop_gateway())
     try:
         summary = await _do_archive(force=True)
     except mtstate.OwnerLost as exc:
@@ -767,12 +867,14 @@ async def _drain(writer: asyncio.StreamWriter) -> None:
         return
     except Exception as exc:  # noqa: BLE001
         _state.phase = "drain_failed"
+        timing.lap("archive")
         _reply(writer, 500, {"ok": False, "error": f"最终归档失败: {type(exc).__name__}: {exc}",
-                             "hermes_stopped": True})
+                             "hermes_stopped": True, "timing": timing.as_dict()})
         return
+    timing.lap("archive")
     _state.phase = "drained"
     # hermes 已停，jobs.json 不会再变：这里报的下次执行时间就是入口叫醒下一台实例的依据。
-    _drained = {"ok": True, "archive": summary, "activity": await _activity()}
+    _drained = {"ok": True, "archive": summary, "activity": await _activity(), "timing": timing.as_dict()}
     _reply(writer, 200, _drained)
 
 
@@ -797,23 +899,27 @@ async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
     if _reload_lock is None:
         _reload_lock = asyncio.Lock()
     async with _reload_lock:
+        timing = _Timing()
         try:
             written = _write_seed(files)
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
             return
+        timing.lap("seed")
         # 换了设备令牌：Agent 的托管 profile 也一起换（它们各有一份 .env）
         await asyncio.to_thread(_sync_tokens_quietly)
+        timing.lap("tokens")
         _reloading = True
         try:
-            await _stop_hermes()
-            await _stop_gateway()
-            await _spawn_hermes(_hermes_token)
+            timing.merge(await _stop_hermes())
+            timing.merge(await _stop_gateway())
+            timing.merge(await _spawn_hermes(_hermes_token))
             if _api_enabled:
                 await _spawn_gateway()
+                timing.lap("gateway_start")
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 500, {"ok": False, "error": f"重启 hermes 失败: {type(exc).__name__}: {exc}",
-                                 "written": written})
+                                 "written": written, "timing": timing.as_dict()})
             return
         finally:
             _reloading = False
@@ -821,15 +927,19 @@ async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
     deadline = time.monotonic() + float(payload.get("ready_timeout_s", 120))
     while time.monotonic() < deadline:
         if await _ready():
+            timing.lap("ready")
             _reply(writer, 200, {"ok": True, "hermes": True, "written": written,
-                                 **({"api": True} if _api_enabled else {})})
+                                 **({"api": True} if _api_enabled else {}), "timing": timing.as_dict()})
             return
         if _hermes_proc is not None and _hermes_proc.returncode is not None:
+            timing.lap("ready")
             _reply(writer, 500, {"ok": False, "error": f"hermes 重启后立刻退出，退出码 {_hermes_proc.returncode}",
-                                 "written": written})
+                                 "written": written, "timing": timing.as_dict()})
             return
         await asyncio.sleep(0.5)
-    _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written})
+    timing.lap("ready")
+    _reply(writer, 503, {"ok": False, "error": "hermes 未在超时内就绪", "written": written,
+                         "timing": timing.as_dict()})
 
 
 def _note_boot_homes() -> None:
@@ -907,6 +1017,7 @@ async def _enterprise(writer: asyncio.StreamWriter, body: bytes) -> None:
     if _enterprise_lock is None:
         _enterprise_lock = asyncio.Lock()
     async with _enterprise_lock:
+        timing = _Timing()
         try:
             report = await asyncio.to_thread(mtent.apply, HERMES_HOME, spec)
         except mtent.EnterpriseError as exc:
@@ -915,6 +1026,7 @@ async def _enterprise(writer: asyncio.StreamWriter, body: bytes) -> None:
         except Exception as exc:  # noqa: BLE001
             _reply(writer, 500, {"ok": False, "error": f"安装企业资源失败: {type(exc).__name__}: {exc}"})
             return
+        timing.lap("apply")
         homes = len(await asyncio.to_thread(mtstate.hermes_homes, HERMES_HOME))
         if report.get("mcp_changed") or (homes >= 2 and _boot_homes < 2):
             _restart_pending = True
@@ -924,11 +1036,12 @@ async def _enterprise(writer: asyncio.StreamWriter, body: bytes) -> None:
         if _restart_pending and payload.get("restart") and not busy and _bootstrapped and not _draining:
             _reloading = True
             try:
-                await _stop_hermes()
-                await _stop_gateway()
-                await _spawn_hermes(_hermes_token)
+                timing.merge(await _stop_hermes())
+                timing.merge(await _stop_gateway())
+                timing.merge(await _spawn_hermes(_hermes_token))
                 if _api_enabled:
                     await _spawn_gateway()
+                    timing.lap("gateway_start")
             finally:
                 _reloading = False
             _restart_pending = False
@@ -940,8 +1053,9 @@ async def _enterprise(writer: asyncio.StreamWriter, body: bytes) -> None:
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline and not await _ready():
             await asyncio.sleep(0.5)
+        timing.lap("ready")
     _reply(writer, 200, {"ok": True, "report": report, "restarted": restarted, "busy": busy,
-                         "restart_needed": _restart_pending})
+                         "restart_needed": _restart_pending, "timing": timing.as_dict()})
 
 
 async def _resume(writer: asyncio.StreamWriter) -> None:

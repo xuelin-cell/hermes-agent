@@ -71,6 +71,7 @@ class Stub:
         self.tasks: list[asyncio.Task] = []
         self.restarts: list[str] = []
         self.audits: list[str] = []
+        self.audit_details: list[tuple[str, dict]] = []
         context = SimpleNamespace(endpoint=None, catalog=[], limits={}, api_key="device-token")
         stub = self
 
@@ -80,6 +81,7 @@ class Stub:
 
             async def write_audit(self, user_id: str, action: str, detail: dict) -> None:
                 stub.audits.append(action)
+                stub.audit_details.append((action, detail))
 
         class Tenants:
             def __init__(self) -> None:
@@ -193,5 +195,103 @@ async def test_items_that_did_not_install_are_retried_later(monkeypatch: pytest.
             sync.after_ready("u1", fwd.tenant())
             await entry.settle()
         assert len(fwd.specs) == 2  # 再试一次，这回装齐了，之后不再送
+    assert fwd.server is not None
+    await fwd.server.close()
+
+
+@pytest.mark.asyncio
+async def test_spec_installed_at_bootstrap_is_not_pushed_again() -> None:
+    """引导时已经装好（tenants._bootstrap_cube 调 boot_applied）：实例起来后不再送，平台运行环境的准备也不再
+    等装资源、不再重启 hermes；实例换代了（新实例引导时没带清单）照旧再送。"""
+    fwd = await Forwarder().start()
+    async with aiohttp.ClientSession() as http:
+        entry = Stub(http)
+        sync = EnterpriseSync(entry)  # type: ignore[arg-type]
+        assert sync.boot_spec("u1") is None  # 还没拉到策略：引导不带清单
+        await sync.note_policy("u1", _policy())
+        boot = sync.boot_spec("u1")
+        assert boot is not None and boot[0]["agents"][0]["instructions"] == "先写结论。"
+        sync.boot_applied("u1", "9121-sb1.cube.app", boot[1])
+        sync.after_ready("u1", fwd.tenant())
+        await entry.settle()
+        assert await sync.apply_now("u1", fwd.tenant()) == {}
+        assert fwd.specs == []
+        sync.after_ready("u1", fwd.tenant("9121-sb2.cube.app"))
+        await entry.settle()
+        assert len(fwd.specs) == 1
+    assert fwd.server is not None
+    await fwd.server.close()
+
+
+@pytest.mark.asyncio
+async def test_spec_that_changed_during_bootstrap_is_still_pushed() -> None:
+    """引导期间策略又变了：引导装的是旧的那份，不记成已装，实例起来后送新的。"""
+    fwd = await Forwarder().start()
+    async with aiohttp.ClientSession() as http:
+        entry = Stub(http)
+        sync = EnterpriseSync(entry)  # type: ignore[arg-type]
+        await sync.note_policy("u1", _policy())
+        boot = sync.boot_spec("u1")
+        assert boot is not None
+        await sync.note_policy("u1", _policy("改了。"))
+        sync.boot_applied("u1", "9121-sb1.cube.app", boot[1])
+        sync.after_ready("u1", fwd.tenant())
+        await entry.settle()
+        assert len(fwd.specs) == 1 and fwd.specs[0]["agents"][0]["instructions"] == "改了。"
+    assert fwd.server is not None
+    await fwd.server.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("enterprise", [True, False])
+async def test_entry_startup_hands_the_spec_hooks_to_the_tenant_manager(monkeypatch: pytest.MonkeyPatch,
+                                                                        enterprise: bool) -> None:
+    """企业版入口启动时把 EnterpriseSync 的两个钩子接给 TenantManager：没接上，引导就不带清单，hermes 照旧
+    装完资源再重启一次。个人版没有 EnterpriseSync，不接。"""
+    from cryptography.fernet import Fernet
+
+    from entry.app import Entry, build_app
+
+    settings = Settings(base_path="/agents", database_url="postgresql://unused/db",
+                        credential_key=Fernet.generate_key().decode(),
+                        uniwork_server="http://platform.test" if enterprise else "", backend="cube",
+                        cube_api="http://cube.test:3000", cube_proxy="http://proxy.test", cube_template="tpl-x",
+                        channels_key="", cron_wake_lead_s=0)
+    app = build_app(settings)
+    entry = next(h.__self__ for h in app.on_startup if isinstance(getattr(h, "__self__", None), Entry))
+
+    async def nothing(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(entry.database, "connect", nothing)
+    for name in ("_reconcile", "_reaper", "_revoker"):
+        monkeypatch.setattr(entry, name, nothing)
+    await entry.on_startup(app)
+    try:
+        assert entry.tenants is not None
+        if enterprise:
+            assert entry.ent is not None
+            assert entry.tenants.boot_spec == entry.ent.boot_spec
+            assert entry.tenants.boot_applied == entry.ent.boot_applied
+        else:
+            assert entry.ent is None and entry.tenants.boot_spec is None and entry.tenants.boot_applied is None
+    finally:
+        await asyncio.gather(*entry._bg, return_exceptions=True)
+        if entry.http is not None:
+            await entry.http.close()
+
+
+@pytest.mark.asyncio
+async def test_restart_inside_the_instance_is_audited_with_its_timing() -> None:
+    """转发器为企业资源重启了 hermes：停、起各段用时和有没有等满被强杀记进审计 enterprise.restart。"""
+    fwd = await Forwarder().start()
+    timing = {"steps": {"apply": 1.1, "hermes_stop": 30.0, "ready": 8.2}, "killed": ["hermes"]}
+    fwd.reply = {"restart_needed": False, "busy": False, "restarted": True, "timing": timing}
+    async with aiohttp.ClientSession() as http:
+        entry = Stub(http)
+        sync = EnterpriseSync(entry)  # type: ignore[arg-type]
+        await sync.note_policy("u1", _policy())
+        await sync.apply_now("u1", fwd.tenant())
+        assert ("enterprise.restart", {"timing": timing}) in entry.audit_details
     assert fwd.server is not None
     await fwd.server.close()
