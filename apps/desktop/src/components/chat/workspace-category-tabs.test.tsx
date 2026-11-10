@@ -56,6 +56,7 @@ const modules = normalizeWelcomeCatalog({
 it('uses fetched module names and routing and switches templates without carrying selection across modules', async () => {
   vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: vi.fn().mockResolvedValue({ modules }) })
   await loadWelcomeCatalog('zh-CN', true)
+  setInterfaceMode('simple')
   const replace = vi.fn()
   render(
     <I18nProvider configClient={null} initialLocale="zh">
@@ -83,7 +84,9 @@ it('uses fetched module names and routing and switches templates without carryin
   })
   await waitFor(() => expect(screen.getByRole('button', { name: '办公模板' }).querySelector('svg')).toBeTruthy())
   expect(screen.getByRole('button', { name: '办公模板' }).querySelector('svg')!.innerHTML).not.toBe(configuredIcon)
-  await waitFor(() => expect((screen.getByRole('button', { name: '办公模板' }) as HTMLButtonElement).disabled).toBe(false))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: '办公模板' }) as HTMLButtonElement).disabled).toBe(false)
+  )
   fireEvent.click(screen.getByRole('button', { name: '办公模板' }))
   expect(replace).toHaveBeenLastCalledWith('办公提示词')
 
@@ -96,14 +99,16 @@ it('uses fetched module names and routing and switches templates without carryin
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: '学习分类' }))
   })
-  await waitFor(() => expect((screen.getByRole('button', { name: '学习模板' }) as HTMLButtonElement).disabled).toBe(false))
+  await waitFor(() =>
+    expect((screen.getByRole('button', { name: '学习模板' }) as HTMLButtonElement).disabled).toBe(false)
+  )
   fireEvent.click(screen.getByRole('button', { name: '学习模板' }))
   expect(replace).toHaveBeenLastCalledWith('学习提示词')
 
-  // Match hexagent: the explicit module selection owns its workspace, not vice versa.
+  // 模板场景与显示偏好独立，显式切换布局不应被模块 effect 改回。
   act(() => setInterfaceMode('advanced'))
   expect(screen.getByRole('tab', { name: '研习' }).getAttribute('aria-selected')).toBe('true')
-  expect($interfaceMode.get()).toBe('simple')
+  expect($interfaceMode.get()).toBe('advanced')
 
   fireEvent.click(screen.getByRole('tab', { name: '云端研发' }))
   expect($interfaceMode.get()).toBe('advanced')
@@ -111,6 +116,7 @@ it('uses fetched module names and routing and switches templates without carryin
 })
 
 it('navigates only configured tabs with the keyboard and removes tabs and templates for an empty refresh', async () => {
+  setInterfaceMode('simple')
   $welcomeCatalog.set({ 'zh-CN': { status: 'cached', modules: null }, en: { status: 'cached', modules: null } })
   const request = vi.fn().mockRejectedValue(new Error('offline'))
   vi.stubGlobal('hermesDesktop', { getWelcomeCatalog: request })
@@ -134,7 +140,7 @@ it('navigates only configured tabs with the keyboard and removes tabs and templa
   expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '研习' }))
   fireEvent.keyDown(screen.getByRole('tab', { name: '研习' }), { key: 'ArrowLeft' })
   expect(container.ownerDocument.activeElement).toBe(screen.getByRole('tab', { name: '云端研发' }))
-  expect($interfaceMode.get()).toBe('advanced')
+  expect($interfaceMode.get()).toBe('simple')
 
   // A renderer hot reload may still talk to an older main process returning tags.
   request.mockResolvedValue(modules[0].tags)

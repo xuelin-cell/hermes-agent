@@ -4,15 +4,6 @@ import { messagingConnectionCopy } from './messaging-connection'
 import type { Translations } from './types'
 
 export const en: Translations = {
-  workspaceEditor: {
-    title: 'Editor',
-    capabilities: 'Extensions',
-    openProject: 'Open a project conversation to browse its files.',
-    selectFile: 'Select a file to edit.',
-    unsupported: 'Binary, truncated, or large files cannot be edited here.',
-    refresh: 'Refresh',
-    save: 'Save'
-  },
   conversationShare: {
     sessionShare: 'Share conversation',
     responseShare: 'Share response',
@@ -4555,6 +4546,7 @@ export const en: Translations = {
         'Show detailed context window view with usage gauge, category breakdown, compression stats, and throughput',
       '/whoami': 'Show your slash command access (admin / user)',
       '/profile': 'Switch the active UniWork profile',
+      '/codex': 'Run a coding task with the model selected in this chat',
       '/codex-runtime': 'Toggle codex app-server runtime for OpenAI/Codex models',
       '/personality': 'Set a predefined personality',
       '/battery': 'Toggle a color-coded battery indicator in the status bar',

@@ -18,7 +18,7 @@ import { $developerMode } from '@/store/developer-mode'
 import { $gateway } from '@/store/gateway'
 import { $guideOpening } from '@/store/onboarding-gate'
 import { $activeGatewayProfile } from '@/store/profile'
-import { $freshDraftReady, $gatewayState } from '@/store/session'
+import { $freshDraftReady, $gatewayState, $selectedStoredSessionId } from '@/store/session'
 
 import { ChatView } from '../chat'
 import { ComposerModelList } from '../chat/composer/model-mt/model-list'
@@ -38,12 +38,18 @@ import type { SidebarActions, WiringActions } from './types'
 // Same lazy-view split as DesktopController — pages load on demand. The
 // full-page views the workspace route table mounts live here; overlay views
 // (agents/settings/…) are the controller's and stay in wiring.tsx.
-const WorkspaceEditor = lazy(async () => ({ default: (await import('../workspace-editor')).WorkspaceEditor }))
 const ArtifactsView = lazy(async () => ({ default: (await import('../artifacts')).ArtifactsView }))
 const MessagingView = lazy(async () => ({ default: (await import('../messaging')).MessagingView }))
 const CapabilitiesView = lazy(async () => ({ default: (await import('../capabilities')).CapabilitiesView }))
 const CronView = lazy(async () => ({ default: (await import('../cron/tasks-mt')).CronEntry }))
 const NotificationsView = lazy(async () => ({ default: (await import('../notifications')).NotificationsView }))
+
+/** 旧编辑器地址回到原会话，避免被当成名为 editor 的会话或清空当前草稿。 */
+export function LegacyEditorRedirect() {
+  const selected = useStore($selectedStoredSessionId)
+
+  return <Navigate replace to={selected ? sessionRoute(selected) : NEW_CHAT_ROUTE} />
+}
 
 export function LegacySessionRedirect() {
   const { sessionId } = useParams()
@@ -194,7 +200,7 @@ export const ChatRoutesSurface = memo(function ChatRoutesSurface({
     <Routes>
       <Route element={chatView} index />
       <Route element={chatView} path=":sessionId" />
-      <Route element={page(<WorkspaceEditor />)} path="editor" />
+      <Route element={<LegacyEditorRedirect />} path="editor" />
       <Route element={page(<CapabilitiesView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="capabilities" />
       <Route element={page(<MessagingView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="messaging" />
       <Route element={page(<ArtifactsView setStatusbarItemGroup={setStatusbarItemGroup} />)} path="artifacts" />

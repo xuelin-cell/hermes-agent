@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import List, Tuple
 
-from . import installer
+from . import codex, installer
 
 
 def _add_profile(parser: argparse.ArgumentParser) -> None:
@@ -21,6 +21,8 @@ def _add_profile(parser: argparse.ArgumentParser) -> None:
 def setup(parser: argparse.ArgumentParser) -> None:
     """注册 hermes kit 的全部子命令和参数。"""
     sub = parser.add_subparsers(dest="kit_command")
+    if codex.ENABLED:
+        sub.add_parser("codex", help="执行当前用户显式 /codex 指令，使用数字员工账号模型")
 
     p = sub.add_parser("inspect", help="只解析包、打印检查结果，不写任何文件")
     p.add_argument("paths", nargs="+", help="插件 zip 或已解压的目录")
@@ -130,6 +132,10 @@ def handle(args: argparse.Namespace) -> None:
     from .xiaohongshu import XiaohongshuError
 
     command = getattr(args, "kit_command", None)
+    if command == "codex":
+        from .codex import run
+
+        raise SystemExit(run())
     if not command:
         _print("用法：hermes kit {inspect,install,seed,list,enable,disable,uninstall,triggers,config,xiaohongshu,media} ...（hermes kit -h 看说明）")
         return

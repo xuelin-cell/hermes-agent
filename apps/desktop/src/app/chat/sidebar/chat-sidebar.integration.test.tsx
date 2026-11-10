@@ -13,7 +13,17 @@ import { I18nProvider, type Locale, TRANSLATIONS } from '@/i18n'
 import { $connectionsRegistry } from '@/store/connection-registry-state'
 import { $developerMode } from '@/store/developer-mode'
 import { setInterfaceMode } from '@/store/interface-mode'
-import { $sidebarGrouping, $sidebarMessagingOpenIds, setSidebarAgentsGrouped, setSidebarGrouping } from '@/store/layout'
+import {
+  $sidebarCardRows,
+  $sidebarGrouping,
+  $sidebarMessagingOpenIds,
+  $sidebarRowMeta,
+  setSidebarAgentsGrouped,
+  setSidebarCardRows,
+  setSidebarGrouping,
+  setSidebarShowArchived,
+  toggleSidebarRowMeta
+} from '@/store/layout'
 import { $activeGatewayProfile, $profiles, $showAllProfiles, setShowAllProfiles } from '@/store/profile'
 import { $profileRailVisible } from '@/store/profile-rail-prefs'
 import { $projectScope, ALL_PROJECTS } from '@/store/project-scope'
@@ -30,6 +40,7 @@ import {
   $workspaceCwdOwner
 } from '@/store/session'
 import { $removedSessionIds } from '@/store/session-removal'
+import { $archivedSessions } from '@/store/sidebar-archive'
 import { SIDEBAR_NAV_PREFS_AREA } from '@/store/sidebar-nav'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
 import { $workspaceSessionCategories, rememberSessionWorkspace } from '@/store/workspace-sessions'
@@ -56,7 +67,8 @@ const renderSidebar = (
   currentView: AppView,
   onRetrySessions: () => Promise<void> = noopAsync,
   workspaceTabs = false,
-  locale?: Locale
+  locale?: Locale,
+  onResumeSession: (id: string) => void = noop
 ) =>
   render(
     <MemoryRouter initialEntries={[pathname]}>
@@ -72,7 +84,7 @@ const renderSidebar = (
           onNavigate={noop}
           onNewSessionInWorkspace={noop}
           onNewSessionSplit={noop}
-          onResumeSession={noop}
+          onResumeSession={onResumeSession}
           onRetrySessions={onRetrySessions}
           onTriggerCronJob={noopAsync}
         />
@@ -172,47 +184,189 @@ describe('ChatSidebar navigation activity', () => {
     })
     const view = renderSidebar('/', 'chat', noopAsync, true)
     fireEvent.click(screen.getByRole('tab', { name: '日常办公' }))
+    expect(screen.getAllByText('Tile one')).toHaveLength(1)
+    expect(screen.getByText('Tile two')).toBeTruthy()
     expect(screen.queryByText('workspace-project')).toBeNull()
     expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeTruthy()
+
+    const officeNavigation = [...view.container.querySelectorAll('[data-tour^="sidebar-nav-"]')].map(
+      node => node.textContent
+    )
+
     fireEvent.click(screen.getByRole('tab', { name: '代码开发' }))
-    expect(screen.getByText('workspace-project')).toBeTruthy()
-    expect(screen.getByText('Projects')).toBeTruthy()
-    expect(view.container.querySelector('[data-code-project="__no_project__"]')).toBeNull()
-    expect(screen.queryByText('Tile two')).toBeNull()
-    const projectGroup = screen.getByText('workspace-project').closest('[data-code-project]') as HTMLElement
-    expect(within(projectGroup).getByText('Tile one')).toBeTruthy()
+    expect(screen.queryByText('workspace-project')).toBeNull()
+    expect(screen.queryByText('Projects')).toBeNull()
+    expect(screen.getByText(TRANSLATIONS.en.sidebar.sessions)).toBeTruthy()
+    expect(screen.getByText(TRANSLATIONS.en.sidebar.pinned)).toBeTruthy()
+    expect(screen.getByText('Tile two')).toBeTruthy()
     expect(screen.getAllByText('Tile one')).toHaveLength(1)
-    fireEvent.click(within(projectGroup).getByRole('button', { expanded: true }))
-    expect(screen.queryByText('Tile one')).toBeNull()
-    fireEvent.click(within(projectGroup).getByRole('button', { expanded: false }))
-    expect(within(projectGroup).getByText('Tile one')).toBeTruthy()
     expect($sidebarGrouping.get()).toBe('date')
-    expect(screen.queryByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeNull()
-    expect(screen.queryByRole('button', { name: TRANSLATIONS.en.sidebar.nav.cron })).toBeNull()
-    expect([...view.container.querySelectorAll('[data-tour^="sidebar-nav-"]')].map(node => node.textContent)).toEqual([
-      TRANSLATIONS.en.sidebar.nav['new-session'],
-      TRANSLATIONS.en.workspaceEditor.title,
-      [TRANSLATIONS.en.skills.tabSkills, TRANSLATIONS.en.skills.tabPlugins, TRANSLATIONS.en.connectorsPage.title].join(
-        ' · '
-      )
-    ])
+    expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeTruthy()
+    expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.cron })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Editor' })).toBeNull()
+    expect([...view.container.querySelectorAll('[data-tour^="sidebar-nav-"]')].map(node => node.textContent)).toEqual(
+      officeNavigation
+    )
     const tree = $projectTree.get()
     act(() => $projectTree.set(tree.filter(project => project.isNoProject)))
     expect(view.container.querySelector('[data-code-project]')).toBeNull()
-    expect(screen.queryByText('Tile two')).toBeNull()
+    expect(screen.getByText('Tile two')).toBeTruthy()
     act(() => $projectTree.set(tree))
     fireEvent.click(screen.getByRole('tab', { name: '学习生活' }))
     expect(screen.queryByText('workspace-project')).toBeNull()
     expect($sidebarGrouping.get()).toBe('date')
     expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.artifacts })).toBeTruthy()
-    expect(screen.queryByText('Tile one')).toBeNull()
+    expect(screen.getAllByText('Tile one')).toHaveLength(1)
     expect(screen.getByText('Tile two')).toBeTruthy()
     expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.nav.cron })).toBeTruthy()
     cleanup()
     setInterfaceMode('advanced')
   })
 
-  it('does not show an office conversation folder as a code project', () => {
+  it.each(['work', 'codex'] as const)(
+    'honors shared session display preferences in %s without moving conversations',
+    workspace => {
+      const conversation = makeSessionInfo({
+        id: 'display-preferences',
+        title: 'Display preferences conversation',
+        cwd: '/repos/display-preferences',
+        git_repo_root: '/repos/display-preferences',
+        input_tokens: 300,
+        output_tokens: 75,
+        preview: 'Existing conversation preview'
+      })
+
+      const previousMeta = $sidebarRowMeta.get()
+      const previousCard = $sidebarCardRows.get()
+
+      try {
+        $sidebarRowMeta.set([])
+        setSidebarCardRows(false)
+        setSidebarGrouping('date')
+        $selectedWorkspaceMode.set(workspace)
+        rememberSessionWorkspace(conversation.id, workspace)
+        $sessions.set([conversation])
+        $projectTree.set([
+          {
+            id: 'display-project',
+            label: 'Display project',
+            path: '/repos/display-preferences',
+            repos: [],
+            sessionCount: 1,
+            previewSessions: [conversation]
+          }
+        ])
+        const view = renderSidebar('/', 'chat')
+
+        expect(screen.getAllByText(conversation.title!)).toHaveLength(1)
+        expect(screen.queryByText('375')).toBeNull()
+        expect(screen.queryByText(conversation.preview!)).toBeNull()
+        act(() => {
+          toggleSidebarRowMeta('tokens')
+          toggleSidebarRowMeta('preview')
+        })
+        expect(screen.getByText('375')).toBeTruthy()
+        expect(screen.queryByText(conversation.preview!)).toBeNull()
+        act(() => setSidebarCardRows(true))
+        expect(screen.getByText(conversation.preview!)).toBeTruthy()
+        act(() => setSidebarCardRows(false))
+        expect(screen.queryByText(conversation.preview!)).toBeNull()
+        expect(screen.getByText('375')).toBeTruthy()
+        act(() => toggleSidebarRowMeta('tokens'))
+        expect(screen.queryByText('375')).toBeNull()
+        expect(screen.getAllByText(conversation.title!)).toHaveLength(1)
+        expect($sidebarGrouping.get()).toBe('date')
+        expect($selectedWorkspaceMode.get()).toBe(workspace)
+        expect($sessions.get()).toEqual([conversation])
+
+        expect(view.container.querySelector('[data-code-project]')).toBeNull()
+      } finally {
+        cleanup()
+        $sidebarRowMeta.set(previousMeta)
+        setSidebarCardRows(previousCard)
+      }
+    }
+  )
+
+  it.each(['work', 'codex'] as const)('uses the shared sidebar with legacy project preferences in %s', workspace => {
+    setSidebarGrouping('project')
+    $selectedWorkspaceMode.set(workspace)
+    $sessions.set([])
+    $projectTree.set([])
+    const view = renderSidebar('/', 'chat')
+    expect(screen.getByText(TRANSLATIONS.en.sidebar.sessions)).toBeTruthy()
+    expect(screen.queryByText(TRANSLATIONS.en.sidebar.projects.sectionLabel)).toBeNull()
+
+    const pinned = makeSessionInfo({ id: 'shared-pin', title: 'Pinned conversation', pinned: true })
+    const recent = makeSessionInfo({ id: 'shared-recent', title: 'Recent conversation' })
+    act(() => {
+      rememberSessionWorkspace(pinned.id, workspace)
+      rememberSessionWorkspace(recent.id, workspace)
+      $sessions.set([pinned, recent])
+    })
+    expect(screen.getByText(TRANSLATIONS.en.sidebar.pinned)).toBeTruthy()
+    expect(screen.getAllByText(pinned.title!)).toHaveLength(1)
+    expect(screen.getAllByText(recent.title!)).toHaveLength(1)
+    expect(view.container.querySelector('[data-sessions-mode="flat"]')).toBeTruthy()
+    expect($sidebarGrouping.get()).toBe('project')
+    expect($sessions.get()).toEqual([pinned, recent])
+  })
+
+  it('exposes all history in every workspace while preserving original resume identities', () => {
+    const office = makeSessionInfo({
+      id: 'office-history',
+      title: 'Saved office history',
+      profile: 'expert-a',
+      pinned: true
+    })
+
+    const code = makeSessionInfo({ id: 'code-history', title: 'Saved code history', git_repo_root: '/repo' })
+    const legacy = makeSessionInfo({ id: 'legacy-history', title: 'Saved legacy history' })
+    rememberSessionWorkspace(office.id, 'work', 'local', 'expert-a')
+    rememberSessionWorkspace(code.id, 'codex')
+    const categories = $workspaceSessionCategories.get()
+    const rows = [office, code, legacy]
+    $sessions.set(rows)
+    setSidebarGrouping('date')
+    const resume = vi.fn()
+    const view = renderSidebar('/', 'chat', noopAsync, false, undefined, resume)
+    const input = screen.getByPlaceholderText(TRANSLATIONS.en.sidebar.searchPlaceholder)
+
+    for (const workspace of ['work', 'codex', 'work'] as const) {
+      act(() => $selectedWorkspaceMode.set(workspace))
+
+      for (const row of rows) {
+        expect(screen.getAllByText(row.title!)).toHaveLength(1)
+      }
+
+      expect(screen.getByText(TRANSLATIONS.en.sidebar.pinned)).toBeTruthy()
+
+      for (const row of [office, code]) {
+        fireEvent.change(input, { target: { value: row.title! } })
+        fireEvent.click(screen.getByText(row.title!))
+        expect(resume.mock.calls.at(-1)?.[0]).toBe(row.id)
+        fireEvent.change(input, { target: { value: '' } })
+      }
+    }
+
+    act(() => {
+      $archivedSessions.set([legacy, code])
+      setSidebarShowArchived(true)
+      $selectedWorkspaceMode.set('codex')
+    })
+    expect(view.container.querySelector('[data-sessions-mode="archived"]')).toBeTruthy()
+
+    for (const workspace of ['work', 'codex', 'work'] as const) {
+      act(() => $selectedWorkspaceMode.set(workspace))
+      expect(screen.getByText(legacy.title!)).toBeTruthy()
+      expect(screen.getByText(code.title!)).toBeTruthy()
+    }
+
+    expect($workspaceSessionCategories.get()).toEqual(categories)
+    expect($sessions.get()).toEqual(rows)
+  })
+
+  it('keeps office history visible in code without turning its folder into a project', () => {
     const officeSession = makeSessionInfo({
       connection_id: 'local',
       cwd: 'D:/workspace/20261023-141751',
@@ -241,7 +395,7 @@ describe('ChatSidebar navigation activity', () => {
 
     expect(view.container.querySelector('[data-code-project]')).toBeNull()
     expect(screen.queryByText('20261023-141751')).toBeNull()
-    expect(screen.queryByText('Office conversation')).toBeNull()
+    expect(screen.getByText('Office conversation')).toBeTruthy()
   })
 
   beforeEach(() => {
@@ -271,6 +425,8 @@ describe('ChatSidebar navigation activity', () => {
     setShowAllProfiles(false)
     $selectedWorkspaceMode.set(null)
     $workspaceSessionCategories.set({})
+    setSidebarShowArchived(false)
+    $archivedSessions.set([])
     $projectTree.set([])
     setInterfaceMode('advanced')
     disposeContributions()
@@ -302,7 +458,7 @@ describe('ChatSidebar navigation activity', () => {
     expect(screen.queryByRole('button', filterButton)).toBeNull()
   })
 
-  it('切换专家后仍显示通用助手和其他专家历史，同时保留工作模式筛选', () => {
+  it('办公模块跨专家展示全部场景历史', () => {
     setShowAllProfiles(false)
     setSidebarGrouping('date')
     setSidebarAgentsGrouped(false)
@@ -329,7 +485,7 @@ describe('ChatSidebar navigation activity', () => {
       expect(screen.getByText('Tile two')).toBeTruthy()
       expect(screen.getByText('Expert A history')).toBeTruthy()
       expect(screen.getByText('Expert B history')).toBeTruthy()
-      expect(screen.queryByText('Code history')).toBeNull()
+      expect(screen.getByText('Code history')).toBeTruthy()
       expect(screen.getByRole('button', { name: TRANSLATIONS.en.sidebar.loadMore })).toBeTruthy()
       expect($activeGatewayProfile.get()).toBe(profile)
       expect($selectedStoredSessionId.get()).toBe('tile-one')
@@ -373,7 +529,7 @@ describe('ChatSidebar navigation activity', () => {
         'capabilities',
         ['Experts', TRANSLATIONS.en.skills.tabSkills, TRANSLATIONS.en.connectorsPage.title].join(' · ')
       ],
-      ['/messaging', 'messaging', 'Messaging'],
+      ['/messaging', 'messaging', TRANSLATIONS.en.sidebar.nav.messaging],
       ['/artifacts', 'artifacts', TRANSLATIONS.en.sidebar.nav.artifacts],
       ['/cron', 'cron', 'Scheduled jobs']
     ] as const) {
