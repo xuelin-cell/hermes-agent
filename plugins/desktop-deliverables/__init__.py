@@ -54,6 +54,8 @@ class Turn:
     # 成品交给谁：desktop 出卡片，消息平台发附件；子任务沿用父会话的来源。
     platform: str = "desktop"
     guess: bool = True
+    # 后台通知触发的一轮：本会话已交付且没改动的文件不再重发。
+    notice: bool = False
     downloads: dict = field(default_factory=dict)
     image_runtime: dict = field(default_factory=dict)
 
@@ -173,6 +175,7 @@ def before_turn(
             background=platform == "subagent",
             platform=origin[1] if origin else platform,
             guess=platform == "desktop",
+            notice=background.is_notice(as_text(user_message)),
         )
         _turns.move_to_end(key)
         turn = _turns[key]
@@ -339,6 +342,14 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
                     for path in changed(before, after):
                         turn.paths.setdefault(path, None)
         _turns.pop(key, None)
+    if turn.background:
+        return choose(key, turn, response_text)
+    cwd = turn.cwd if turn.platform != "desktop" else local_cwd(turn.task_id) or turn.cwd
+    return settle(key, turn, cwd, response_text, choose(key, turn, response_text))
+
+
+def choose(key, turn, response_text):
+    """按来源挑出本轮要交付的文件：桌面出卡片，消息平台发附件，后台子任务只交缓存成品。"""
     returned = [] if turn.background else background.returned_results(key)
     if turn.platform != "desktop" and not turn.background:
         return attach(key, turn, response_text, returned)
@@ -398,7 +409,12 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     ]
     from .paths import priority
 
-    copies = copied_downloads(paths, generated, explicit_cards & (set(paths) | shown), shown)
+    # 前几轮复制的副本不算本轮新建，但回复里写了 MEDIA 就照样出卡，也要参与比对；
+    # 本轮目录里新冒出的副本排在明确交付之后。
+    written = {path for match in MEDIA.finditer(masked) if (path := resolve_path(match.group(1), cwd))}
+    copies = copied_downloads(
+        paths, generated, explicit_cards & (set(paths) | shown | written), shown, extra=set(paths)
+    )
     paths = list(dict.fromkeys(copies.get(path, path) for path in paths))
     appended = [path for path in sorted(paths, key=priority) if path not in shown][:8]
     delivered = set(appended) | shown
@@ -410,12 +426,16 @@ def transform(*, response_text="", session_id="", turn_id="", platform="", **kwa
     return appended_reply(original_response, text, appended)
 
 
-def copied_downloads(paths, generated, explicit, shown):
-    """只核对本轮下载或后台带回的缓存与明确交付副本；有界读取，无法确认时不合并。"""
+def copied_downloads(paths, generated, explicit, shown, extra=()):
+    """只核对本轮下载或后台带回的缓存与交付副本；有界读取，无法确认时不合并。
+
+    extra 是本轮观察到的其他新文件，排在明确交付之后，合起来最多八个候选。
+    """
     from .downloads import MAX_BYTES
     from .uploads import fingerprint
 
-    candidates = sorted(explicit - generated, key=lambda path: (path not in shown, str(path)))[:8]
+    candidates = sorted(explicit - generated, key=lambda path: (path not in shown, str(path)))
+    candidates = (candidates + sorted(set(extra) - explicit - generated, key=str))[:8]
     copies, digests = {}, {}
     for source in islice((path for path in paths if path in generated), 8):
         for target in candidates:
@@ -473,10 +493,10 @@ def attach(key, turn, response_text, returned):
         resolve_path(match.group("path"), turn.cwd)
         for match in MEDIA_TAG_CLEANUP_RE.finditer(MEDIA.sub("", masked).replace(">", " "))
     }
+    # 网关会照发回复里所有 MEDIA 标记，前几轮复制的副本也一样，不按本轮新建筛。
     explicit = {
         path for match in MEDIA_TAG_CLEANUP_RE.finditer(masked.replace(">", " "))
-        if (path := resolve_path(match.group("path"), turn.cwd)) is not None
-        and fresh(path, turn.started, {turn.cwd}, explicit=True)
+        if (path := resolve_path(match.group("path"), turn.cwd)) is not None and path.is_file()
     }
     copies = copied_downloads(paths, set(paths), explicit, inline)
     paths = list(dict.fromkeys(copies.get(path, path) for path in paths))
@@ -489,6 +509,55 @@ def attach(key, turn, response_text, returned):
         response_text, masked, turn.cwd, set(appended) | (set(paths) & inline) | replaced
     )
     return appended_reply(response_text, text, appended)
+
+
+def settle(key, turn, cwd, original, chosen):
+    """收尾：后台通知那轮去掉已交付过的文件；交付了后台成品或其副本就划掉待发送记录；记下本轮交付。
+
+    用户自己发消息的轮次照常交付，"再发一次"不受影响；先交付的那轮算数，后台通知不再补发。
+    """
+    text = original if chosen is None else chosen
+    targets = media_targets(mask_examples(text), cwd, turn.platform == "desktop")
+    if turn.notice and targets:
+        repeated = background.already_sent(key, targets)
+        if repeated:
+            text = drop_media(text, cwd, repeated)
+            targets -= repeated
+    pending = [*background.returned_results(key), *background.unreturned_results(key)]
+    if targets and pending:
+        copies = copied_downloads(pending, set(pending), targets, set())
+        background.forget_results(key, (set(pending) & targets) | set(copies))
+    background.remember_sent(key, targets)
+    return None if text == original else text
+
+
+def media_targets(masked, cwd, desktop):
+    """回复里最终会出卡片（桌面）或被网关作为附件发出（消息平台）的本机文件。"""
+    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
+
+    found = {resolve_path(match.group(1), cwd) for match in MEDIA.finditer(masked)}
+    if desktop:
+        found |= shown_paths(masked, cwd)
+    else:
+        rest = MEDIA.sub("", masked).replace(">", " ")
+        found |= {
+            resolve_path(match.group("path"), cwd)
+            for match in MEDIA_TAG_CLEANUP_RE.finditer(rest)
+        }
+    return {path for path in found if path is not None and path.is_file()}
+
+
+def drop_media(text, cwd, paths):
+    """去掉指向这些文件的 MEDIA 标记：独立行整行移走，句中的标记只留文件名，网关和桌面都不再交付。"""
+    from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
+
+    text = remove_media_lines(text, mask_examples(text), cwd, paths)
+    masked = mask_examples(text).replace(">", " ")
+    for match in reversed(list(MEDIA_TAG_CLEANUP_RE.finditer(masked))):
+        path = resolve_path(match.group("path"), cwd)
+        if path in paths:
+            text = text[: match.start()] + path.name + text[match.end():]
+    return text
 
 
 def completed(data, status, args):
@@ -590,6 +659,7 @@ def rewrite_llm_request(*, request=None, **context):
     """
     from . import workfolders
     from .image_hints import rewrite_request
+    from .image_urls import rewrite_request as image_url_request
     from .native_images import remember_request, runtime_scope
     from .reasoning import strip_reasoning_levels
 
@@ -597,9 +667,13 @@ def rewrite_llm_request(*, request=None, **context):
     remember_request(**context)
     with runtime_scope(context.get("session_id", ""), context.get("turn_id", "")):
         hinted = rewrite_request(request=request, **context)
-    if hinted:
-        request = hinted["request"]
-        reasons.append(hinted.get("reason") or "image-hint")
+        if hinted:
+            request = hinted["request"]
+            reasons.append(hinted.get("reason") or "image-hint")
+        linked = image_url_request(request=request, **context)
+        if linked is not None:
+            request = linked
+            reasons.append("image-url")
     stripped = strip_reasoning_levels(request)
     if stripped is not None:
         request = stripped

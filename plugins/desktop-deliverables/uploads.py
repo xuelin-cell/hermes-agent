@@ -4,6 +4,7 @@
 只在模型真的调用元景工具、参数里填了本机文件时才上传，用户不用元景就什么都不传；
 只换 ossPath，不调 confirm_oss_upload，ossPath 不带签名、不会过期。
 插件自己下载的成品不再上传，直接换回下载时的原链接（下载后没改过、链接未临近过期时）。
+桌面多模态图片和邮件附件复用这里的上传流程，获取 HTTPS 下载链接。
 """
 
 from collections import OrderedDict
@@ -396,8 +397,8 @@ def _download_url(result):
     return url
 
 
-def upload_for_mail(prefix, path):
-    """Upload *path* through the HexAgent presigned-URL flow for Agent Mail."""
+def upload_url(prefix, path):
+    """复用元景文件上传流程，返回经过校验的 HTTPS 下载链接。"""
     stage = "getting upload URL"
     try:
         result = call_tool(prefix + UPLOADER, {"fileName": path.name})
@@ -428,9 +429,9 @@ def upload_for_mail(prefix, path):
                 except ValueError:
                     return _download_url(result_text(confirmation))
     except Exception as exc:
-        logger.info("Mail attachment upload failed at %s (%s)", stage, type(exc).__name__)
+        logger.info("File URL upload failed at %s (%s)", stage, type(exc).__name__)
         raise Refusal(
-            f"Mail attachment {path} could not be uploaded ({stage}, {type(exc).__name__}); the email was not sent."
+            f"文件没能上传到元景（{stage}，{type(exc).__name__}），请稍后重试。"
         ) from None
 
 
@@ -573,7 +574,7 @@ def uploaded_mail_attachments(attachments, session_id, task_id):
         local_bytes += size
         if local_bytes > MAIL_ATTACHMENTS_MAX_BYTES:
             raise Refusal("Mail attachments exceed the 10 MB total send limit; the email was not sent.")
-        rewritten.append({**attachment, "contentUrl": upload_for_mail(prefix, path)})
+        rewritten.append({**attachment, "contentUrl": upload_url(prefix, path)})
         changed = True
     return rewritten if changed else None
 

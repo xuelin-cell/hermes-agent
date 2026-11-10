@@ -3703,6 +3703,18 @@ export interface Translations {
     attachLabel: string
     files: string
     folder: string
+    skills: string
+    connectors: string
+    manageSkills: string
+    manageConnectors: string
+    loading: string
+    noSkills: string
+    noConnectors: string
+    quickConnectorNames: {
+      uniAiToolkit: string
+      arxiv: string
+      uniworkDrive: string
+    }
     images: string
     pasteImage: string
     url: string

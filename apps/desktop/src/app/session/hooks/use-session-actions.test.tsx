@@ -2799,13 +2799,28 @@ describe('branchStoredSession desktop source tagging', () => {
   })
 
   it('falls back without creating an empty branch against an older backend', async () => {
+    const metadata = {
+      turn_token_usage: {
+        input_tokens: 40,
+        output_tokens: 8,
+        total_tokens: 48,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0
+      },
+      turn_model: { model: 'answered-model', provider: 'test', name: 'Answered model' },
+      turn_completed_at: 5.125
+    }
+
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       if (method === 'session.branch_stored') {
         throw new Error('unknown method: session.branch_stored')
       }
 
       if (method === 'session.create') {
-        expect(params?.messages).toEqual([{ content: 'persisted context', role: 'user' }])
+        expect(params?.messages).toEqual([
+          { content: 'persisted context', role: 'user', timestamp: 1 },
+          { content: 'persisted reply', role: 'assistant', timestamp: 5, display_metadata: metadata }
+        ])
 
         return { session_id: 'branch-runtime', stored_session_id: 'branch-stored' } as never
       }
@@ -2814,7 +2829,10 @@ describe('branchStoredSession desktop source tagging', () => {
     })
 
     vi.mocked(getAllSessionMessages).mockResolvedValue({
-      messages: [{ content: 'persisted context', role: 'user', timestamp: 1 }],
+      messages: [
+        { content: 'persisted context', role: 'user', timestamp: 1 },
+        { content: 'persisted reply', role: 'assistant', timestamp: 5, display_metadata: metadata }
+      ],
       session_id: 'stored-parent'
     } as never)
 

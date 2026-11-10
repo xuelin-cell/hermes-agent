@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from io import BytesIO
 import json
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 import httpx
@@ -51,8 +52,12 @@ def native(tmp_path, monkeypatch):
     def upload(args, **_):
         """保持元景上传回执格式。"""
         calls.append(copy.deepcopy(args))
+        url = (
+            f"https://obs-nmhhht6.cucloud.cn/app-agent-prod/temp/frame-{len(calls)}.png"
+            f"?Expires={int(time.time()) + 3600}&Signature=test"
+        )
         return json.dumps({
-            "result": "上传地址：https://obs-nmhhht6.cucloud.cn/app-agent-prod/temp/frame.png?X-Amz-Signature=test 方法：PUT 请求头：Content-Type=image/png"
+            "result": f"上传地址：{url} 方法：PUT 请求头：Content-Type=image/png\n下载链接：{url}"
         })
 
     @contextmanager
@@ -394,13 +399,14 @@ def _native_conversation(state, native, monkeypatch, *, reject):
             else:
                 assert any(
                     p.get("type") == "image_url"
-                    and p["image_url"]["url"].startswith("data:image/")
+                    and p["image_url"]["url"].startswith("https://obs-nmhhht6.cucloud.cn/")
                     for p in parts
                 )
             assert not any(
                 "data:image/" in json.dumps(r) for r in server.aux_requests()
             )
-            assert (len(native.calls), len(native.puts)) == count
+            assert (len(native.calls), len(native.puts)) == (count[0] + 1, count[1] + 1)
+            assert native.puts[-1] == state.path.read_bytes()
             system = [m for m in requests[0]["messages"] if m["role"] == "system"]
             assert all(
                 [m for m in r["messages"] if m["role"] == "system"] == system

@@ -4629,6 +4629,18 @@ export const en: Translations = {
     attachLabel: 'Attach',
     files: 'Add files',
     folder: 'Add folder',
+    skills: 'Skills',
+    connectors: 'Connectors',
+    manageSkills: 'Manage skills…',
+    manageConnectors: 'Manage connectors…',
+    loading: 'Loading…',
+    noSkills: 'No installed skills',
+    noConnectors: 'No configured connectors',
+    quickConnectorNames: {
+      uniAiToolkit: 'UniAI Toolkit',
+      arxiv: 'arXiv research',
+      uniworkDrive: 'UniWork Drive'
+    },
     images: 'Images…',
     pasteImage: 'Paste image',
     url: 'URL…',

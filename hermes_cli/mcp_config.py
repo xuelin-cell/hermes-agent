@@ -216,7 +216,7 @@ def _get_mcp_servers(config: Optional[dict] = None) -> Dict[str, dict]:
 
 def _tool_filters(cfg: dict) -> Tuple[Optional[list], Optional[list]]:
     """Return the ``(include, exclude)`` tool lists from a server config; ``None`` = key absent.
-
+ 
     An explicit ``include: []`` is a real (block-all) whitelist — the runtime registers nothing
     (tools/mcp_tool_registration.py) — so it must not collapse to "no filter" here (#12865).
     """
