@@ -298,3 +298,46 @@ async def apply_gateway() -> dict:
         proc = await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", "stop"), name,
                                        env_overrides=_gateway_environment(state))
         return {"ok": True, "name": name, "pid": proc.pid}
+
+
+class ResetHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: Literal[True]
+
+
+@router.post("/reset-history")
+async def reset_history(body: ResetHistory) -> dict:
+    """Stop the owned gateway before removing only connected-platform transcripts."""
+    from hermes_cli.web_server_gateway import _gateway_subcommand, _spawn_hermes_action
+    from hermes_constants import get_hermes_home
+
+    async with _gateway_lock:
+        try:
+            running = await asyncio.to_thread(_owned_gateway)
+        except Exception as exc:
+            raise HTTPException(409, detail="gateway_identity_unverified") from exc
+        state = await prepare()
+        if running:
+            await asyncio.to_thread(_spawn_hermes_action, _gateway_subcommand("default", "stop"),
+                                    "gateway-stop", env_overrides=_gateway_environment(state))
+            for _ in range(300):
+                if not await asyncio.to_thread(_owned_gateway):
+                    break
+                await asyncio.sleep(0.2)
+            else:
+                raise HTTPException(409, detail="gateway_stop_timeout")
+
+        def clear():
+            with _config_profile_scope("default"):
+                home = get_hermes_home()
+                platforms, _ = _prepare_main_platforms()
+                return import_module("plugins.desktop-messaging.dashboard.reset_history").reset_platform_history(home, platforms)
+
+        try:
+            deleted = await asyncio.to_thread(clear)
+        finally:
+            # Preserve the prior on/off state even if storage refuses a guarded row.
+            if running:
+                await _restore_gateway(state, restart=False)
+        return {"ok": True, "deleted": deleted, "configured": state["configured"],
+                "profiles": state["profiles"], "name": "gateway-start" if running else None}

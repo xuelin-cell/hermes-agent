@@ -1,3 +1,4 @@
+import { isSettingsWindow } from '@/store/windows'
 import { useStore } from '@nanostores/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type CSSProperties, lazy, type ReactNode, Suspense, useCallback, useEffect, useMemo, useRef } from 'react'
@@ -358,6 +359,18 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     toggleCommandCenter,
     webhooksOpen
   } = useOverlayRouting()
+
+  useEffect(() => {
+    if (!settingsOpen || isSettingsWindow() || !window.hermesDesktop?.openSettingsWindow) return
+    void window.hermesDesktop.openSettingsWindow(location.pathname + location.search, {
+      connectionId: activeConnectionId || null,
+      profile: activeGatewayProfile
+    }).then(result => {
+      if (result.ok) closeOverlayToPreviousRoute()
+      else notifyError(result.error ?? 'Could not open settings window', translateNow('errors.genericFailure'))
+    }).catch(error => notifyError(error, translateNow('errors.genericFailure')))
+  }, [settingsOpen, location.pathname, location.search, activeConnectionId, activeGatewayProfile, closeOverlayToPreviousRoute])
+
 
   const {
     activeSessionIdRef,
@@ -1458,7 +1471,7 @@ export function ContribWiring({ children }: { children: ReactNode }) {
         <Suspense fallback={null}>
           <SettingsView
             gateway={gateway}
-            onClose={closeOverlayToPreviousRoute}
+            onClose={isSettingsWindow() ? () => window.hermesDesktop?.windowControls.close() : closeOverlayToPreviousRoute}
             onConfigSaved={() => {
               void refreshHermesConfig()
               void refreshCurrentModel()

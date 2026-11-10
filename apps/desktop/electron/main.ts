@@ -1,3 +1,4 @@
+import { registerSettingsFeedback } from './settings-feedback'
 import { type ChildProcess, execFileSync, spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -13770,7 +13771,8 @@ function nextInstanceBounds(source: BrowserWindow | null = BrowserWindow.getFocu
 // joins the requested pooled backend through its own connection/profile route.
 function createInstanceWindow(
   options?: DesktopProfileRoute,
-  source: BrowserWindow | null = BrowserWindow.getFocusedWindow() || mainWindow
+  source: BrowserWindow | null = BrowserWindow.getFocusedWindow() || mainWindow,
+  settingsPath: string | null = null
 ) {
   const route = resolveDesktopWindowLaunch(
     options,
@@ -13783,11 +13785,12 @@ function createInstanceWindow(
 
   const win = new BrowserWindow({
     ...nextInstanceBounds(source),
+    ...(settingsPath ? { width: 1040, height: 712 } : {}),
     minWidth: WINDOW_MIN_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
-    title: 'Hermes',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: getTitleBarOverlayOptions(),
+    title: settingsPath ? '设置 · 元景数字员工' : 'Hermes',
+    titleBarStyle: settingsPath ? 'default' : 'hidden',
+    titleBarOverlay: settingsPath ? undefined : getTitleBarOverlayOptions(),
     trafficLightPosition: IS_MAC ? WINDOW_BUTTON_POSITION : undefined,
     ...chatWindowSurfaceOptions(),
     icon,
@@ -13843,7 +13846,7 @@ function createInstanceWindow(
       ...route,
       devServer: DEV_SERVER,
       rendererIndexPath: DEV_SERVER ? undefined : resolveRendererIndex()
-    }),
+    }) + (settingsPath ? `&win=settings#${settingsPath}` : ''),
     'Instance window'
   )
 
@@ -15498,6 +15501,17 @@ ipcMain.handle('hermes:window:openSession', async (_event, sessionId, opts) => {
 ipcMain.handle('hermes:window:openInstance', async (event, options) => {
   createInstanceWindow(options, BrowserWindow.fromWebContents(event.sender))
 
+  return { ok: true }
+})
+registerSettingsFeedback(currentDesktopIdentity)
+const settingsWindows = createSessionWindowRegistry()
+ipcMain.handle('hermes:window:openSettings', (event, path, options) => {
+  if (typeof path !== 'string' || !/^\/settings(?:[/?]|$)/.test(path)) {
+    return { ok: false, error: 'invalid-settings-path' }
+  }
+  const source = BrowserWindow.fromWebContents(event.sender)
+  const key = `${source?.id}:${options?.connectionId ?? ''}:${options?.profile ?? ''}`
+  settingsWindows.openOrFocus(key, () => createInstanceWindow(options, source, path))
   return { ok: true }
 })
 registerWindowControlIpc(ipcMain, sender => BrowserWindow.fromWebContents(sender))

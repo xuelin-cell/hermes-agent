@@ -99,7 +99,7 @@ import {
 import { watchSessionPins } from '@/store/session-pin-sync'
 import { $botChatScopes } from '@/store/session-states'
 import { $statusbarVisible } from '@/store/statusbar-prefs'
-import { isBrowserWindow, isHudWindow } from '@/store/windows'
+import { isBrowserWindow, isHudWindow, isSettingsWindow } from '@/store/windows'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { BrowserPopoutShell } from '../chat/browser-popout-shell'
@@ -490,7 +490,7 @@ hydrateContributedPanes()
 // tiles there would still run, and preview-tile watching would try to dock
 // into a tree this window never renders (and, in the HUD, paint a webview
 // into the transparent overlay).
-if (!isBrowserWindow() && !isHudWindow()) {
+if (!isBrowserWindow() && !isHudWindow() && !isSettingsWindow()) {
   watchSessionTiles()
   startUnrestoredTileTitleBackfill()
   startTileBackendIdentityGuard()
@@ -821,6 +821,10 @@ export function ContribController() {
         <HudShell />
       </ContribWiring>
     )
+  }
+
+  if (isSettingsWindow()) {
+    return <ContribWiring>{null}</ContribWiring>
   }
 
   if (isBrowserWindow()) {

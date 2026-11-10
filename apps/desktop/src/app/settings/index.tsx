@@ -1,9 +1,14 @@
+import { HelpSettings } from './help-settings'
+import { GeneralSettings } from './general-settings'
+import { GroupedSettingsNavigation } from './grouped-navigation'
+import { useSettingsRedesignCopy } from './redesign-copy'
+import { PhoneSettings } from './phone-settings'
+import './settings-redesign.css'
 import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router'
 
 import { codiconIcon } from '@/components/ui/codicon'
-import { KbdCombo } from '@/components/ui/kbd'
 import { Tip } from '@/components/ui/tooltip'
 import { getHermesConfigDefaults, getHermesConfigRecord, saveHermesConfig } from '@/hermes'
 import { useI18n } from '@/i18n'
@@ -19,25 +24,22 @@ import {
   Keyboard,
   KeyRound,
   RefreshCw,
-  Search,
   ShieldLock,
   Upload,
   Zap
 } from '@/lib/icons'
 import { isEditableTarget } from '@/lib/keybinds/combo'
 import { typeToFocusChar } from '@/lib/keybinds/composer-focus-keys'
-import { cn } from '@/lib/utils'
 import { $commandPaletteOpen, openCommandPalettePage } from '@/store/command-palette'
 import { confirm } from '@/store/confirm'
 import { $activeConnectionId } from '@/store/connections'
 import { $developerMode } from '@/store/developer-mode'
-import { bindingsFor } from '@/store/keybinds'
 import { notifyError } from '@/store/notifications'
 import { $settingsScopeProfile } from '@/store/settings-scope'
 
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
 import { OverlayIconButton } from '../overlays/overlay-chrome'
-import { OverlayMain, OverlayNav, type OverlayNavGroup, OverlaySplitLayout } from '../overlays/overlay-split-layout'
+import { OverlayMain, type OverlayNavGroup, OverlaySplitLayout } from '../overlays/overlay-split-layout'
 import { OverlayView } from '../overlays/overlay-view'
 
 import { AboutSettings } from './about-settings'
@@ -64,6 +66,9 @@ import { settingsViewVisible } from './visibility'
 
 const SETTINGS_VIEWS: readonly SettingsViewId[] = [
   ...SECTIONS.map(s => `config:${s.id}` as SettingsViewId),
+  'general',
+  'messaging',
+  'help',
   'models',
   'providers',
   'gateway',
@@ -84,6 +89,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const activeConnectionId = useStore($activeConnectionId)
   const { t } = useI18n()
   const modelsCopy = useModelsCopy()
+  const redesignCopy = useSettingsRedesignCopy()
   const navigate = useNavigate()
   const developerMode = useStore($developerMode)
   const { hash, pathname, search } = useLocation()
@@ -99,8 +105,8 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     }
   }, [navigate, search])
 
-  const [requestedView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'config:appearance' as SettingsViewId)
-  const activeView = settingsViewVisible(requestedView, developerMode) ? requestedView : 'config:appearance'
+  const [requestedView] = useRouteEnumParam('tab', SETTINGS_VIEWS, 'general' as SettingsViewId)
+  const activeView = settingsViewVisible(requestedView, developerMode) ? requestedView : 'general'
   const params = new URLSearchParams(search)
   const requestedSubpage = params.get('page')
   const subpage = resolveSettingsSubpage(activeView, params, developerMode)
@@ -238,6 +244,27 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     () =>
       (
         [
+          {
+            id: 'help',
+            active: activeView === 'help',
+            icon: Info,
+            label: redesignCopy('help'),
+            onSelect: () => setActiveView('help')
+          },
+          {
+            id: 'general',
+            active: activeView === 'general',
+            icon: Info,
+            label: redesignCopy('general'),
+            onSelect: () => setActiveView('general')
+          },
+          {
+            id: 'messaging',
+            active: activeView === 'messaging',
+            icon: Globe,
+            label: redesignCopy('phone'),
+            onSelect: () => setActiveView('messaging')
+          },
           ...SECTIONS.flatMap(s => {
             const view = `config:${s.id}` as SettingsViewId
 
@@ -245,7 +272,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
               active: activeView === view,
               icon: s.icon,
               id: view,
-              label: t.settings.sections[s.id] ?? s.label,
+              label: s.id === 'safety' ? redesignCopy('security') : (t.settings.sections[s.id] ?? s.label),
               onSelect: () => setActiveView(view)
             }
 
@@ -357,7 +384,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             active: activeView === 'sessions',
             icon: Archive,
             id: 'sessions',
-            label: t.settings.nav.sessions,
+            label: redesignCopy('management'),
             onSelect: () => setActiveView('sessions')
           },
           {
@@ -369,24 +396,28 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
             onSelect: () => setActiveView('about')
           }
         ] as OverlayNavGroup[]
-      ).filter(group => settingsViewVisible(group.id, developerMode)).map(group => {
-        const view = group.id as SettingsViewId
-        // In-page anchors (About's merged sections) route but never get a nav entry.
-        const children = settingsNavSubpages(view, developerMode)
+      )
+        .filter(
+          group => settingsViewVisible(group.id, developerMode) && (developerMode || group.id !== 'config:appearance')
+        )
+        .map(group => {
+          const view = group.id as SettingsViewId
+          // In-page anchors (About's merged sections) route but never get a nav entry.
+          const children = settingsNavSubpages(view, developerMode)
 
-        return children.length
-          ? {
-              ...group,
-              children: children.map(page => ({
-                active: group.active && subpage === page.id,
-                icon: settingsSubpageIcon(page, group.icon),
-                id: `${view}:${page.id}`,
-                label: t.settings.subpages[page.labelKey],
-                onSelect: () => openSettingsPage(view, page.id)
-              }))
-            }
-          : group
-      }),
+          return children.length
+            ? {
+                ...group,
+                children: children.map(page => ({
+                  active: group.active && subpage === page.id,
+                  icon: settingsSubpageIcon(page, group.icon),
+                  id: `${view}:${page.id}`,
+                  label: t.settings.subpages[page.labelKey],
+                  onSelect: () => openSettingsPage(view, page.id)
+                }))
+              }
+            : group
+        }),
     [
       activeView,
       billingView,
@@ -396,6 +427,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       subpage,
       t,
       modelsCopy,
+      redesignCopy,
       setActiveView,
       openProviderView,
       openSettingsPage,
@@ -430,34 +462,6 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // Fake search pill riding the card's top edge, dead-center and half off it.
-  // Clicking (or just typing) opens the ⌘K palette scoped to settings; while
-  // the palette is up the pill hands over to it — grows slightly and fades,
-  // then fades back when the palette closes. It sits outside the raised card,
-  // so it needs its own opaque glass surface to mask the content underneath.
-  const searchCombo = bindingsFor('nav.commandPalette')[0]
-  const paletteOpen = useStore($commandPaletteOpen)
-
-  const searchPill = (
-    <button
-      className={cn(
-        'flex h-(--titlebar-control-height) items-center gap-1.5 rounded-full border border-(--ui-stroke-secondary) bg-(--ui-chat-surface-background) px-2.5 text-(--ui-text-tertiary) shadow-sm transition-all duration-200 ease-out hover:text-foreground motion-reduce:transition-none',
-        paletteOpen && 'pointer-events-none scale-110 opacity-0'
-      )}
-      data-glass-opaque=""
-      onClick={() => {
-        triggerHaptic('open')
-        openCommandPalettePage('settings')
-      }}
-      tabIndex={paletteOpen ? -1 : undefined}
-      type="button"
-    >
-      <Search className="size-3" />
-      <span className="text-xs">{t.settings.search.pill}</span>
-      {searchCombo && <KbdCombo combo={searchCombo} size="sm" variant="ghost" />}
-    </button>
-  )
-
   const navFooter = (
     <>
       <Tip label={t.settings.exportConfig}>
@@ -490,7 +494,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   )
 
   const activeSettingsContent =
-    activeView === 'config:appearance' ? (
+    activeView === 'help' ? (
+      <HelpSettings />
+    ) : activeView === 'general' ? (
+      <GeneralSettings />
+    ) : activeView === 'messaging' ? (
+      <PhoneSettings />
+    ) : activeView === 'config:appearance' ? (
       <AppearanceSettings subpage={subpage} />
     ) : activeView === 'about' ? (
       <AboutSettings subpage={subpage} />
@@ -532,9 +542,9 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     )
 
   return (
-    <OverlayView closeLabel={t.settings.closeSettings} edgeBadge={searchPill} onClose={onClose}>
-      <OverlaySplitLayout>
-        <OverlayNav footer={navFooter} groups={navGroups} />
+    <OverlayView compact closeLabel={t.settings.closeSettings} onClose={onClose} rootClassName="settings-redesign">
+      <OverlaySplitLayout className="settings-redesign-layout">
+        <GroupedSettingsNavigation footer={navFooter} groups={navGroups} />
 
         <OverlayMain className="px-0 pb-0">
           <SettingsBreadcrumbContext.Provider value>

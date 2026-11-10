@@ -157,7 +157,8 @@ export class DesktopMessaging {
   private validate(input: MessagingSetupRequest): void {
     if (
       !input || typeof input !== 'object' ||
-      !['save', 'disconnect', 'retry', 'watch'].includes(input.operation) ||
+      !['save', 'disconnect', 'retry', 'watch', 'reset-history'].includes(input.operation) ||
+      (input.operation === 'reset-history' && (input.confirmed !== true || (input.profile !== undefined && input.profile !== 'default') || input.platform !== undefined)) ||
       (input.platform !== undefined && !['weixin', ...Object.keys(IDS)].includes(input.platform)) ||
       (input.confirmed !== undefined && typeof input.confirmed !== 'boolean') ||
       (input.operation === 'save' && !Object.hasOwn(IDS, input.platform ?? '')) ||
@@ -325,6 +326,16 @@ export class DesktopMessaging {
     }
 
     const profile = input.profile || 'default'
+
+    if (input.operation === 'reset-history') {
+      this.publish(input, 'stopping')
+      const result = await this.deps.request('default', `${BASE}/reset-history`, 'POST', { confirmed: true }, 120_000)
+      if (result.name === 'gateway-start') {
+        return this.continueGateway(input, result, RESTORE_PATIENCE)
+      }
+      this.publish(input, 'completed')
+      return { accepted: true }
+    }
 
     if (input.operation === 'retry') {
       if (this.state.phase === 'failed' && this.state.operation === 'restore') {
