@@ -99,16 +99,18 @@ export function LocalArtifactRow({
           <Icon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{file.label}</span>
         </button>
-        <Button
-          aria-label={`${copy.addToChat} · ${file.label}`}
-          className="shrink-0"
-          disabled={busy || !file.resolvedPath}
-          onClick={onAdd}
-          size="icon-sm"
-          variant="ghost"
-        >
-          <MessageCirclePlus />
-        </Button>
+        <Tip label={cloudLibrary.addToDraft}>
+          <Button
+            aria-label={`${cloudLibrary.addToDraft} · ${file.label}`}
+            className="shrink-0"
+            disabled={busy || !file.resolvedPath}
+            onClick={onAdd}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <MessageCirclePlus />
+          </Button>
+        </Tip>
       </div>
       <span className={cn('w-12 shrink-0 truncate text-xs text-muted-foreground', !wide && 'hidden')}>
         {file.label.includes('.') ? file.label.split('.').pop()?.toUpperCase() : copy.other}

@@ -95,7 +95,7 @@ it('卡片上传直接沿用文件与会话，打开预览也保存相同来源�
   )
   expect(request).not.toHaveBeenCalled()
   expect(open).not.toHaveBeenCalled()
-  fireEvent.click(screen.getByRole('button', { name: 'Upload to library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Upload to cloud drive' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Reports' }))
   await waitFor(() =>
     expect((screen.getByRole('button', { name: 'Upload to this folder' }) as HTMLButtonElement).disabled).toBe(false)
@@ -130,7 +130,7 @@ it('预览上传不借用当前会话，失配来源和云盘文件无入口，�
     </I18nProvider>
   )
 
-  fireEvent.click(screen.getByRole('button', { name: 'Upload to library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Upload to cloud drive' }))
   await screen.findByRole('button', { name: 'Reports' })
   await waitFor(() =>
     expect((screen.getByRole('button', { name: 'Upload to this folder' }) as HTMLButtonElement).disabled).toBe(false)
@@ -139,7 +139,7 @@ it('预览上传不借用当前会话，失配来源和云盘文件无入口，�
   await waitFor(() => expect(transfer).toHaveBeenCalledTimes(1))
   expect(transfer.mock.calls[0][0]).toMatchObject({ artifact: { sessionId: 'source-session', profile: 'default' } })
   expect(screen.queryByRole('dialog')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'Upload to library' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Upload to cloud drive' }))
   await screen.findByRole('button', { name: 'Reports' })
   act(() => $apiRequestScope.set({ profile: 'default', connectionId: 'another-account' }))
   expect(screen.queryByRole('dialog')).toBeNull()
@@ -162,7 +162,7 @@ it('预览上传不借用当前会话，失配来源和云盘文件无入口，�
         </FilePreviewToolbar>
       </I18nProvider>
     )
-    expect(screen.queryByRole('button', { name: 'Upload to library' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Upload to cloud drive' })).toBeNull()
   }
 
   view.rerender(
@@ -173,5 +173,5 @@ it('预览上传不借用当前会话，失配来源和云盘文件无入口，�
     </I18nProvider>
   )
   act(() => $connection.set({ mode: 'remote', profile: 'default' } as never))
-  expect(screen.queryByRole('button', { name: 'Upload to library' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Upload to cloud drive' })).toBeNull()
 })

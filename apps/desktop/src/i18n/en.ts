@@ -139,7 +139,7 @@ export const en: Translations = {
     officePreviewFailed: 'Office conversion failed. Download the original file to view it.',
     artifactSensitive: 'Sensitive configuration and credential files cannot be uploaded to the cloud drive.',
     uploadArtifact: 'Upload to cloud drive',
-    uploadToLibrary: 'Upload to library',
+    uploadToLibrary: 'Upload to cloud drive',
     uploadHere: 'Upload to this folder',
     chooseUploadFolder: 'Choose a destination in your personal cloud drive',
     artifactRemote:

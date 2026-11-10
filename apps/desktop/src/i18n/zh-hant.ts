@@ -274,7 +274,7 @@ export const zhHant = defineLocale({
     officePreviewFailed: 'Office 檔案轉換失敗，請下載原始檔案查看。',
     artifactSensitive: '此檔案屬於敏感設定或憑證，不能上傳雲端硬碟。',
     uploadArtifact: '上傳至雲端硬碟',
-    uploadToLibrary: '上傳至資料庫',
+    uploadToLibrary: '上傳至雲端硬碟',
     uploadHere: '上傳至此資料夾',
     chooseUploadFolder: '選擇個人雲端硬碟中的儲存位置',
     artifactRemote: '暫時只能上傳目前桌面帳號的本機產物，遠端檔案和網路連結不支援直接上傳。',
