@@ -49,7 +49,7 @@ $expertSummon.listen(summon => {
 
   reportTiming({
     kind: 'expert.summon',
-    labels: { ok: ready, pool_full: started.poolFull },
+    labels: { ok: ready, expert: started.profile, pool_full: started.poolFull },
     seconds: spent,
     steps: { prepare: spent }
   })

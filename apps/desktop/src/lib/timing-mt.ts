@@ -34,9 +34,12 @@ interface WatchedGateway {
 
 interface PendingBot {
   checkMs?: number
+  /** 从哪个档案克隆来的；克隆要拷技能，建档案那段会长 */
+  clone?: string
   createMs: number
   linked: boolean
   name: string
+  noSkills: boolean
   startedAt: number
 }
 
@@ -45,7 +48,11 @@ interface NewSession {
   bot?: PendingBot
   createdAt: number
   model?: string
+  /** 这条连接服务的档案（noteGatewayProfile），即这段对话是哪个 bot 的 */
+  profile?: string
   sessionMs: number
+  /** 存下来的会话 ID，和页面地址、侧栏里的是同一个 */
+  storedId?: string
 }
 
 interface Turn extends NewSession {
@@ -68,7 +75,13 @@ const SLOW_NOTICE = 'agent-build-slow'
 const newSessions = new Map<string, NewSession>()
 const turns = new Map<string, Turn>()
 const pinned = new WeakMap<object, string>() // 每条连接上最近开始回复的会话：不带 session_id 的事件归它
+const gatewayProfiles = new WeakMap<object, string>()
 let pendingBot: null | PendingBot = null
+
+/** 每条连接服务哪个档案（store/gateway.ts 建连接、主连接换档案时告诉这里），记录里据此写 profile。 */
+export function noteGatewayProfile(gateway: object, profile: string): void {
+  gatewayProfiles.set(gateway, profile)
+}
 
 const now = () => performance.now()
 const seconds = (ms: number) => Math.round(Math.max(0, ms) / 10) / 100
@@ -117,14 +130,29 @@ function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
 }
 
-function settled(method: string, params: Record<string, unknown>, startedAt: number, result: unknown, ok: boolean): void {
+function settled(
+  gateway: object,
+  method: string,
+  params: Record<string, unknown>,
+  startedAt: number,
+  result: unknown,
+  ok: boolean
+): void {
   const at = now()
 
   if (method === 'profiles.create') {
+    const clone = text(params.clone_from) || undefined
+    const noSkills = params.no_skills === true
+
     if (ok) {
-      pendingBot = { createMs: at - startedAt, linked: false, name: text(params.name), startedAt }
+      pendingBot = { clone, createMs: at - startedAt, linked: false, name: text(params.name), noSkills, startedAt }
     } else {
-      reportTiming({ kind: 'bot.create', labels: { ok: false }, seconds: seconds(at - startedAt), steps: { create: seconds(at - startedAt) } })
+      reportTiming({
+        kind: 'bot.create',
+        labels: { ok: false, bot: text(params.name), no_skills: noSkills, ...(clone ? { clone } : {}) },
+        seconds: seconds(at - startedAt),
+        steps: { create: seconds(at - startedAt) }
+      })
     }
   } else if (method === 'setup.runtime_check') {
     if (pendingBot && !pendingBot.linked && text(params.profile) === pendingBot.name) {
@@ -141,7 +169,16 @@ function settled(method: string, params: Record<string, unknown>, startedAt: num
       }
 
       const model = text(record(record(result).info).model)
-      newSessions.set(sessionId, { attachments: 0, bot, createdAt: at, model: model || undefined, sessionMs: at - startedAt })
+
+      newSessions.set(sessionId, {
+        attachments: 0,
+        bot,
+        createdAt: at,
+        model: model || undefined,
+        profile: gatewayProfiles.get(gateway),
+        sessionMs: at - startedAt,
+        storedId: text(record(result).stored_session_id) || undefined
+      })
     }
   } else if (method === 'prompt.submit' && !ok) {
     const turn = turns.get(text(params.session_id))
@@ -179,8 +216,8 @@ export function noteGatewayRequest<T>(gateway: object, method: string, params: R
   }
 
   request.then(
-    result => settled(method, params, startedAt, result, true),
-    () => settled(method, params, startedAt, undefined, false)
+    result => settled(gateway, method, params, startedAt, result, true),
+    () => settled(gateway, method, params, startedAt, undefined, false)
   )
 
   return request
@@ -203,11 +240,16 @@ function finish(turn: Turn, at: number, ok: boolean): void {
     tail.reply = seconds(at - turn.firstAt)
   }
 
+  // 会话 ID 和页面地址里的一样，拿着它能对到是哪段对话；profile 是哪个 bot 的对话
+  const session = turn.storedId || turn.sessionId
+
   const labels = {
     ok,
     attachments: turn.attachments,
+    session,
     slow_notice: turn.slowNotice,
     ...(turn.model ? { model: turn.model } : {}),
+    ...(turn.profile ? { profile: turn.profile } : {}),
     ...(turn.bot ? { bot: true } : {})
   }
 
@@ -225,7 +267,15 @@ function finish(turn: Turn, at: number, ok: boolean): void {
 
     reportTiming({
       kind: 'bot.create',
-      labels: { ok, slow_notice: turn.slowNotice, ...(turn.model ? { model: turn.model } : {}) },
+      labels: {
+        ok,
+        bot: bot.name,
+        no_skills: bot.noSkills,
+        session,
+        slow_notice: turn.slowNotice,
+        ...(bot.clone ? { clone: bot.clone } : {}),
+        ...(turn.model ? { model: turn.model } : {})
+      },
       seconds: seconds(at - bot.startedAt),
       steps: {
         create: seconds(bot.createMs),
