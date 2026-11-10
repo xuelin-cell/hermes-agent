@@ -133,6 +133,7 @@ async def test_active_member_login_stores_device_token_models_and_binding(harnes
     assert (await browser.get("/agents/api/__entry/auth")).status == 200
     me = await (await browser.get("/agents/api/__entry/me")).json()
     assert me["enterprise"]["status"] == "active" and me["display"] == "138****0001"
+    assert me["features"] == ["connectors", "kits", "skills"]  # MT_CLIENT_FEATURES 不写 = 和个人版一样
     assert token not in str(me) and token not in str(body)
 
 

@@ -110,9 +110,16 @@ _hermes_proc: asyncio.subprocess.Process | None = None
 _hermes_token: str = ""
 _hermes_env: dict[str, str] = {}
 _bootstrapped = False
-# 企业模式（入口配了 MT_UNIWORK_SERVER）：普通版的连接器和崩溃恢复都用不上，不起。
+# 企业模式（入口配了 MT_UNIWORK_SERVER）：普通版的崩溃恢复用不上，不起；连接器看入口开没开（_connectors_on）。
 # 沙箱路径由引导载荷打开，Docker 路径靠环境变量。
 _enterprise_mode = os.environ.get("MT_ENTERPRISE") == "1"
+# 企业版开放的个人版功能：入口按 MT_CLIENT_FEATURES 算好的清单（空 = 都不开）。沙箱路径来自引导载荷的 features。
+_enterprise_features = {item for item in os.environ.get("MT_ENTERPRISE_FEATURES", "").split(",") if item}
+
+
+def _connectors_on() -> bool:
+    """普通版一直起连接器运行时；企业版要入口开了 connectors。"""
+    return not _enterprise_mode or "connectors" in _enterprise_features
 _boot_lock: asyncio.Lock | None = None
 _state: mtstate.StateManager | None = None
 _state_lock: asyncio.Lock | None = None
@@ -340,7 +347,7 @@ async def _configure_unisearch(env: dict[str, str]) -> None:
 async def _spawn_hermes(token: str) -> None:
     global _hermes_proc
     _connectors.profile_token = token
-    if not _enterprise_mode:
+    if _connectors_on():
         try:
             await _connectors.restore()
         except (OSError, RuntimeError, ValueError):
@@ -591,6 +598,7 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
     带 force 重试，或者判定这台实例不可用。
     """
     global _bootstrapped, _boot_lock, _state, _state_lock, _archiver_task, _supervisor_task, _hermes_token, _enterprise_mode
+    global _enterprise_features
     if _boot_lock is None:
         _boot_lock = asyncio.Lock()
         _state_lock = asyncio.Lock()
@@ -652,9 +660,14 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             _reply(writer, 400, {"ok": False, "error": f"写种子文件失败: {exc}"})
             return
 
+        # 企业版开放的个人版功能，连接器要用：先记下来（老入口不送这一项，企业版就当都没开）
+        if isinstance(payload.get("features"), list):
+            _enterprise_features = {str(item) for item in payload["features"] if item}
+        enterprise = _enterprise_mode or bool(payload.get("enterprise"))
+
         # 连接器状态以入口库里那份为准（见 mtconnector_state）：运行时还没起，先把它装回去。
         # 装不上就沿用归档恢复出来的那份，不挡启动。
-        if payload.get("connectors") and not (_enterprise_mode or payload.get("enterprise")):
+        if payload.get("connectors") and (not enterprise or "connectors" in _enterprise_features):
             try:
                 adopted = _connectors.adopt(list(payload["connectors"]))
                 if adopted:
@@ -1462,7 +1475,7 @@ async def _handle(client_r: asyncio.StreamReader, client_w: asyncio.StreamWriter
 async def _supervise_connectors() -> None:
     backoff = 1
     while True:
-        if _bootstrapped and not _draining and not _enterprise_mode:
+        if _bootstrapped and not _draining and _connectors_on():
             try:
                 await _connectors.recover()
                 backoff = 1

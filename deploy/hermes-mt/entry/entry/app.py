@@ -693,6 +693,8 @@ class Entry:
         if self.s.enterprise:
             binding = await self.store.get_enterprise_binding(session.user_id)
             body["enterprise"] = self._enterprise_view(binding, self._gate(session))
+            # 企业版开放的个人版功能：页面按它逐项挂能力（垫片的 enterpriseCapabilities）
+            body["features"] = sorted(self.s.enterprise_features)
             if self.s.sso and binding is not None and binding.member_name:
                 body["display"] = binding.member_name  # 统一登录后新员工没有手机号
         if self.s.sso:
@@ -1299,20 +1301,36 @@ class Entry:
                 log.warning("cron wake tick skipped: %s", type(exc).__name__)
 
 
+def _add_skill_routes(app: web.Application, entry: Entry, api) -> None:
+    """技能市场装卸和套件动作（同一个接口）：普通版一直有，企业版开了 kits 或 skills 才有。"""
+    app.router.add_post(api("/__entry/skills/{operation}"), entry.skill_routes.handle)
+
+
+def _add_welcome_route(app: web.Application, entry: Entry, api) -> None:
+    """首页模板（日常办公 / 学习生活 / 代码开发）：两个版本都有，企业版不要 MaaS 令牌（welcome_routes.py）。"""
+    app.router.add_post(api("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
+
+
+def _add_connector_routes(app: web.Application, entry: Entry, api) -> None:
+    """扫码 / OAuth 连接器：普通版一直有，企业版开了 connectors 才有。"""
+    app.router.add_post(api("/__entry/connectors"), entry.connector_routes.handle)
+    app.router.add_get(api("/__entry/connectors/{provider}/oauth/callback"), entry.connector_routes.oauth.callback)
+
+
 def _add_personal_routes(app: web.Application, entry: Entry, api) -> None:
-    """只有普通版（不连管理后台）才有的路由：云盘、邮箱、分享、套餐、消息平台、连接器和它们要的浏览器令牌。"""
+    """只有普通版（不连管理后台）才有的路由：云盘、邮箱、分享、套餐、消息平台和它们要的浏览器令牌。
+    技能和连接器两组企业版按 MT_CLIENT_FEATURES 也有，首页模板两个版本都有，见 build_app。"""
     app.router.add_get(api("/__entry/browser-auth.js"), entry.browser_auth_script)
     app.router.add_post(api("/__entry/maas-auth"), entry.maas_auth_status)
     app.router.add_post(api("/__entry/langfuse/grant"), entry.langfuse_routes.issue)
     app.router.add_post(api("/__entry/langfuse/api/public/otel/v1/traces"), entry.langfuse_routes.upload)
     app.router.add_post(api("/__entry/{kind:conversation|artifact}-shares/{operation}"), entry.share_routes.handle)
-    app.router.add_post(api("/__entry/skills/{operation}"), entry.skill_routes.handle)
-    app.router.add_post(api("/__entry/welcome/{locale}"), entry.welcome_routes.handle)
+    _add_skill_routes(app, entry, api)
+    _add_welcome_route(app, entry, api)
     app.router.add_post(api("/__entry/plan/{operation}"), entry.plan_routes.handle)
     app.router.add_post(api("/__entry/account/{operation}"), entry.account_routes.handle)
     app.router.add_post(api("/__entry/mail"), entry.mail_routes.handle)
-    app.router.add_post(api("/__entry/connectors"), entry.connector_routes.handle)
-    app.router.add_get(api("/__entry/connectors/{provider}/oauth/callback"), entry.connector_routes.oauth.callback)
+    _add_connector_routes(app, entry, api)
     cloud_bindings = CloudBindingRoutes(entry)
     for method in ("PUT", "GET", "DELETE"):
         app.router.add_route(method,api("/channels/uniagentgate/cloud-binding/{user_id}"),cloud_bindings.handle)
@@ -1335,6 +1353,14 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(path("/login"), entry.login_page)
     if not settings.enterprise:
         _add_personal_routes(app, entry, api)
+    else:
+        _add_welcome_route(app, entry, api)
+        # 企业版按 MT_CLIENT_FEATURES 开放个人版的技能和连接器；以后改成管理后台下发的 clientFeatures
+        features = settings.enterprise_features
+        if features & {"kits", "skills"}:
+            _add_skill_routes(app, entry, api)
+        if "connectors" in features:
+            _add_connector_routes(app, entry, api)
     app.router.add_get(api("/__entry/config"), entry.config)
     app.router.add_get(api("/__entry/health"), entry.health)
     app.router.add_get(api("/__entry/auth"), entry.auth)

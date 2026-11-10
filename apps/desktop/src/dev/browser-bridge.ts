@@ -17,7 +17,7 @@ import {
   type OfficePreviewErrorCode,
   type PdfDocumentSource
 } from '@/lib/browser-shell'
-import { $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
+import { $enterpriseFeatures, $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
 import {
   bootSso,
   installSsoAuthErrorHandler,
@@ -38,7 +38,7 @@ import {
 import type { LoginAccount } from '../../electron/login/contract'
 import type { WelcomeLocale, WelcomePayload } from '../../electron/uniwork-welcome/catalog'
 
-import { agentRoster, connectionForProfile, profileRoutes, withProfileQuery } from './browser-profiles-mt'
+import { agentRoster, connectionForProfile, PRIMARY_PROFILE, profileRoutes, withProfileQuery } from './browser-profiles-mt'
 import { browserInterrupted } from './browser-interrupted'
 import { browserAccount } from './browser-account'
 import { backendFailedTransiently, noteBackendStatus } from './browser-backend-error'
@@ -125,9 +125,10 @@ function credentials(): RequestCredentials {
 }
 
 // desktop-mt: two entries serve this one page. The personal entry has the drive, mail, plan, shares, kits
-// and messaging; the enterprise entry (MT_UNIWORK_SERVER, the management platform) has none of them and
-// hosts agents as profiles instead. Which one this is comes with `/api/__entry/me`, before the rest of the
-// app loads (main-mt.ts); anything but an enterprise answer means the personal entry.
+// and messaging; the enterprise entry (MT_UNIWORK_SERVER, the management platform) hosts agents as profiles,
+// and opens only the kits, skills and connectors it lists in `features` (enterpriseCapabilities). Which one
+// this is comes with `/api/__entry/me`, before the rest of the app loads (main-mt.ts); anything but an
+// enterprise answer means the personal entry.
 function personalCloud(): boolean {
   return productionBrowserBuild && !$enterpriseShell.get()
 }
@@ -148,15 +149,39 @@ function restPath(path: string, profile?: null | string): string {
   return profile ? `${path}${path.includes('?') ? '&' : '?'}profile=${encodeURIComponent(profile)}` : path
 }
 
+/** desktop-mt: an enterprise account whose entry opened this personal feature (`features` in `/api/__entry/me`). */
+function enterpriseOpens(feature: string): boolean {
+  return productionBrowserBuild && $enterpriseShell.get() && $enterpriseFeatures.get().has(feature)
+}
+
+/** The kits plugin's own endpoints, which the cloud serves through the entry (cloudKits.request); its interrupted-turn
+ *  endpoint goes straight to the instance. */
+function isKitsPluginPath(path: string): boolean {
+  return path.split('?')[0].startsWith('/api/plugins/uniwork-kits') && !path.startsWith('/api/plugins/uniwork-kits/cloud/interrupted')
+}
+
+/** A request for the default profile only: the entry's skill operations change that one (browser-skills.ts), while
+ *  an enterprise also installs skills into its bots and agents, straight on the instance as before. */
+function targetsPrimaryProfile(request: HermesApiRequest): boolean {
+  const query = new URLSearchParams(request.path.split('?')[1])
+
+  return (!request.profile || request.profile === PRIMARY_PROFILE) &&
+    [...query].every(([name, value]) => name === 'profile' && value === PRIMARY_PROFILE)
+}
+
 async function api<T>(request: HermesApiRequest): Promise<T> {
   if (personalCloud()) {
-    if ((request.path.split('?')[0].startsWith('/api/plugins/uniwork-kits') && !request.path.startsWith('/api/plugins/uniwork-kits/cloud/interrupted')) || (request.path.split('?')[0] === '/api/profiles' && (!request.method || request.method === 'GET'))) { return cloudKits.request<T>(request) }
+    if (isKitsPluginPath(request.path) || (request.path.split('?')[0] === '/api/profiles' && (!request.method || request.method === 'GET'))) { return cloudKits.request<T>(request) }
     const result = cloudMessaging.request<T>(request)
     if (result) { return result }
+  } else if (enterpriseOpens('kits') && isKitsPluginPath(request.path)) {
+    // /api/profiles stays the instance's: an enterprise lists its bots and agents there, not only the experts
+    return cloudKits.request<T>(request)
   }
+
   const { body, method = 'GET', path, profile, upload } = request
 
-  if (personalCloud() && isCloudSkillMutation(method, path)) {
+  if (isCloudSkillMutation(method, path) && (personalCloud() || (enterpriseOpens('skills') && targetsPrimaryProfile(request)))) {
     return cloudSkillOperations.mutate<T>(request)
   }
 
@@ -1431,6 +1456,61 @@ export function installBrowserDevelopmentBridge(): boolean {
     }
   })
 
+  // desktop-mt: the personal features the enterprise entry opened (`features` from `/api/__entry/me`), one by one.
+  // Never the whole personal set: its empty agent roster would hide the enterprise's bots, and its kits resolver
+  // sends every profile through the kits plugin, which refuses profiles.create and anything but its experts — the
+  // employees' own bots and the platform's agents. So an expert resolves through the plugin (it syncs the expert
+  // first), and the default profile and every other one keep the enterprise resolver.
+  const notKitExperts = new Set<string>()
+
+  const enterpriseConnection = async (profile?: null | string, connectionId?: null | string): Promise<HermesConnection> => {
+    const name = String(profile ?? '').trim()
+
+    if (name && name !== PRIMARY_PROFILE && !notKitExperts.has(name) && (!connectionId || connectionId === 'local')) {
+      try {
+        return await cloudKits.getConnection(name)
+      } catch {
+        notKitExperts.add(name) // the plugin refused it: a bot or an agent, not an expert
+      }
+    }
+
+    return connectionForProfile(conn, profile, connectionId)
+  }
+
+  // The home templates (日常办公 / 学习生活 / 代码开发) are one config for everyone; the enterprise entry reads it
+  // without a MaaS token, which its accounts do not have (deploy/hermes-mt/entry/entry/welcome_routes.py).
+  const enterpriseWelcome = async (locale: WelcomeLocale): Promise<WelcomePayload> => {
+    if (!['zh-CN', 'en'].includes(locale)) {
+      throw new Error('Invalid locale')
+    }
+
+    const response = await fetch(`${browserApiBase()}__entry/welcome/${locale}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+      method: 'POST'
+    })
+
+    if (!response.ok) {
+      throw new Error(`welcome catalog: HTTP ${response.status}`)
+    }
+
+    return (await response.json()) as WelcomePayload
+  }
+
+  const enterpriseCapabilities = (features: ReadonlySet<string>) => ({
+    getWelcomeCatalog: enterpriseWelcome,
+    ...(features.has('kits')
+      ? {
+          cloudKits: true as const,
+          getConnection: (profile?: null | string) => enterpriseConnection(profile),
+          getConnectionFor: (payload?: { connectionId?: null | string; profile?: null | string }) =>
+            enterpriseConnection(payload?.profile, payload?.connectionId)
+        }
+      : {}),
+    ...(features.has('skills') ? { cloudSkillOperations } : {}),
+    ...(features.has('connectors') ? browserConnectors(browserApiBase()) : {})
+  })
+
   const bridge = {
     api,
     claimAmbientCue: async () => true,
@@ -1574,6 +1654,8 @@ export function installBrowserDevelopmentBridge(): boolean {
 
         if (personalCloud()) {
           Object.assign(bridge, personalCapabilities())
+        } else {
+          Object.assign(bridge, enterpriseCapabilities($enterpriseFeatures.get()))
         }
       })
     })
