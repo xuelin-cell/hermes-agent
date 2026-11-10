@@ -21,7 +21,6 @@ import {
   $fileBrowserOpen,
   $panesFlipped,
   $sidebarOpen,
-  requestSessionSearchFocus,
   toggleFileBrowserOpen,
   togglePanesFlipped,
   toggleSidebarOpen
@@ -68,7 +67,6 @@ export type SetTitlebarToolGroup = (id: string, tools: readonly TitlebarTool[], 
 interface TitlebarControlsProps extends ComponentProps<'div'> {
   leftTools?: readonly TitlebarTool[]
   tools?: readonly TitlebarTool[]
-  onOpenSettings: () => void
 }
 
 /**
@@ -117,7 +115,7 @@ function useModifierHeld(): boolean {
   return held
 }
 
-export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }: TitlebarControlsProps) {
+export function TitlebarControls({ leftTools = [], tools = [] }: TitlebarControlsProps) {
   const { t } = useI18n()
   const navigate = useNavigate()
   const location = useLocation()
@@ -221,19 +219,9 @@ export function TitlebarControls({ leftTools = [], tools = [], onOpenSettings }:
   }
 
   // Static system tools — always pinned to the screen's right edge so the
-  // left titlebar stays free for tabs (#107351).
+  // left titlebar stays free for tabs (#107351). Settings live in the sidebar
+  // account menu, not here.
   const systemTools: TitlebarTool[] = [
-    {
-      ...TITLEBAR_FIXED_TOOLS.settings,
-      actionId: 'nav.settings',
-      icon: <TitlebarIcon name="settings-gear" />,
-      id: 'settings',
-      label: t.titlebar.openSettings,
-      onSelect: () => {
-        triggerHaptic('open')
-        onOpenSettings()
-      }
-    },
     ...(developerMode
       ? [
           {

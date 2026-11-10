@@ -1208,7 +1208,6 @@ export const en: Translations = {
     unreadSessions: count => (count === 1 ? '1 unread session' : `${count} unread sessions`),
     muteHaptics: 'Mute haptics',
     unmuteHaptics: 'Unmute haptics',
-    openSettings: 'Open settings',
     openStarmap: 'Open memory graph',
     enterHud: 'HUD mode',
     exitHud: 'Exit HUD mode',
@@ -1694,7 +1693,7 @@ export const en: Translations = {
       tabStripAlways: 'Always',
       tabStripNever: 'Never',
       appActionsTitle: 'App Actions',
-      appActionsDesc: 'Where Settings, Layout, and HUD sit in the titlebar. Right leaves room for tabs on the left.',
+      appActionsDesc: 'Where Layout and HUD sit in the titlebar. Right leaves room for tabs on the left.',
       appActionsLeft: 'Left',
       appActionsRight: 'Right',
       terminalFontTitle: 'Terminal Font',
@@ -4881,11 +4880,13 @@ export const en: Translations = {
       guiSkew: 'Update the desktop app',
       error: 'Update paused'
     },
+    startingUpdate: 'Starting update…',
     checking: 'Looking for updates…',
     checkFailedTitle: 'Couldn’t check for updates',
     tryAgain: 'Try again',
     notAvailableTitle: 'Update not available',
     unsupportedMessage: 'This version of UniWork can’t update itself from inside the app.',
+    bridgeUnavailable: 'Desktop bridge unavailable.',
     connectionRetry:
       "UniWork couldn't reach the update server. Check your internet connection and try again. If you use a remote UniWork, make sure it is online.",
     gitUnusable: 'UniWork could not run Git on this computer, so it could not check for updates.',
@@ -4965,6 +4966,7 @@ export const en: Translations = {
       restarting: 'Backend restarting to load the update…',
       notAvailable: 'Update not available for this backend.',
       failed: 'Backend update failed.',
+      applied: 'Backend update applied.',
       noReturn: 'Backend didn’t come back online. The update may not have completed — check the backend host.'
     },
     // Update-status overlay + version-details (mechanism-aware update UI).

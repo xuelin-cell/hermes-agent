@@ -734,7 +734,6 @@ export const zhHant = defineLocale({
     unreadSessions: count => (count === 1 ? '1 個未讀工作階段' : `${count} 個未讀工作階段`),
     muteHaptics: '靜音觸感回饋',
     unmuteHaptics: '開啟觸感回饋',
-    openSettings: '開啟設定',
     openStarmap: '開啟記憶圖譜',
     resetHudLayout: '重設 HUD 大小和位置'
   },
@@ -1018,7 +1017,7 @@ export const zhHant = defineLocale({
       tabStripAlways: '一律',
       tabStripNever: '永不',
       appActionsTitle: '應用操作',
-      appActionsDesc: '設定、版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
+      appActionsDesc: '版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
       appActionsLeft: '左側',
       appActionsRight: '右側',
       terminalFontTitle: '終端機字型',
@@ -3788,11 +3787,13 @@ export const zhHant = defineLocale({
       guiSkew: '請更新桌面應用程式',
       error: '更新已暫停'
     },
+    startingUpdate: '正在開始更新…',
     checking: '正在檢查更新…',
     checkFailedTitle: '無法檢查更新',
     tryAgain: '重試',
     notAvailableTitle: '更新不可用',
     unsupportedMessage: '此版本的 UniWork 無法在應用程式內自行更新。',
+    bridgeUnavailable: '桌面端更新服務無法使用，請重新啟動應用程式後再試。',
     connectionRetry: '請檢查網路連線後重試。',
     gitUnusable: 'UniWork 無法在這台電腦上執行 Git，因此無法檢查更新。',
     latestBody: '您正在執行最新版本。',
@@ -3858,6 +3859,7 @@ export const zhHant = defineLocale({
       restarting: '後端正在重新啟動以載入更新…',
       notAvailable: '此後端無法更新。',
       failed: '後端更新失敗。',
+      applied: '後端更新已完成。',
       noReturn: '後端未恢復連線。更新可能未完成——請檢查後端主機。'
     },
     // Restored About-card strings (moved from `settings.about.*` to `updates.*`).

@@ -902,7 +902,6 @@ export const zh = defineLocale({
     unreadSessions: count => (count === 1 ? '1 个未读会话' : `${count} 个未读会话`),
     muteHaptics: '关闭触感反馈',
     unmuteHaptics: '开启触感反馈',
-    openSettings: '打开设置',
     openStarmap: '打开记忆图谱',
     enterHud: 'HUD 模式',
     exitHud: '退出 HUD 模式',
@@ -1362,7 +1361,7 @@ export const zh = defineLocale({
       tabStripAlways: '始终',
       tabStripNever: '从不',
       appActionsTitle: '应用操作',
-      appActionsDesc: '设置、布局和 HUD 放在标题栏左侧还是右侧。选右侧可给标签留出左边空间。',
+      appActionsDesc: '布局和 HUD 放在标题栏左侧还是右侧。选右侧可给标签留出左边空间。',
       appActionsLeft: '左侧',
       appActionsRight: '右侧',
       terminalFontTitle: '终端字体',
@@ -4612,11 +4611,13 @@ export const zh = defineLocale({
       guiSkew: '请更新桌面应用',
       error: '更新已暂停'
     },
+    startingUpdate: '正在开始更新…',
     checking: '正在检查更新…',
     checkFailedTitle: '无法检查更新',
     tryAgain: '重试',
     notAvailableTitle: '更新不可用',
     unsupportedMessage: '此版本的 UniWork 无法在应用内自行更新。',
+    bridgeUnavailable: '桌面端更新服务不可用，请重启应用后重试。',
     connectionRetry: '请检查网络连接后重试。',
     gitUnusable: 'UniWork 无法在这台电脑上运行 Git，因此无法检查更新。',
     latestBody: '你正在运行最新版本。',
@@ -4685,6 +4686,7 @@ export const zh = defineLocale({
       restarting: '后端正在重启以加载更新…',
       notAvailable: '此后端无法更新。',
       failed: '后端更新失败。',
+      applied: '后端更新已完成。',
       noReturn: '后端未恢复在线。更新可能未完成——请检查后端主机。'
     },
     // Update-status overlay + version-details (mechanism-aware update UI).

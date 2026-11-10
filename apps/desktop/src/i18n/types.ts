@@ -1009,7 +1009,6 @@ export interface Translations {
     unreadSessions: (count: number) => string
     muteHaptics: string
     unmuteHaptics: string
-    openSettings: string
     openStarmap: string
     enterHud: string
     exitHud: string
@@ -3924,11 +3923,15 @@ export interface Translations {
     bundleSwapPendingDesc: string
     bundleSwapPendingAction: string
     stages: Record<string, string>
+    /** The apply-start status line, shown until the first progress event lands. */
+    startingUpdate: string
     checking: string
     checkFailedTitle: string
     tryAgain: string
     notAvailableTitle: string
     unsupportedMessage: string
+    /** The preload's `hermesDesktop.updates` bridge is missing. */
+    bridgeUnavailable: string
     connectionRetry: string
     gitUnusable: string
     connectionSettings: string
@@ -4001,6 +4004,7 @@ export interface Translations {
       restarting: string
       notAvailable: string
       failed: string
+      applied: string
       noReturn: string
     }
     /** Update-status overlay + version-details (mechanism-aware update UI):

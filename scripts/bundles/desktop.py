@@ -104,9 +104,9 @@ def _build_prepared(prepared, builder_args: list[str], variant: str | None) -> N
             # is owned by the OS App Installer descriptor instead.
             if variant != "bundled":
                 raise ValueError("electron-updater packaging requires the bundled variant")
-            # The web installer embeds the payload blockmap and is the only NSIS
-            # shape electron-updater can update differentially; a full nsis
-            # package keeps working offline but always downloads in full.
+            # Both NSIS shapes are differential: the web installer's .7z carries
+            # an embedded blockmap, a full nsis .exe relies on the .exe.blockmap
+            # published next to it, so the feed has to ship that sidecar too.
             if windows_format_override == "nsis-web":
                 windows_format = "nsis-web"
             elif windows_format_override in ("", "nsis"):
