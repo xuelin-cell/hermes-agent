@@ -21,6 +21,7 @@ from .messaging_notifications import MessagingNotifications
 from .account_routes import AccountRoutes
 from .plan_routes import PlanRoutes
 from .welcome_routes import WelcomeRoutes
+from .timing_routes import TimingRoutes
 from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
 from .crypto import CredentialCipher, CredentialError
 from .connector_oauth import ConnectorAccessLogger
@@ -174,6 +175,7 @@ class Entry:
         self.account_routes = AccountRoutes(self)
         self.plan_routes = PlanRoutes(self)
         self.welcome_routes = WelcomeRoutes(self)
+        self.timing_routes = TimingRoutes(self)
         self.skill_routes = SkillRoutes(self)
         self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
@@ -1365,6 +1367,8 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     app.router.add_get(api("/__entry/health"), entry.health)
     app.router.add_get(api("/__entry/auth"), entry.auth)
     app.router.add_get(api("/__entry/me"), entry.me)
+    # 前端报来的耗时（两个版本都有，见 timing_routes.py）
+    app.router.add_post(api("/__entry/timing"), entry.timing_routes.handle)
     app.router.add_get(api("/__entry/captcha"), entry.captcha)
     app.router.add_post(api("/__entry/send-code"), entry.send_code)
     app.router.add_post(api("/__entry/login"), entry.login)

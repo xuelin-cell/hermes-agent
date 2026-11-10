@@ -1130,6 +1130,23 @@ describe('the two cloud entries (desktop-mt)', () => {
     expect(calls).toContain('/api/__entry/welcome/zh-CN')
   })
 
+  it('sends the timings to whichever entry serves the page, enterprise or personal', async () => {
+    for (const account of [{ enterprise: { status: 'active' }, user_id: 'ent:t:u' }, { user_id: 'u1' }]) {
+      const calls = await installFor(account)
+      const fetchMock = vi.mocked(globalThis.fetch)
+      const record = { kind: 'chat.first_turn' as const, seconds: 4.2, steps: { agent: 3, first_token: 1.2 } }
+
+      window.hermesDesktop.reportTiming?.(record)
+      await Promise.resolve()
+
+      expect(calls.at(-1)).toBe('/api/__entry/timing')
+      const init = fetchMock.mock.calls.at(-1)?.[1]
+
+      expect(init).toMatchObject({ credentials: 'same-origin', keepalive: true, method: 'POST' })
+      expect(JSON.parse(String(init?.body))).toEqual(record)
+    }
+  })
+
   it('treats a failed account answer as the personal entry', async () => {
     await installFor({ error: 'down' }, 502)
 
@@ -1141,6 +1158,7 @@ describe('the two cloud entries (desktop-mt)', () => {
 
     expect(window.hermesDesktop.accountReady).toBeUndefined()
     expect(window.hermesDesktop.cloudKits).toBeUndefined()
+    expect(window.hermesDesktop.reportTiming).toBeUndefined() // 开发服务器后面没有入口记耗时
   })
 })
 

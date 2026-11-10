@@ -10,6 +10,8 @@ import './store/power'
 import './store/translucency'
 // Side-effect: applies the persisted user-bubble transparency on load.
 import './store/user-bubble-transparency'
+// desktop-mt: 云版耗时埋点，召唤专家那一段（桌面版没有上报接口，什么都不做）
+import './lib/timing-summon-mt'
 // Dev-only render/state churn counters. MUST precede the `react-dom` import
 // below: react-dom captures the devtools hook at module init, so bippy has to
 // install during THIS import's evaluation or every commit goes unseen

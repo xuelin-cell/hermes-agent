@@ -49,6 +49,27 @@ DEFAULT_SOUL_FILE = Path(__file__).resolve().parent / "default_soul.md"
 GONE_STATES = frozenset({"deleting", "terminating", "deleted"})
 
 
+class _ReadyTiming:
+    """实例启动各段的秒数（见 TenantManager._record_ready）。同名的段累加：重建时 create、hermes 可能各走两次。"""
+
+    def __init__(self) -> None:
+        self.began = self.mark = time.monotonic()
+        self.steps: dict[str, float] = {}
+        self.path = ""  # 这次做了什么：resume / restore / new / migrate / repair；空 = 本来就在跑
+
+    def lap(self, step: str) -> None:
+        now = time.monotonic()
+        self.steps[step] = round(self.steps.get(step, 0.0) + now - self.mark, 2)
+        self.mark = now
+
+    def details(self, *, ok: bool, cron: bool) -> dict:
+        body = {"path": self.path, "ok": ok, "seconds": round(time.monotonic() - self.began, 2),
+                "steps": dict(self.steps)}
+        if cron:
+            body["cron"] = True  # 定时任务叫醒的，不是用户在等
+        return body
+
+
 class RequestAbandoned(Exception):
     """排队等这个用户的实例时，发请求的浏览器已经断开了。"""
 
@@ -784,7 +805,9 @@ class TenantManager:
         assert self.cube is not None
         slug = tenant_slug(user_id)
         port = self.s.forward_port
+        timing = _ReadyTiming()
         async with self._queued(slug, abandoned):
+            timing.lap("queue")
             if not wake and (await self.store.get_runtime(user_id)).state != "running":
                 return None
             token = await self.store.ensure_tenant_token(user_id)
@@ -800,6 +823,7 @@ class TenantManager:
             sandbox_id = rt.sandbox_id
             sb = await self.cube.get_sandbox(sandbox_id) if sandbox_id else None
             was_paused = sb is not None and str(sb.get("state")) != "running"
+            timing.lap("check")
 
             # 与 Docker 那条路同一条不变式：中途失败不能把状态留在 starting，
             # 否则这个用户会一直被当成"正在启动"，既不会被回收也不会被重试。
@@ -812,40 +836,56 @@ class TenantManager:
                         self._register_token(rt)
                         sb = await self.cube.get_sandbox(rt.sandbox_id) if rt.sandbox_id else None
                         was_paused = sb is not None and str(sb.get("state")) != "running"
+                        timing.path = self._change_kind(rt, sb)
                         sandbox_id = await self._settle_cube(user_id, slug, rt, sb, token, context)
+                        timing.lap("settle")
                         if not sandbox_id:
                             sandbox_id = await self._create_cube(user_id, slug, volume, token, context)
+                            timing.lap("create")
                             was_paused = False
+                if was_paused:
+                    timing.path = "resume"
 
                 # 实例可能是 paused —— 这个请求会把它自动唤醒，等就绪即可。
                 try:
                     await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                    timing.lap("hermes")
                 except SandboxGone:
                     # 等就绪期间控制面确认实例没了（节点丢失、被手工删）。10-08 真机：删除是异步的，
                     # 刚删完控制面还说"在"，旧版等满 180 秒就绪超时才发现。现在当场重建，同一个请求里完成。
                     log.warning("tenant %s: 实例 %s 在等就绪时消失，立即重建", slug, sandbox_id[:12])
+                    timing.lap("hermes")
+                    timing.path = "restore"
                     async with self._pg_lock(user_id):
                         rt = await self.store.get_runtime(user_id)
                         sb = await self.cube.get_sandbox(rt.sandbox_id) if rt.sandbox_id else None
                         sandbox_id = await self._settle_cube(user_id, slug, rt, sb, token, context)
                         if not sandbox_id:
                             sandbox_id = await self._create_cube(user_id, slug, volume, token, context)
+                    timing.lap("create")
                     was_paused = False
                     await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                    timing.lap("hermes")
                 except CubeError:
                     # 等不到 hermes：没引导过就补一次，窗口已关就删了重建；引导过的照常报错，
                     # 除非它是暂停后唤醒没起来的那种（见 _discard_unresponsive），那就从归档重建。
+                    timing.lap("hermes")
                     replaced = False
                     async with self._pg_lock(user_id):
                         sandbox_id, repaired = await self._repair_bootstrap(user_id, slug, sandbox_id, token, context)
                         if not repaired and await self._discard_unresponsive(user_id, slug, sandbox_id):
                             sandbox_id = await self._create_cube(user_id, slug, volume, token, context)
                             replaced = True
+                    timing.lap("create")
                     if replaced:
+                        timing.path = "restore"
                         was_paused = False
                         await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
+                        timing.lap("hermes")
                     elif not repaired:
                         raise
+                    else:
+                        timing.path = "repair"
             except Exception:  # noqa: BLE001
                 try:
                     await self.store.set_tenant_state(user_id, "stopped")
@@ -855,6 +895,7 @@ class TenantManager:
                         slug,
                         type(state_exc).__name__,
                     )
+                await self._record_ready(user_id, slug, timing, ok=False, cron=not touch)
                 raise
 
             if was_paused:
@@ -877,7 +918,32 @@ class TenantManager:
                 await self.store.touch_tenant(user_id)
             await self._reload_if_key_changed(user_id, slug, sandbox_id, token, context)
             await self._sync_api_key(tenant, context.api_key)
+            timing.lap("key")
+            await self._record_ready(user_id, slug, timing, ok=True, cron=not touch)
             return tenant
+
+    async def _record_ready(self, user_id: str, slug: str, timing: "_ReadyTiming", *, ok: bool, cron: bool) -> None:
+        """实例这次是唤醒、重建、新建、迁移或补引导时，各段花了多久记进日志和审计 tenant.ready；本来就在跑的不记。
+        打开页面慢、平台准备慢时按这个查是实例那一段慢，还是后面的 agent、模型慢。"""
+        if not timing.path:
+            return
+        details = timing.details(ok=ok, cron=cron)
+        log.info("tenant %s: 实例就绪%s（%s），共 %.1f 秒 %s", slug, "" if ok else "失败", timing.path,
+                 details["seconds"], details["steps"])
+        try:
+            await self.store.write_audit(user_id, "tenant.ready", details)
+        except Exception as exc:  # noqa: BLE001 —— 耗时只是记录，不影响启动
+            log.warning("tenant %s: 实例就绪耗时没记进审计: %s", slug, type(exc).__name__)
+
+    def _change_kind(self, rt, sb: dict | None) -> str:
+        """``_needs_change`` 为真时这次要做哪一种：new 新用户第一次建、restore 实例没了从归档重建、
+        migrate 模板变了先归档再换、repair 引导没完成补一次。"""
+        if not rt.sandbox_id or sb is None or str(sb.get("state")) in GONE_STATES \
+                or rt.lifecycle in {"draining", "drained", "deleting"}:
+            return "restore" if rt.state_owner else "new"
+        want = self._template_id()
+        have = str(sb.get("templateID") or rt.template_id or "")
+        return "migrate" if want and have and have != want else "repair"
 
     def _needs_change(self, rt, sb: dict | None) -> bool:
         """这次请求要不要动实例（没实例 / 实例没了 / 模板变了 / 引导没完成）。"""

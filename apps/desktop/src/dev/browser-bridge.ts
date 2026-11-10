@@ -28,6 +28,7 @@ import {
   ssoDisplayName,
   toSsoLogin
 } from '@/lib/sso-mt'
+import { markPageStep, type TimingRecord } from '@/lib/timing-mt'
 
 import {
   browserAuthKey,
@@ -218,7 +219,22 @@ async function api<T>(request: HermesApiRequest): Promise<T> {
     throw new Error(`${response.status}: ${text || response.statusText}`)
   }
 
+  if (method === 'GET' && path.split('?')[0] === '/api/sessions') {
+    markPageStep('sessions') // desktop-mt: 打开页面的耗时到会话列表出来为止（lib/timing-mt.ts）
+  }
+
   return maskMcpSecrets(method, path, (text ? JSON.parse(text) : {}) as T)
+}
+
+/** desktop-mt: 耗时埋点交给入口记进审计（entry/timing_routes.py）；报不出去就算了，不影响页面。 */
+function reportTimingToEntry(record: TimingRecord): void {
+  void fetch(`${browserApiBase()}__entry/timing`, {
+    body: JSON.stringify(record),
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
+    method: 'POST'
+  }).catch(() => undefined)
 }
 
 // ---------------------------------------------------------------------------
@@ -1634,7 +1650,8 @@ export function installBrowserDevelopmentBridge(): boolean {
     glassSupported: false,
     writeClipboard,
     // The instance's shell lives behind the entry; a dev server has no forwarder to give one.
-    ...(productionBrowserBuild ? { terminal: instanceTerminal } : {})
+    // desktop-mt: so is the entry that keeps the timings (lib/timing-mt.ts), for both editions.
+    ...(productionBrowserBuild ? { terminal: instanceTerminal, reportTiming: reportTimingToEntry } : {})
   }
 
   Object.defineProperty(window, 'hermesDesktop', { configurable: true, value: bridge })
@@ -1657,6 +1674,8 @@ export function installBrowserDevelopmentBridge(): boolean {
         } else {
           Object.assign(bridge, enterpriseCapabilities($enterpriseFeatures.get()))
         }
+
+        markPageStep('account') // desktop-mt: 打开页面的耗时，账号就绪这一段
       })
     })
   }

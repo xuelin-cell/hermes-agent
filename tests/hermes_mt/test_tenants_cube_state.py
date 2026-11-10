@@ -35,6 +35,10 @@ class FakeStore:
     archived_before_pause: bool = False            # paused_after_archive 的回答
     context: TenantContext | None = None           # 不给就是普通成员的那份（get_tenant_context）
     spec_sha256: str = ""                          # 平台运行环境记下的「已生效的规格」
+    audits: list = field(default_factory=list)     # write_audit 的 (事件, 详情)
+
+    def ready(self) -> list[dict]:
+        return [details for event, details in self.audits if event == "tenant.ready"]
 
     async def set_service_spec(self, user_id, digest):
         self.calls.append(("set_service_spec", digest))
@@ -137,6 +141,7 @@ class FakeStore:
 
     async def write_audit(self, user_id, event_type, details=None):
         self.calls.append(("audit", event_type))
+        self.audits.append((event_type, details or {}))
 
     async def tenants_with_sandbox(self):
         return [("u", self.runtime.sandbox_id, self.runtime.state)] if self.runtime.sandbox_id else []
@@ -588,6 +593,52 @@ async def test_running_instance_does_not_write_resume_audit(monkeypatch) -> None
     cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "running"}})
     await _manager(store, cube).ensure_running("u")
     assert ("audit", "tenant.resume") not in store.calls
+    assert store.ready() == []  # 本来就在跑：不记实例就绪的耗时
+
+
+# ---------------------------------------------------------------- 实例就绪的耗时（tenant.ready）
+
+@pytest.mark.asyncio
+async def test_ready_timing_records_what_the_start_did_and_each_step(monkeypatch) -> None:
+    """唤醒、重建、新建、迁移各花了多久记进审计 tenant.ready：打开页面慢时分清是实例那一段慢，还是后面慢。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    cases = [
+        # 暂停的唤醒：不动实例，只等 hermes
+        (Runtime("stopped", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""),
+         {"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "paused"}}, "resume", {"settle", "create"}),
+        # 空闲太久被删了：从归档重建
+        (Runtime("stopped", "", "tpl-new", 4, "sbOld", "old.tar.gz", ""), {}, "restore", set()),
+        # 新用户：第一次建
+        (Runtime("stopped", "", "", 0, "", "", ""), {}, "new", set()),
+        # 部署换了模板：先归档旧的再换
+        (Runtime("running", "sbOld", "tpl-old", 2, "sbOld", "x.tar.gz", ""),
+         {"sbOld": {"sandboxID": "sbOld", "templateID": "tpl-old", "state": "running"}}, "migrate", set()),
+    ]
+    for runtime, sandboxes, path, absent in cases:
+        store, cube = FakeStore(runtime=runtime), FakeCube(sandboxes)
+        await _manager(store, cube).ensure_running("u")
+        (ready,) = store.ready()
+        assert ready["path"] == path and ready["ok"] is True and "cron" not in ready, path
+        assert {"queue", "check", "hermes", "key"} <= set(ready["steps"]), path
+        assert ("create" in ready["steps"]) == (path != "resume") and not (absent & set(ready["steps"])), path
+        assert ready["seconds"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_ready_timing_marks_cron_wakes_and_failed_starts(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbA", "tpl-new", 2, "sbA", "x.tar.gz", ""))
+    cube = FakeCube({"sbA": {"sandboxID": "sbA", "templateID": "tpl-new", "state": "paused"}})
+    await _manager(store, cube).ensure_running("u", touch=False)  # 定时任务叫醒，不是用户在等
+    assert store.ready()[0]["cron"] is True
+    # 启动失败：也记，ok 为假
+    store = FakeStore(runtime=Runtime("stopped", "", "", 0, "", "", ""))
+    cube = FakeCube()
+    cube.boot_failures.append(CubeError(500, "boom"))
+    with pytest.raises(CubeError):
+        await _manager(store, cube).ensure_running("u")
+    (ready,) = store.ready()
+    assert ready["path"] == "new" and ready["ok"] is False
 
 
 @pytest.mark.asyncio

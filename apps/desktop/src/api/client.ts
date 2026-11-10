@@ -2,6 +2,7 @@ import { JsonRpcGatewayClient } from '@hermes/shared'
 import { map, type MapStore } from 'nanostores'
 
 import type { HermesApiRequest } from '@/global'
+import { noteGatewayRequest, watchGateway } from '@/lib/timing-mt' // desktop-mt: 云版耗时埋点
 
 // Desktop startup fires a burst of read-only data calls (config, profiles,
 // model info/options, cron) the moment the backend passes readiness. On a
@@ -46,7 +47,8 @@ export class HermesGateway extends JsonRpcGatewayClient {
       if (Object.keys(metadata).length) {params = { ...params, execution_metadata: metadata }}
     }
 
-    return super.request<T>(method, params, timeoutMs, signal)
+    // desktop-mt: 云版耗时埋点（lib/timing-mt.ts），原样返回同一个 promise
+    return noteGatewayRequest(this, method, params, super.request<T>(method, params, timeoutMs, signal))
   }
 
   constructor() {
@@ -63,6 +65,7 @@ export class HermesGateway extends JsonRpcGatewayClient {
         console.warn(`[gateway] Hermes Desktop has no server-request registry for ${request.method} (${request.id})`),
       requestTimeoutMs: DEFAULT_GATEWAY_REQUEST_TIMEOUT_MS
     })
+    watchGateway(this) // desktop-mt: 云版耗时埋点（lib/timing-mt.ts）
   }
 }
 

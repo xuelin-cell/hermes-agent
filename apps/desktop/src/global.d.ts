@@ -39,6 +39,7 @@ import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwor
 import type { WelcomeLocale, WelcomePayload } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
+import type { TimingRecord } from './lib/timing-mt'
 import type { WakeIndicatorState } from './lib/wake-indicator'
 import type {
   PetOverlayBounds,
@@ -87,6 +88,8 @@ declare global {
       cloudConnectorIds?: readonly import('../electron/open-connector/contract').ConnectorId[]
       /** 取得完整办公目录；主进程负责认证和校验配置。 */
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
+      /** desktop-mt: 云版的耗时埋点交给入口记（lib/timing-mt.ts）；桌面版没有。 */
+      reportTiming?: (record: TimingRecord) => void
       interruptedTurns?: {
         list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string }[]>
         dismiss: (sessionId: string) => Promise<void>
