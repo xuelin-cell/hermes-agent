@@ -158,11 +158,13 @@ def before_execute(*, execution: PreparedToolExecution) -> dict[str, str] | None
 
 输入：任务 1 的范围清单。输出：无 UniClaw 安装依赖的可导入引擎及 `evaluate_tool_call(request: GuardrailRequest) -> PermissionDecision` 内部入口。
 
-- [ ] 先添加迁移对照用例：缺源规则、资源路径错误或残留 `hexagent` 产品导入应失败。
-- [ ] 迁入范围内源码、资源、许可证；调整相对导入和动态包资源读取，用 manifest 声明依赖并通过 PM 准备环境。
-- [ ] 移除被排除的审计/安全中心依赖；保留通用匹配与决策优先级，按第 3 节承接 ASK。拆分执行 cwd 与 workspace_root，环境信息由显式输入提供。
-- [ ] 对照测试同义操作、规则 ID、硬拒绝优先级、AUTO、ASK、产品规则组及敏感 API；单列明确的策略承接差异，其他意外决策差异不得放行。
-- [ ] 检查安装产物只依赖已声明包，资源可读，独立 API 可调用。原始迁入与适配差异分别供审阅。
+- [x] 先添加迁移对照用例：已观察未迁入 contracts 时明确失败；随后验证完整规则元数据、资源缺损与禁止产品导入的隔离子进程。
+- [x] 迁入范围内 57 个源码模块、2 个资源和许可证；调整相对导入和动态包资源读取，用 manifest 声明 Pydantic 依赖。复用已有符合范围的 PM 测试环境，无需安装或重建。
+- [x] 移除被排除的审计/安全中心依赖；保留通用匹配与决策优先级，按第 3 节承接 ASK。拆分执行 cwd 与 workspace_root，环境/探测/脚本读取由显式输入提供。
+- [x] 对照原规则元数据，176 组源引擎实际决策一致；验证硬拒绝优先级、AUTO、全部适用 ASK 代表输入、产品规则组及敏感 API。差异单列，未称全部原测试矩阵已运行。
+- [x] 安装副本可独立导入，资源与许可哈希一致，敏感 API 可调用，Doctor 通过；修复审查发现的保护根输入校验缺口后，完整相关回归通过。
+
+完成记录（2026-11-10）：[任务 2 迁入记录](../../plugins/security-guardrail/docs/task2-migration.md)、[逐文件实际结果](evidence/phase2-task2/migration-result.json)、[最终测试日志](evidence/phase2-task2/final-tests.log)。16 个文件，1208 passed / 1 skipped / 1 xfailed；已知参数改写缺口仍属于任务 3。当前 register(ctx) 保留 Demo，尚未把新引擎接入实际 Hermes 工具，不据此宣称第二阶段整体通过。下一任务为通用执行前 Hook。
 
 ### 任务 3：实现通用执行前 Hook
 

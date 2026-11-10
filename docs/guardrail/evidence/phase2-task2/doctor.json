@@ -1,0 +1,6 @@
+{
+  "ok": true,
+  "report": "Plugin Doctor: D:\\liantong\\projects\\python\\hermes-agent\\plugins\\security-guardrail\n  manifest: security-guardrail 0.2.0 (standalone)\n  OK: runtime discovery, manifest parsing, import, and registration passed\n  registrations: 0 tool(s), 1 hook(s)",
+  "python": "3.14.7 (main, Sep  1 2026, 14:17:30) [MSC v.1944 64 bit (AMD64)]",
+  "pydantic": "2.13.4"
+}

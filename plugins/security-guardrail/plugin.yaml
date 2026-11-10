@@ -1,6 +1,8 @@
 name: security-guardrail
-version: "0.1.0"
-description: "Block write_file calls targeting a configured local directory before execution."
+version: "0.2.0"
+description: "Guardrail engine and detection APIs; phase-one write_file hook retained until execution adapters are connected."
+python_dependencies:
+  - "pydantic>=2,<3"
 provides_hooks:
   - pre_tool_call
 config_schema:

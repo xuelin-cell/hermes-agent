@@ -1,0 +1,44 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 16 test files (~350 tests) under ['tests\\plugins\\security_guardrail', 'tests\\plugins\\test_security_guardrail.py']; running with -j 16
+[  0.3% |     1/~350 | ✓5 | ✗0] ✓ tests\plugins\security_guardrail\original\test_tool_schema_contract.py (5✓, 13.0s)
+[  1.1% |     4/~350 | ✓8 | ✗0] ✓ tests\plugins\security_guardrail\original\test_baseline_routing.py (3✓, 13.5s)
+[  2.0% |     7/~350 | ✓23 | ✗ 0] ✓ tests\plugins\security_guardrail\original\test_lite_extra.py (15✓, 16.1s)
+[  2.6% |     9/~350 | ✓25 | ✗ 0] ✓ tests\plugins\security_guardrail\test_engine_contract.py (2✓, 16.5s)
+[  7.4% |    26/~350 | ✓71 | ✗ 0] ✓ tests\plugins\security_guardrail\original\test_pro_vm_extra.py (46✓, 18.0s)
+[ 13.1% |    46/~350 | ✓123 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py (52✓, 18.7s)
+[ 13.7% |    48/~350 | ✓126 | ✗  0] ✓ tests\plugins\security_guardrail\test_isolated_package.py (3✓, 19.4s)
+[ 20.0% |    70/~350 | ✓189 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_guardrail.py (63✓, 21.3s)
+[ 28.0% |    98/~350 | ✓264 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_baseline_rules.py (75✓, 21.3s)
+[ 38.6% |   135/~350 | ✓365 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_runtime_action.py (101✓, 22.0s)
+[ 68.6% |   240/~350 | ✓470 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_common_baseline.py (105✓, 22.4s)
+[ 69.1% |   242/~350 | ✓623 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_all_ask_semantics.py (153✓, 25.6s)
+[ 72.9% |   255/~350 | ✓792 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_sensitive_protection.py (169✓, 26.8s)
+[ 75.1% |   263/~350 | ✓806 | ✗  0] ✓ tests\plugins\security_guardrail\test_semantics.py (14✓, 29.0s)
+[ 98.6% |   345/~350 | ✓1205 | ✗   0] ✓ tests\plugins\security_guardrail\original\test_ask_baseline.py (399✓, 37.5s)
+[100.0% |   350/~350 | ✓1208 | ✗   0] ✓ tests\plugins\test_security_guardrail.py (3✓ 1s 1xf, 52.2s)
+
+=== Summary: 16 files, 1208 tests passed, 0 failed, 1 skipped (100% complete) in 53.4s (16 workers) ===
+
+  note: platforms('posix') tests (in 1 file) were SKIPPED on this host (win32); they run on the main Linux CI lane, the macOS Python-tests lane.
+  Durations cached to test_durations.json (16 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   16
+  Total subprocess CPU-wall: 373.1s  (runner wall: 53.4s, parallelism: 16x)
+  P50: 21.31s  P90: 37.45s  P95: 52.18s  P99: 52.18s  Max: 52.18s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     52.18s  tests\plugins\test_security_guardrail.py
+     37.45s  tests\plugins\security_guardrail\original\test_ask_baseline.py
+     29.02s  tests\plugins\security_guardrail\test_semantics.py
+     26.76s  tests\plugins\security_guardrail\original\test_sensitive_protection.py
+     25.56s  tests\plugins\security_guardrail\original\test_all_ask_semantics.py
+     22.37s  tests\plugins\security_guardrail\original\test_common_baseline.py
+     21.98s  tests\plugins\security_guardrail\original\test_runtime_action.py
+     21.31s  tests\plugins\security_guardrail\original\test_baseline_rules.py
+     21.26s  tests\plugins\security_guardrail\original\test_guardrail.py
+     19.41s  tests\plugins\security_guardrail\test_isolated_package.py

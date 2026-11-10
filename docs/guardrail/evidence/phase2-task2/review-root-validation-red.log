@@ -1,0 +1,124 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 1 test files (~8 tests) under ['tests\\plugins\\security_guardrail\\test_semantics.py']; running with -j 16
+[100.0% |     8/~8 | ✓3 | ✗4] ✗ tests\plugins\security_guardrail\test_semantics.py (3✓ 4✗, 9.7s)
+
+  ╔╍ Failed: tests\plugins\security_guardrail\test_semantics.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ 
+  ║     @pytest.mark.parametrize("roots", ["/workspace", ("relative",), ("",), ("/",), ("C:/",),
+  ║                                       ("/workspace/../protected",), ("/workspace/./protected",)])
+  ║     def test_invalid_protection_roots_are_not_silently_ignored(candidate, roots):
+  ║         contracts, types, _ = api(candidate)
+  ║ >       with pytest.raises(ValueError):
+  ║              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  ║ E       Failed: DID NOT RAISE ValueError
+  ║ 
+  ║ tests\plugins\security_guardrail\test_semantics.py:119: Failed
+  ║ _______ test_invalid_protection_roots_are_not_silently_ignored[roots6] ________
+  ║ 
+  ║ candidate = <module 'guardrail_candidate_8c8ff1da3daf49329186b04bf42ae8d1' from 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-1cn6417h\\pytest-of-unknown\\pytest-0\\test_invalid_protection_roots_6\\installed-plugin\\__init__.py'>
+  ║ roots = ('/workspace/./protected',)
+  ║ 
+  ║     @pytest.mark.parametrize("roots", ["/workspace", ("relative",), ("",), ("/",), ("C:/",),
+  ║                                       ("/workspace/../protected",), ("/workspace/./protected",)])
+  ║     def test_invalid_protection_roots_are_not_silently_ignored(candidate, roots):
+  ║         contracts, types, _ = api(candidate)
+  ║ >       with pytest.raises(ValueError):
+  ║              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  ║ E       Failed: DID NOT RAISE ValueError
+  ║ 
+  ║ tests\plugins\security_guardrail\test_semantics.py:119: Failed
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots3]
+  ║ FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots4]
+  ║ FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots5]
+  ║ FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots6]
+  ║ 4 failed, 3 passed, 7 deselected in 6.34s
+  ║
+  ║  Repro: python -m pytest tests\plugins\security_guardrail\test_semantics.py -k test_invalid_protection_roots -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+
+=== Summary: 1 files, 3 tests passed, 4 failed (100% complete) in 11.2s (16 workers) ===
+
+=== Per-file subprocess time distribution ===
+  Files:   1
+  Total subprocess CPU-wall: 9.7s  (runner wall: 11.2s, parallelism: 16x)
+  P50: 9.70s  P90: 9.70s  P95: 9.70s  P99: 9.70s  Max: 9.70s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+      9.70s  tests\plugins\security_guardrail\test_semantics.py
+
+=== Failure output ===
+
+--- tests\plugins\security_guardrail\test_semantics.py ---
+...FFFF                                                                  [100%]
+================================== FAILURES ===================================
+_______ test_invalid_protection_roots_are_not_silently_ignored[roots3] ________
+
+candidate = <module 'guardrail_candidate_b2132082fa3f4a718fb68c8e30873b8f' from 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-1cn6417h\\pytest-of-unknown\\pytest-0\\test_invalid_protection_roots_3\\installed-plugin\\__init__.py'>
+roots = ('/',)
+
+    @pytest.mark.parametrize("roots", ["/workspace", ("relative",), ("",), ("/",), ("C:/",),
+                                      ("/workspace/../protected",), ("/workspace/./protected",)])
+    def test_invalid_protection_roots_are_not_silently_ignored(candidate, roots):
+        contracts, types, _ = api(candidate)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\plugins\security_guardrail\test_semantics.py:119: Failed
+_______ test_invalid_protection_roots_are_not_silently_ignored[roots4] ________
+
+candidate = <module 'guardrail_candidate_b147a627928d40a09603180c0b5e965c' from 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-1cn6417h\\pytest-of-unknown\\pytest-0\\test_invalid_protection_roots_4\\installed-plugin\\__init__.py'>
+roots = ('C:/',)
+
+    @pytest.mark.parametrize("roots", ["/workspace", ("relative",), ("",), ("/",), ("C:/",),
+                                      ("/workspace/../protected",), ("/workspace/./protected",)])
+    def test_invalid_protection_roots_are_not_silently_ignored(candidate, roots):
+        contracts, types, _ = api(candidate)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\plugins\security_guardrail\test_semantics.py:119: Failed
+_______ test_invalid_protection_roots_are_not_silently_ignored[roots5] ________
+
+candidate = <module 'guardrail_candidate_aa40d7a10f3b4d7894595e37c174aa20' from 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-1cn6417h\\pytest-of-unknown\\pytest-0\\test_invalid_protection_roots_5\\installed-plugin\\__init__.py'>
+roots = ('/workspace/../protected',)
+
+    @pytest.mark.parametrize("roots", ["/workspace", ("relative",), ("",), ("/",), ("C:/",),
+                                      ("/workspace/../protected",), ("/workspace/./protected",)])
+    def test_invalid_protection_roots_are_not_silently_ignored(candidate, roots):
+        contracts, types, _ = api(candidate)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\plugins\security_guardrail\test_semantics.py:119: Failed
+_______ test_invalid_protection_roots_are_not_silently_ignored[roots6] ________
+
+candidate = <module 'guardrail_candidate_8c8ff1da3daf49329186b04bf42ae8d1' from 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-1cn6417h\\pytest-of-unknown\\pytest-0\\test_invalid_protection_roots_6\\installed-plugin\\__init__.py'>
+roots = ('/workspace/./protected',)
+
+    @pytest.mark.parametrize("roots", ["/workspace", ("relative",), ("",), ("/",), ("C:/",),
+                                      ("/workspace/../protected",), ("/workspace/./protected",)])
+    def test_invalid_protection_roots_are_not_silently_ignored(candidate, roots):
+        contracts, types, _ = api(candidate)
+>       with pytest.raises(ValueError):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\plugins\security_guardrail\test_semantics.py:119: Failed
+=========================== short test summary info ===========================
+FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots3]
+FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots4]
+FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots5]
+FAILED tests/plugins/security_guardrail/test_semantics.py::test_invalid_protection_roots_are_not_silently_ignored[roots6]
+4 failed, 3 passed, 7 deselected in 6.34s
+
+=== 1 file with test failures (4 tests failed) ===
+  tests\plugins\security_guardrail\test_semantics.py  (4 tests failed)

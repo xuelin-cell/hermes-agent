@@ -1,0 +1,117 @@
+[
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_baseline_routing.py",
+    "sha256": "92ffc9d915c86b1a6a403f5a7a38f82af5e1ab0bfaef10437a88bd764fc3f2eb",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_baseline_routing.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_baseline_rules.py",
+    "sha256": "e5d718044085bdd4b2d0e8faf161ff0e6efc7d0a96c9cd2fdf730ab5aeb32356",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_baseline_rules.py",
+    "excluded_test_functions": [
+      "test_baseline_rule_ids_are_globally_unique",
+      "test_all_shell_terminal_rules_have_explicit_command_scopes"
+    ],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_common_baseline.py",
+    "sha256": "8a4668b2756ad59c2ec93155e136c7defb62b92dc11220761dd3b86ca909192b",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_common_baseline.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_lite_extra.py",
+    "sha256": "805021da9e9a833570592180a4bd695edad7b1f9d520ee1487cb5f92c5fc6920",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_lite_extra.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_pro_vm_extra.py",
+    "sha256": "15df524ce4ce9f5f949591d1ab2d6c5479fb5d6161e39bdd8162e1901d3962e2",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_pro_vm_extra.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_runtime_action.py",
+    "sha256": "b13a525c7f094a38747d0857811912b41461a9acb59f531ad8a8a40f067bf7fd",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_runtime_action.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_sensitive_protection.py",
+    "sha256": "18e8cdde07d09f9d4b7e580314ec79cd55007cf62c66f7e1a7c5a0e46f3f5c08",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_sensitive_protection.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_tool_schema_contract.py",
+    "sha256": "c128f7a19374608f2ff1d31feacf43ff616a909502ef1c058b1fc5f0db455588",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_tool_schema_contract.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_ask_baseline.py",
+    "sha256": "2f6dd5769a08185688d9171fa374a231eecaa15ed7dd15a26f6a8f3cbe3994b2",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_ask_baseline.py",
+    "excluded_test_functions": [
+      "test_ask_registry_contains_only_approval_rules"
+    ],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  },
+  {
+    "source": "D:\\liantong\\projects\\python\\UniClaw\\UniClaw\\libs\\hexagent\\tests\\unit_tests\\harness\\guardrail\\test_lite_bypass_regressions.py",
+    "sha256": "56f97d264f186ead975a879aa8ba4b41ec21b4370d183f9e78821f93401742ec",
+    "target": "tests\\plugins\\security_guardrail\\original\\test_lite_bypass_regressions.py",
+    "excluded_test_functions": [],
+    "changes": [
+      "package imports",
+      "remove excluded ASK policy argument",
+      "omit source-scanning/count-snapshot assertions"
+    ]
+  }
+]

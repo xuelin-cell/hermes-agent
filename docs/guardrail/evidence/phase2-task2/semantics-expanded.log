@@ -1,0 +1,22 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 3 test files (~31 tests) under ['tests\\plugins\\security_guardrail\\original\\test_all_ask_semantics.py', 'tests\\plugins\\security_guardrail\\original\\test_guardrail.py', 'tests\\plugins\\security_guardrail\\test_semantics.py']; running with -j 16
+[ 71.0% |    22/~31 | ✓63 | ✗ 0] ✓ tests\plugins\security_guardrail\original\test_guardrail.py (63✓, 9.1s)
+[ 93.5% |    29/~31 | ✓70 | ✗ 0] ✓ tests\plugins\security_guardrail\test_semantics.py (7✓, 10.9s)
+[100.0% |    31/~31 | ✓223 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_all_ask_semantics.py (153✓, 13.0s)
+
+=== Summary: 3 files, 223 tests passed, 0 failed (100% complete) in 14.3s (16 workers) ===
+  Durations cached to test_durations.json (3 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   3
+  Total subprocess CPU-wall: 33.1s  (runner wall: 14.3s, parallelism: 16x)
+  P50: 10.94s  P90: 12.97s  P95: 12.97s  P99: 12.97s  Max: 12.97s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     12.97s  tests\plugins\security_guardrail\original\test_all_ask_semantics.py
+     10.94s  tests\plugins\security_guardrail\test_semantics.py
+      9.14s  tests\plugins\security_guardrail\original\test_guardrail.py

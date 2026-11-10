@@ -1,0 +1,714 @@
+{
+  "source_commit": "c6a66bbf1abaddf4d12483ef66850adcebe528d2",
+  "files": [
+    {
+      "source": "LICENSE",
+      "sha256": "69fdebedb67eee486a74e9194c532cc956dd6307fec8121701fe8bd31ee171a9",
+      "disposition": "retain_attribution",
+      "proposed_target": "plugins/security-guardrail/licenses/UNICLAW_LICENSE",
+      "status": "migrated",
+      "target_sha256": "69fdebedb67eee486a74e9194c532cc956dd6307fec8121701fe8bd31ee171a9"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/__init__.py",
+      "sha256": "f2da5226e9474deaa8cdd78eb07e25dc99f1092fb83e0da56f1d29ef1ee15149",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/__init__.py",
+      "status": "migrated",
+      "target_sha256": "6ffc7a7d28b77e8a3c90e98d202876aae1e156ba7d8fec65d044803d428b19bd"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/action.py",
+      "sha256": "6f6fdbf8f0408f88c277ea1be348cd03598b55370ece83784e4532b534427239",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/action.py",
+      "status": "migrated",
+      "target_sha256": "ee0fed94e7e2c678379bb7d55169551a033be4537f381c2190db8e0f9390a4a5"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline.py",
+      "sha256": "b04dd227b0429d7e6177f3afd48adc83910e01761c12c3c89772a912d3380cc4",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline.py",
+      "status": "migrated",
+      "target_sha256": "b04dd227b0429d7e6177f3afd48adc83910e01761c12c3c89772a912d3380cc4"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/__init__.py",
+      "sha256": "282931e69ebf5556453baa94f1dc2a60604b04d2736ce55c323f41cf09f7bc8b",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/__init__.py",
+      "status": "migrated",
+      "target_sha256": "282931e69ebf5556453baa94f1dc2a60604b04d2736ce55c323f41cf09f7bc8b"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/core.py",
+      "sha256": "99983e880fa2a24d602a86f521e9e8a7099722520dbf426ba033b8bcb78479ba",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/core.py",
+      "status": "migrated",
+      "target_sha256": "9813dc4060b81a5140b1de1ba1be9b61abefabef387fec943287ed17d2cd3624"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/data.py",
+      "sha256": "2d4f930d7b2f4456a68fea203037ecc4825d2125d9adb7cc3f65bdb3657ab769",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/data.py",
+      "status": "migrated",
+      "target_sha256": "161d620faa39cb1826a897713658633d8402bf05142de7e3dfa27a1fd2578469"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/filesystem.py",
+      "sha256": "ee3fb6cf01c6b56f9193adffff40ba901faa25f8e4c8404cf3a240547934f5f2",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/filesystem.py",
+      "status": "migrated",
+      "target_sha256": "07277e92ec5377601d7fd6a367e3e3b0a997367952c2f61b27e0464a8aa3f7c5"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/network.py",
+      "sha256": "59498add352fa19a476cd10d209c0d2931401e662afe1920fcfa4efad11b54ed",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/network.py",
+      "status": "migrated",
+      "target_sha256": "d26ba9200fb43f7fc85f3720d1b6314a06a8d18dfe0ff085a034c207d5baf072"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/registry.py",
+      "sha256": "6b5a314393735d5622e74a1089530c7bfef22f7eb1d825b05e543bfc9ae857d6",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/registry.py",
+      "status": "migrated",
+      "target_sha256": "dcdf8a1f4e247bdf1694686a6f010316ef8aed31838b889235f130dbcf0d9408"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/selection.py",
+      "sha256": "30fd7113cac1b877aeb74b309877aa96ebfb1e9d0ddec14918634e5a0c7f00d8",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/selection.py",
+      "status": "migrated",
+      "target_sha256": "7edc60493ad7075a1ab067999db011c1a7a19493f19bf4ad7ffdcb8a09c1083f"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/shell/__init__.py",
+      "sha256": "49d6baa44d86d0d3db3ac35184183d5e5bf452ebe9406359b7f3e8e21ce5619a",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/shell/__init__.py",
+      "status": "migrated",
+      "target_sha256": "49d6baa44d86d0d3db3ac35184183d5e5bf452ebe9406359b7f3e8e21ce5619a"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/shell/ask.py",
+      "sha256": "0a14c8dea284f0f047591160277983b5a766d97b7e5a2a52d24f1a25cfda3a01",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/shell/ask.py",
+      "status": "migrated",
+      "target_sha256": "0dd34a9b1e845e83cb0213668b6c5421db06c23ac33bb98bec5d58375d9d4b53"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/shell/command_scope.py",
+      "sha256": "686272de9709dc64e397a1550085fcb0aba3c233eb7a96e6e7cedd1807731d41",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/shell/command_scope.py",
+      "status": "migrated",
+      "target_sha256": "a4f2586389d02751416fc83ca1c5b29c7b1f44f8143697f1e9b28782ec009961"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/shell/commands.py",
+      "sha256": "14c5ce2a0905ae9e58a17ca35143c133c27f23570228089baf521bc6ef6f3cca",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/shell/commands.py",
+      "status": "migrated",
+      "target_sha256": "b77f3d2ebca1399aaf084ebdb402d60f52bc4ccd8c91e2131367ca16798d8fbb"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/shell/terminal.py",
+      "sha256": "241a710b0b23a3eb500f54e37ec29041e43e9ee513c761a587885c913f4d7f13",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/shell/terminal.py",
+      "status": "migrated",
+      "target_sha256": "7d1785d00fd15c7985d9fe8b412720ac1d858be129981bb73f92ef89c8cd0e1c"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/baseline_rules/tool.py",
+      "sha256": "351c86188bb8d5d0a24d2c9ba1cde49f698b0fc283b18d657b4c9ddc7c376d9e",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/baseline_rules/tool.py",
+      "status": "migrated",
+      "target_sha256": "6af67679e524f254eb76249fe6fbf3cbf604433c019db347bc11e49f5c226ab0"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/configurable/__init__.py",
+      "sha256": "cb5d9db2af9fe65d9c1a3fb38987e74a48deade2bbe547cedbaab80c126be060",
+      "disposition": "exclude_security_center",
+      "proposed_target": null,
+      "status": "excluded_security_center"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/configurable/policy.py",
+      "sha256": "6c781ed1a3fa06705c020e8eb8652ee80e71fa1ea19dbe3dcd103618b472de98",
+      "disposition": "exclude_security_center",
+      "proposed_target": null,
+      "status": "excluded_security_center"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/configurable/types.py",
+      "sha256": "1021c96922c8555703a67c07844c763ec9c894d85964a09cfeee26ae52f832e9",
+      "disposition": "exclude_security_center",
+      "proposed_target": null,
+      "status": "excluded_security_center"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/context.py",
+      "sha256": "2ad4b65c8a46ac051a6b74c80d91fbeaaec817978c540494aba24f4ded459a89",
+      "disposition": "split_shared_and_product_dependencies",
+      "proposed_target": "plugins/security-guardrail/guardrail/context.py",
+      "status": "migrated",
+      "target_sha256": "96aeb947940ceb9b9d2673c207307fd317050a21411f870e87b565131823ffea"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/contract.py",
+      "sha256": "febac2996ab477b5fdf7df17a03aec88adb5f2b84ac644136e4d1b065758583c",
+      "disposition": "split_shared_and_product_dependencies",
+      "proposed_target": "plugins/security-guardrail/guardrail/contract.py",
+      "status": "migrated",
+      "target_sha256": "cc1350804a109b51c37a9b24eabb50d5775b436e16e9d4b41b945a19189095f8"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/__init__.py",
+      "sha256": "ba01a135f37bcb65631c4d700c1ab9315dc7d6679d61a6c3e34511c71718f7ef",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/__init__.py",
+      "status": "migrated",
+      "target_sha256": "ba01a135f37bcb65631c4d700c1ab9315dc7d6679d61a6c3e34511c71718f7ef"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/data.py",
+      "sha256": "600416d7ede85a0028ac9957443d769cd9571507c86720554f7bb7511199a3f5",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/data.py",
+      "status": "migrated",
+      "target_sha256": "b038c389f350fc8cfc8a2ec5960180041422864ab00f7add0be62a6af745ccff"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/filesystem.py",
+      "sha256": "d434c5c09d1734798c1f38b9ae98d42c1fe3919e4f090ca3d25f84704fc6b879",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/filesystem.py",
+      "status": "migrated",
+      "target_sha256": "f4ca24564d398fd6555b418b57b091c0592ecee9851fdacc5f3a1e30963668f7"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/network.py",
+      "sha256": "cd636796f0a22fb0fffd43f963b141edc395a0bb280209733dcad6393df0efa4",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/network.py",
+      "status": "migrated",
+      "target_sha256": "469cb8ec25e6d0b9b63e262cdad367a408cb16e4781b16c520b0bf207862064d"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/__init__.py",
+      "sha256": "4b0ddc01987824be755ad10612c5b2ab9d4878aae4655a9658b4515b636a05b3",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/__init__.py",
+      "status": "migrated",
+      "target_sha256": "bf5320158ee81b2d88c2afda0de4de4df1096b524fe367ea9f2ee328ec99a9d4"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/_patterns.py",
+      "sha256": "8ccc8f68e0f14ecf75b7cd342f50e65a26e4bea921865169c5729b7909ff177f",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/_patterns.py",
+      "status": "migrated",
+      "target_sha256": "8ccc8f68e0f14ecf75b7cd342f50e65a26e4bea921865169c5729b7909ff177f"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/audit.py",
+      "sha256": "207502d5b3af0f80d47918744d29315754766873875df729d8cb126d3bfa44d4",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/audit.py",
+      "status": "migrated",
+      "target_sha256": "20e7ecbb0edb0cf3751667ac8ef0ff546d628c95a3f9aefad950ecbc207675b9"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/command_policy.py",
+      "sha256": "f9425b0f7ce02d48f1bb709413d2f2e8b7b594139ba5eb863b8e802795b35ed9",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/command_policy.py",
+      "status": "migrated",
+      "target_sha256": "b338fa0893850b3ca220c0ea007be9086f94c939bd351a6caee040ebf06ea899"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/communication.py",
+      "sha256": "23d3f4770d2f5a303b1834a47f02dcfa69d6322d55bd7a647a72974bda5d16e8",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/communication.py",
+      "status": "migrated",
+      "target_sha256": "a7e2beda1a879727ce05d13696375dcad84f66ed034a856613fc611bab456641"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/control_plane.py",
+      "sha256": "8e0dff9987609a68429b6b7ea4b8611ad691d0718cc57cd954081bdf07ae5dae",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/control_plane.py",
+      "status": "migrated",
+      "target_sha256": "29294bf47bed8e5f0a61de85d43a8456fa79d4fe6a714b64a3673c9fa603d9af"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/database.py",
+      "sha256": "969dfff80731192e2d6416faee79bb07f6d4aa06f7c80188b87385b8da2f9d39",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/database.py",
+      "status": "migrated",
+      "target_sha256": "20d42bb513bedb29d09f99c127ad67337116932147a971b4a0f1cf7b084573e0"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/delete_exempt.py",
+      "sha256": "54fccd940c69bf41639d6a1d7ed7fce6e888b65472ce07b3c600e6aee8c9dd6e",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/delete_exempt.py",
+      "status": "migrated",
+      "target_sha256": "234a7440133a59b82c4a9f31c04ee4cd6334d8b3301324bc7cbd9c884b89b25d"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/destruction.py",
+      "sha256": "3baffbce44248c0fc9149fca6d878c45c1c5c0c129c911857f09dd8de1ff73aa",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/destruction.py",
+      "status": "migrated",
+      "target_sha256": "c752d4e0d6414ea27a0d5be3951881d84bf576eccbe197fec6a742bc18424f58"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/development_workflow.py",
+      "sha256": "a9610f213b330468ced59493213eabb320e91268250ed24da129d0aae3b786a3",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/development_workflow.py",
+      "status": "migrated",
+      "target_sha256": "e143e9b14ccf7e3437eded8319761000d41001bad8f434e4574d6453ce0a88d2"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/execution.py",
+      "sha256": "594270d2402f1885b9b4ad5e20558eded3bf03d7ae8c56cfd6cbd5ec09391814",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/execution.py",
+      "status": "migrated",
+      "target_sha256": "1e551923226ffe12234f4e689b3db445a405bb597c4d5a6666f6010d77b1433c"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/host_boundary.py",
+      "sha256": "3747c9dd0419c3ef1fed55dc9b73022d1df3b7719bea54c29691edbc72f28396",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/host_boundary.py",
+      "status": "migrated",
+      "target_sha256": "f4218bf37cebd11075b22b5aab82cf5bce7ac3ad077871f9188e763a4f90efcf"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/http_request.py",
+      "sha256": "12265bbe2f31981197d9d44e58e3b7c6b9bdfcabff86db6aa150aff02bc95ebf",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/http_request.py",
+      "status": "migrated",
+      "target_sha256": "12265bbe2f31981197d9d44e58e3b7c6b9bdfcabff86db6aa150aff02bc95ebf"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/network_abuse.py",
+      "sha256": "8df452b1e0bf2d488f342bc5ad7335f8d1c5af23569621db3f85dc1e1dfb5b48",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/network_abuse.py",
+      "status": "migrated",
+      "target_sha256": "85e056873e6496b2a1c63578410a70e5231fda779376201c44b0401104ea941f"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/persistence.py",
+      "sha256": "c7c057ba510c14d4c3b9415cfb18f0c3e04fb3406f0a612b4e0ca43d1501175b",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/persistence.py",
+      "status": "migrated",
+      "target_sha256": "8298c127ba54ba7616c77b26822ab5ec9dbe94ba028b258e61dc11eba9b04483"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/profile.py",
+      "sha256": "5f6c11d3f7113d93b096d9d8477918b2863a5abb64163c08814fff0a6a0000c8",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/profile.py",
+      "status": "migrated",
+      "target_sha256": "cf1b16f93b0bff7c4ccbdcb2514bada47373212bd0c94a4b8b90c552a5ea0350"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/rule_filter.py",
+      "sha256": "f3c8898e1892d1679d24a96eac29e5051fb7a045a0b8df37e64dc14696837598",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/rule_filter.py",
+      "status": "migrated",
+      "target_sha256": "519001c89789a71590db2477b70035141ba57de218513e4ac8b152dafc1a6e4d"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/script_inspection.py",
+      "sha256": "55ea3358f01661631abbcbee595a93b62ae12154e9d23b04a84142b9765bd2c9",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/script_inspection.py",
+      "status": "migrated",
+      "target_sha256": "94f103825ed8433fa0b1d0e8aebd61f6946b600c54845544ebf5111314f48d0f"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/trusted_installers.py",
+      "sha256": "7d117641a3485dd77802e3a29d26d4e5b8758ff4bc7acbbffed42b2edcbd36be",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/trusted_installers.py",
+      "status": "migrated",
+      "target_sha256": "d34225ab2c5f84e97538f97781cf0388e853a23d6faf5f1c2ad38734bef14e42"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/vm_boundary.py",
+      "sha256": "a972c6042d4832aef292618a8592f4eb577a523472c325d18084b4cf998806c3",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/vm_boundary.py",
+      "status": "migrated",
+      "target_sha256": "0da5c92e74857bde93fee8d1cc2b96debd8fd12facc2adcfcd95818285473e6c"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/shell/workspace.py",
+      "sha256": "2dbe153067a9ce5a69c00e40d653487a887d3e4b2701742510bfc9560f99d4b3",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/shell/workspace.py",
+      "status": "migrated",
+      "target_sha256": "e9e5021906bc6d802edc6d6e3095e4994173a0ae35df4d22abc2db41f03fe57e"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/detectors/tool.py",
+      "sha256": "87c3259f8102e811b7565c0f225ae8a0f0555d8ba2c59ebd42ef20b7051d7b8d",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/detectors/tool.py",
+      "status": "migrated",
+      "target_sha256": "ef2dafdd6f169a3185ab0a863ac09ba30d0048758c0e0c219922713c7ba8f406"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/engine.py",
+      "sha256": "dd74216e0acbf3b3b9ca1d724a586e3d6c933336eae5aec2e0878c03d3f5bffa",
+      "disposition": "split_shared_and_product_dependencies",
+      "proposed_target": "plugins/security-guardrail/guardrail/engine.py",
+      "status": "migrated",
+      "target_sha256": "a053bb10603852dd209c698627f9ea6d29c168094528f7a6dc607f39e36ec517"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/matcher.py",
+      "sha256": "c40f2303085cd0ad61535cdbdaa04144ed78b74b67c93a914b01c6a6ad28e499",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/matcher.py",
+      "status": "migrated",
+      "target_sha256": "c40f2303085cd0ad61535cdbdaa04144ed78b74b67c93a914b01c6a6ad28e499"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/normalizer.py",
+      "sha256": "340a27d6cdef608ce4e3d7c6148933437b9a5ff6c6c796fafa800d4058f94ea1",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/normalizer.py",
+      "status": "migrated",
+      "target_sha256": "663a72525090d4225bd915b602fbe6a02783c676daa10f16403c3e5c1ae8889f"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/path_policy.py",
+      "sha256": "1fd3f3e91d74583e53a486de94e9563e3a7a3401fd9ad0306751c82e64eb9f6f",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/path_policy.py",
+      "status": "migrated",
+      "target_sha256": "e5b94c9d23dcbddb8f88827fdfb64dcda35deb959da1ca5fe4f95745b0decb83"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/sensitive_protection/__init__.py",
+      "sha256": "e9980f5ad8c9aa00354f6b5eb8e603041a3bd2be20966b93e665b9f6e2cbe7b8",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/sensitive_protection/__init__.py",
+      "status": "migrated",
+      "target_sha256": "e9980f5ad8c9aa00354f6b5eb8e603041a3bd2be20966b93e665b9f6e2cbe7b8"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/sensitive_protection/assets/BETTERLEAKS_LICENSE.txt",
+      "sha256": "efd55baee4b5f8b54e0992efaa1b82580198feb40d28c161f7258946096b74bd",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/sensitive_protection/assets/BETTERLEAKS_LICENSE.txt",
+      "status": "migrated",
+      "target_sha256": "efd55baee4b5f8b54e0992efaa1b82580198feb40d28c161f7258946096b74bd"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/sensitive_protection/assets/catalog.json",
+      "sha256": "52ad7d10c26da3e0413ece48cace820ea39ae2b258872391a21f31053e5acf11",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/sensitive_protection/assets/catalog.json",
+      "status": "migrated",
+      "target_sha256": "52ad7d10c26da3e0413ece48cace820ea39ae2b258872391a21f31053e5acf11"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/sensitive_protection/catalog.py",
+      "sha256": "7885182d37c0b8c80430068f04c25de0f3e3e3de5dbff291725fedb0e519949b",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/sensitive_protection/catalog.py",
+      "status": "migrated",
+      "target_sha256": "c030fc30f832d858c31d53d8c001de5f7465b35cdc43c89998512d09d973fcdb"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/sensitive_protection/detector.py",
+      "sha256": "0aa1870dbbb206af26ac11108972c7efe985009af678d4fba4cf7ab9e2187fca",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/sensitive_protection/detector.py",
+      "status": "migrated",
+      "target_sha256": "0aa1870dbbb206af26ac11108972c7efe985009af678d4fba4cf7ab9e2187fca"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/sensitive_protection/types.py",
+      "sha256": "a55493e9a5c2446657af2611126b1ad2256785797595455b1854aca653d3ab30",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/sensitive_protection/types.py",
+      "status": "migrated",
+      "target_sha256": "a55493e9a5c2446657af2611126b1ad2256785797595455b1854aca653d3ab30"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/sensitive_protection/validators.py",
+      "sha256": "cbf2634823e2213cb82f45b57ef163ca38ea350d602b4f938f9d1022c81e6103",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/sensitive_protection/validators.py",
+      "status": "migrated",
+      "target_sha256": "cbf2634823e2213cb82f45b57ef163ca38ea350d602b4f938f9d1022c81e6103"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/shell_syntax.py",
+      "sha256": "08d0e07744a05ae93b891e1bcd1848b3cc7071225cf6d048f11dc1742a02f700",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/shell_syntax.py",
+      "status": "migrated",
+      "target_sha256": "08d0e07744a05ae93b891e1bcd1848b3cc7071225cf6d048f11dc1742a02f700"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/signals.py",
+      "sha256": "fa3b1ed43b49e53032d60a551821922fd24fdafb96f7e36d6548729085b1d2a0",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/signals.py",
+      "status": "migrated",
+      "target_sha256": "fa3b1ed43b49e53032d60a551821922fd24fdafb96f7e36d6548729085b1d2a0"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/tool_schema.py",
+      "sha256": "cc80c1bdca6d65290fa5f7d1565706da29f5af5849e40aaabd1c538a1b54f713",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/tool_schema.py",
+      "status": "migrated",
+      "target_sha256": "1fa093e1bacce5b77f9e5e7f222557762468ab7c79627fdfce63c9b4d4570ff0"
+    },
+    {
+      "source": "libs/hexagent/hexagent/harness/guardrail/types.py",
+      "sha256": "d66fcd0236d2ab13b1c319460e4a36956aef1c6ef684945e92a69a29f56f62ba",
+      "disposition": "migrate_with_host_adaptation",
+      "proposed_target": "plugins/security-guardrail/guardrail/types.py",
+      "status": "migrated",
+      "target_sha256": "d66fcd0236d2ab13b1c319460e4a36956aef1c6ef684945e92a69a29f56f62ba"
+    }
+  ],
+  "source_tests": [
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_ask_baseline.py",
+      "sha256": "2f6dd5769a08185688d9171fa374a231eecaa15ed7dd15a26f6a8f3cbe3994b2",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_ask_baseline.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_audit_input.py",
+      "sha256": "7350a0caeaef457b16b59bb5ed27fb8ab8a5b3052d6c6ee4aa629218c37d113a",
+      "status": "excluded",
+      "target": null,
+      "note": "Security Center-specific policy/audit feature excluded by approved scope."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_baseline_routing.py",
+      "sha256": "92ffc9d915c86b1a6a403f5a7a38f82af5e1ab0bfaef10437a88bd764fc3f2eb",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_baseline_routing.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_baseline_rules.py",
+      "sha256": "e5d718044085bdd4b2d0e8faf161ff0e6efc7d0a96c9cd2fdf730ab5aeb32356",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_baseline_rules.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_build_profile_mapping.py",
+      "sha256": "c3955b48844253f3490eb3f4939b9347c0726cbbe852b3954095fd2a47134d52",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Explicit profiles in all_ask matrix and pro_vm_extra; source packaging/AST scanning excluded."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_common_baseline.py",
+      "sha256": "8a4668b2756ad59c2ec93155e136c7defb62b92dc11220761dd3b86ca909192b",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_common_baseline.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_configurable.py",
+      "sha256": "7be0214d4d0d069fca12cfe9610e7ab014a1b1a08d3350072b4cd792b2d2cf18",
+      "status": "excluded",
+      "target": null,
+      "note": "Security Center-specific policy/audit feature excluded by approved scope."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_contract_p0.py",
+      "sha256": "2ca7b1d4fd14f8f8fa0586b4fc87df9f62111bed40a8b53c6f4da5f59afdf787",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Internal/isolated contract and semantics tests; no inferred product profile or model-name privilege."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_critical_config_protection.py",
+      "sha256": "56de88c41598d2540e252cbc362e07db7c5708923c9b6c5f8ec5ea4933e30802",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Representative critical configuration in all_ask matrix and original ask_baseline; full original file not run."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_lite_bypass_regressions.py",
+      "sha256": "56f97d264f186ead975a879aa8ba4b41ec21b4370d183f9e78821f93401742ec",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_lite_bypass_regressions.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_lite_extra.py",
+      "sha256": "805021da9e9a833570592180a4bd695edad7b1f9d520ee1487cb5f92c5fc6920",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_lite_extra.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_mcp_cache_cleanup.py",
+      "sha256": "4233bb2715a2bc60475299cb0d4c5db6520928bee352c7e8ff2616eb7aa24e1f",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Product-specific exemption retained behind explicit context, default disabled; expanded product integration cases reserved for later capability validation."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_node_package_permissions.py",
+      "sha256": "3fafa5d7a86456f2a83897fd9a9b2936907626785b77a9cf53bc8d20cb7c634c",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Original command detection preserved; representative ASK/AUTO in all_ask matrix. Full product profile/public facade matrix not run."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_performance.py",
+      "sha256": "7b47fab6d2f0725699c3df092d3e2d1fa742060569f72e9cc7605e38ebd4c061",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Timing benchmark not copied as migration correctness gate; performance validation remains a later concern."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_permission_reasons.py",
+      "sha256": "82ccf8b5ec0865dfe6a686818669ba2d707c5c7af223df620ea920d05900616f",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Rule metadata exact comparison, all_ask reason markers and source-decision comparison; Security Center-specific prefix removed."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_pro_vm_extra.py",
+      "sha256": "15df524ce4ce9f5f949591d1ab2d6c5479fb5d6161e39bdd8162e1901d3962e2",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_pro_vm_extra.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_product_install_protection.py",
+      "sha256": "2d8d75de195494855678db8567d732a68687ae8067204716303bace2c1667ea3",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Internal request tests verify explicit protection roots and hard deny precedence; frozen/product environment resolver excluded."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_public_all_ask_rules.py",
+      "sha256": "6184b2ccd79a169742bb8f33110d43939e0caa074294c0cd19e38f85ab5dd5eb",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "All source representative ASK cases extracted to fixtures/all_ask_cases.json; test_all_ask_semantics tests all applicable profiles/modes."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_public_ask_semantic_boundaries.py",
+      "sha256": "dbc987b5fd6ae1e13b098b09126779d850d3e066193e2d306cd4f4f7939e5bbb",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Representative ASK cases, priority and explicit cwd/workspace tests; exhaustive original public facade scenarios not yet run."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_public_ask_workspace_matrix.py",
+      "sha256": "22995dd38e253f80336647dbd4a2fdff9d02432394ad7b58321e149e823e607c",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Explicit cwd/workspace split regression in test_semantics and original ask_baseline; full matrix reserved for later validation."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_runtime_action.py",
+      "sha256": "b13a525c7f094a38747d0857811912b41461a9acb59f531ad8a8a40f067bf7fd",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_runtime_action.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_scp_nmap_redirections.py",
+      "sha256": "f16816b4727f481512293afd2cafa27094267d4af999262405e5ac7fa7ac3567",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Source parsing/detection code retained; broad original ask_baseline covers shell external-transfer behaviors. Dedicated original redirect matrix not yet run."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_sensitive_protection.py",
+      "sha256": "18e8cdde07d09f9d4b7e580314ec79cd55007cf62c66f7e1a7c5a0e46f3f5c08",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_sensitive_protection.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_sessions_appdata_permissions.py",
+      "sha256": "396040f5711726bc5696367c11b6e3bc137b26a8ae1b93f3bf01e09643107a60",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Original exception logic retained with explicit product environment; test_semantics verifies opt-in/scoping. Full product-specific session matrix not run."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_substitution_redirections.py",
+      "sha256": "f641ea33202eea67b5644b902d84978c31f00e6e19f88758c40e83ef84dc301d",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Normalizer and shell analysis retained with original runtime_action/common/ask tests; dedicated original substitution matrix not yet run."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_tool_schema_contract.py",
+      "sha256": "c128f7a19374608f2ff1d31feacf43ff616a909502ef1c058b1fc5f0db455588",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_tool_schema_contract.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/guardrail/test_trusted_installers.py",
+      "sha256": "178ba7e3b4e1159fb02ae95ada3ebaa5edfe1d2d5cae4d6ec6f8ab12293f9dd3",
+      "status": "representative_replacement_or_later_matrix",
+      "target": "tests/plugins/security_guardrail/",
+      "note": "Trusted installer recognizer retained behind explicit context; runtime defaults disabled as agreed. Full original installer matrix not yet run."
+    },
+    {
+      "source": "libs/hexagent/tests/unit_tests/harness/test_guardrail.py",
+      "sha256": "3934f48aa32a857713df0a6aedb9482300f906cc025857842c096c020b1fd9fd",
+      "status": "ported_or_rewritten",
+      "target": "tests\\plugins\\security_guardrail\\original\\test_guardrail.py",
+      "note": "Package imports/fixtures adapted; exact excluded functions recorded in initial test-port map where applicable."
+    }
+  ],
+  "new_plugin_modules": [
+    {
+      "path": "plugins/security-guardrail/contracts.py",
+      "sha256": "ea47f7f08dc0c1bfda8022b962b93af7413f85c5d5d1ed76e0980e27b11eff34"
+    },
+    {
+      "path": "plugins/security-guardrail/guardrail/runtime.py",
+      "sha256": "99c648c9718e1de760b8330a2e9b6e79b3a4ad516b00330d75f2ad8cd078639a"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 2 test files (~9 tests) under ['tests\\plugins\\security_guardrail\\test_semantics.py', 'tests\\plugins\\security_guardrail\\test_isolated_package.py']; running with -j 16
+[ 22.2% |     2/~9 | ✓3 | ✗0] ✓ tests\plugins\security_guardrail\test_isolated_package.py (3✓, 6.7s)
+[100.0% |     9/~9 | ✓ 9 | ✗ 1] ✗ tests\plugins\security_guardrail\test_semantics.py (6✓ 1✗, 10.6s)
+
+  ╔╍ Failed: tests\plugins\security_guardrail\test_semantics.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ .....F.                                                                  [100%]
+  ║ ================================== FAILURES ===================================
+  ║ _____________ test_explicit_script_reader_is_bounded_and_required _____________
+  ║ 
+  ║ candidate = <module 'guardrail_candidate_baa89d60e7b94889aaff975d745789b0' from 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-tx2d2umx\\pytest-of-unknown\\pytest-0\\test_explicit_script_reader_is0\\installed-plugin\\__init__.py'>
+  ║ 
+  ║     def test_explicit_script_reader_is_bounded_and_required(candidate):
+  ║         contracts, types, runtime = api(candidate)
+  ║         req = request(contracts, types, tool_name="Bash", args={"command": "python helper.py"}, mode=types.PermissionMode.AUTO)
+  ║         with pytest.raises(runtime.ContextUnavailableError):
+  ║             contracts.evaluate_tool_call(req)
+  ║         calls = []
+  ║     
+  ║         def reader(path, limit):
+  ║             calls.append((path, limit))
+  ║             return b"print('hello')"
+  ║     
+  ║         result = contracts.evaluate_tool_call(replace(req, environment=runtime.ExecutionEnvironment(script_reader=reader)))
+  ║         assert result.behavior == types.DecisionBehavior.ALLOW
+  ║ >       assert calls and all(path == "/workspace/helper.py" and 0 < limit <= 1024 * 1024 for path, limit in calls)
+  ║ E       AssertionError: assert ([('/workspace/helper.py', 1048577)] and False)
+  ║ E        +  where False = all(<generator object test_explicit_script_reader_is_bounded_and_required.<locals>.<genexpr> at 0x0000025BCDF81000>)
+  ║ 
+  ║ tests\plugins\security_guardrail\test_semantics.py:95: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/plugins/security_guardrail/test_semantics.py::test_explicit_script_reader_is_bounded_and_required
+  ║ 1 failed, 6 passed in 6.31s
+  ║
+  ║  Repro: python -m pytest tests\plugins\security_guardrail\test_semantics.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+
+=== Summary: 2 files, 9 tests passed, 1 failed (100% complete) in 12.6s (16 workers) ===
+  Durations cached to test_durations.json (1 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   2
+  Total subprocess CPU-wall: 17.3s  (runner wall: 12.6s, parallelism: 16x)
+  P50: 10.60s  P90: 10.60s  P95: 10.60s  P99: 10.60s  Max: 10.60s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     10.60s  tests\plugins\security_guardrail\test_semantics.py
+      6.67s  tests\plugins\security_guardrail\test_isolated_package.py
+
+=== Failure output ===
+
+--- tests\plugins\security_guardrail\test_semantics.py ---
+.....F.                                                                  [100%]
+================================== FAILURES ===================================
+_____________ test_explicit_script_reader_is_bounded_and_required _____________
+
+candidate = <module 'guardrail_candidate_baa89d60e7b94889aaff975d745789b0' from 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-tx2d2umx\\pytest-of-unknown\\pytest-0\\test_explicit_script_reader_is0\\installed-plugin\\__init__.py'>
+
+    def test_explicit_script_reader_is_bounded_and_required(candidate):
+        contracts, types, runtime = api(candidate)
+        req = request(contracts, types, tool_name="Bash", args={"command": "python helper.py"}, mode=types.PermissionMode.AUTO)
+        with pytest.raises(runtime.ContextUnavailableError):
+            contracts.evaluate_tool_call(req)
+        calls = []
+    
+        def reader(path, limit):
+            calls.append((path, limit))
+            return b"print('hello')"
+    
+        result = contracts.evaluate_tool_call(replace(req, environment=runtime.ExecutionEnvironment(script_reader=reader)))
+        assert result.behavior == types.DecisionBehavior.ALLOW
+>       assert calls and all(path == "/workspace/helper.py" and 0 < limit <= 1024 * 1024 for path, limit in calls)
+E       AssertionError: assert ([('/workspace/helper.py', 1048577)] and False)
+E        +  where False = all(<generator object test_explicit_script_reader_is_bounded_and_required.<locals>.<genexpr> at 0x0000025BCDF81000>)
+
+tests\plugins\security_guardrail\test_semantics.py:95: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/plugins/security_guardrail/test_semantics.py::test_explicit_script_reader_is_bounded_and_required
+1 failed, 6 passed in 6.31s
+
+=== 1 file with test failures (1 test failed) ===
+  tests\plugins\security_guardrail\test_semantics.py  (1 test failed)

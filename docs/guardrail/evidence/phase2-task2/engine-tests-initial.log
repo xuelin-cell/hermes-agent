@@ -1,0 +1,329 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 11 test files (~313 tests) under ['tests\\plugins\\security_guardrail']; running with -j 16
+[  0.6% |     2/~313 | ✓0 | ✗0] ✗ tests\plugins\security_guardrail\original\test_tool_schema_contract.py (1e, 7.9s)
+
+  ╔╍ Failed: tests\plugins\security_guardrail\original\test_tool_schema_contract.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ 
+  ║ =================================== ERRORS ====================================
+  ║ _ ERROR collecting tests/plugins/security_guardrail/original/test_tool_schema_contract.py _
+  ║ ImportError while importing test module 'D:\liantong\projects\python\hermes-agent\tests\plugins\security_guardrail\original\test_tool_schema_contract.py'.
+  ║ Hint: make sure your test modules/packages have valid Python names.
+  ║ Traceback:
+  ║ .hermes\windows-activation\data\tools\python-3.14.7+20260901-win32-x64\Lib\importlib\__init__.py:88: in import_module
+  ║     return _bootstrap._gcd_import(name[level:], package, level)
+  ║            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  ║ tests\plugins\security_guardrail\original\test_tool_schema_contract.py:15: in <module>
+  ║     from hexagent.tools import (
+  ║ E   ModuleNotFoundError: No module named 'hexagent'
+  ║ =========================== short test summary info ===========================
+  ║ ERROR tests/plugins/security_guardrail/original/test_tool_schema_contract.py
+  ║ !!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+  ║ 1 error in 1.89s
+  ║
+  ║  Repro: python -m pytest tests\plugins\security_guardrail\original\test_tool_schema_contract.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[ 26.8% |    84/~313 | ✓0 | ✗0] ✗ tests\plugins\security_guardrail\original\test_ask_baseline.py (1e, 8.5s)
+
+  ╔╍ Failed: tests\plugins\security_guardrail\original\test_ask_baseline.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ 
+  ║ =================================== ERRORS ====================================
+  ║ _ ERROR collecting tests/plugins/security_guardrail/original/test_ask_baseline.py _
+  ║ ImportError while importing test module 'D:\liantong\projects\python\hermes-agent\tests\plugins\security_guardrail\original\test_ask_baseline.py'.
+  ║ Hint: make sure your test modules/packages have valid Python names.
+  ║ Traceback:
+  ║ .hermes\windows-activation\data\tools\python-3.14.7+20260901-win32-x64\Lib\importlib\__init__.py:88: in import_module
+  ║     return _bootstrap._gcd_import(name[level:], package, level)
+  ║            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  ║ tests\plugins\security_guardrail\original\test_ask_baseline.py:59: in <module>
+  ║     from tests.unit_tests.harness.guardrail import ASK_ALL_POLICY
+  ║ E   ModuleNotFoundError: No module named 'tests.unit_tests'
+  ║ =========================== short test summary info ===========================
+  ║ ERROR tests/plugins/security_guardrail/original/test_ask_baseline.py
+  ║ !!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+  ║ 1 error in 2.48s
+  ║
+  ║  Repro: python -m pytest tests\plugins\security_guardrail\original\test_ask_baseline.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[ 27.8% |    87/~313 | ✓3 | ✗0] ✓ tests\plugins\security_guardrail\original\test_baseline_routing.py (3✓, 10.0s)
+[ 28.4% |    89/~313 | ✓5 | ✗0] ✓ tests\plugins\security_guardrail\test_engine_contract.py (2✓, 10.8s)
+[ 29.4% |    92/~313 | ✓20 | ✗ 0] ✓ tests\plugins\security_guardrail\original\test_lite_extra.py (15✓, 11.4s)
+[ 34.8% |   109/~313 | ✓66 | ✗ 0] ✓ tests\plugins\security_guardrail\original\test_pro_vm_extra.py (46✓, 13.4s)
+[ 41.2% |   129/~313 | ✓117 | ✗  1] ✗ tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py (51✓ 1✗, 14.7s)
+
+  ╔╍ Failed: tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ plugins\security-guardrail\guardrail\detectors\shell\script_inspection.py:108: in load_referenced_scripts
+  ║     path = _resolve_script_path(raw_path, current_dir)
+  ║            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  ║ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  ║ 
+  ║ raw_path = 'helper.py', cwd = None
+  ║ 
+  ║     def _resolve_script_path(raw_path: str, cwd: str | None) -> PurePath:
+  ║         environment = execution_environment()
+  ║         def expand(match):
+  ║             name = next(value for value in match.groups() if value is not None)
+  ║             if name not in environment.variables:
+  ║                 raise ContextUnavailableError("Script variable is not supplied by the execution host")
+  ║             return environment.variables[name]
+  ║         expanded = re.sub(r"\$(?:\{(\w+)\}|(\w+))|%(\w+)%", expand, raw_path.strip().strip("\"'`"))
+  ║         if expanded == "~" or expanded.startswith(("~/", "~\\")):
+  ║             if environment.home is None:
+  ║                 raise ContextUnavailableError("Script home is unknown")
+  ║             expanded = environment.home + expanded[1:]
+  ║         cls = PureWindowsPath if environment.operating_system == OperatingSystem.WINDOWS else PurePosixPath
+  ║         path = cls(expanded)
+  ║         if not path.is_absolute():
+  ║             if not cwd:
+  ║ >               raise ContextUnavailableError("Script working directory is unknown")
+  ║ E               _guardrail_migrated.guardrail.runtime.ContextUnavailableError: Script working directory is unknown
+  ║ 
+  ║ plugins\security-guardrail\guardrail\detectors\shell\script_inspection.py:384: ContextUnavailableError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/plugins/security_guardrail/original/test_lite_bypass_regressions.py::test_safe_wrapper_and_subdirectory_operations_are_not_terminal_deny[python helper.py --dump-all]
+  ║ 1 failed, 51 passed in 9.27s
+  ║
+  ║  Repro: python -m pytest tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[ 50.5% |   158/~313 | ✓193 | ✗  1] ✓ tests\plugins\security_guardrail\original\test_baseline_rules.py (76✓, 15.2s)
+[ 62.3% |   195/~313 | ✓294 | ✗  1] ✓ tests\plugins\security_guardrail\original\test_runtime_action.py (101✓, 16.5s)
+[ 95.8% |   300/~313 | ✓399 | ✗  1] ✓ tests\plugins\security_guardrail\original\test_common_baseline.py (105✓, 17.2s)
+[100.0% |   313/~313 | ✓567 | ✗  2] ✗ tests\plugins\security_guardrail\original\test_sensitive_protection.py (168✓ 1✗, 19.5s)
+
+  ╔╍ Failed: tests\plugins\security_guardrail\original\test_sensitive_protection.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║         with pytest.raises(TypeError):
+  ║     
+  ║             disabled_phone.rule_overrides["uniwork.pii.cn-mobile"] = True
+  ║     
+  ║         get_sensitive_catalog()
+  ║     
+  ║         monkeypatch.chdir(tmp_path)
+  ║     
+  ║         text = "手机号：13800138000"
+  ║     
+  ║         first = inspect_sensitive_text(text, policy=policy())
+  ║     
+  ║         first["findings"][0]["original_value"] = "changed return value"
+  ║     
+  ║         second = inspect_sensitive_text(text, policy=policy())
+  ║     
+  ║         assert second == inspect_sensitive_text(text, policy=policy())
+  ║     
+  ║         assert second["findings"][0]["original_value"] == "13800138000"
+  ║     
+  ║ >       assert list(tmp_path.iterdir()) == []
+  ║ E       AssertionError: assert [WindowsPath(...hermes_test')] == []
+  ║ E         
+  ║ E         Left contains one more item: WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-538oayr7/pytest-of-unknown/pytest-0/test_policy_is_immutable_and_i0/hermes_test')
+  ║ E         Use -v to get more diff
+  ║ 
+  ║ D:\liantong\projects\python\hermes-agent\tests\plugins\security_guardrail\original\test_sensitive_protection.py:325: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/plugins/security_guardrail/original/test_sensitive_protection.py::test_policy_is_immutable_and_inspection_is_deterministic_without_writes
+  ║ 1 failed, 168 passed in 14.21s
+  ║
+  ║  Repro: python -m pytest tests\plugins\security_guardrail\original\test_sensitive_protection.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+
+=== Summary: 11 files, 567 tests passed, 2 failed (100% complete) in 21.0s (16 workers) ===
+  Durations cached to test_durations.json (7 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   11
+  Total subprocess CPU-wall: 145.2s  (runner wall: 21.0s, parallelism: 16x)
+  P50: 13.40s  P90: 17.21s  P95: 19.53s  P99: 19.53s  Max: 19.53s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     19.53s  tests\plugins\security_guardrail\original\test_sensitive_protection.py
+     17.21s  tests\plugins\security_guardrail\original\test_common_baseline.py
+     16.51s  tests\plugins\security_guardrail\original\test_runtime_action.py
+     15.18s  tests\plugins\security_guardrail\original\test_baseline_rules.py
+     14.68s  tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py
+     13.40s  tests\plugins\security_guardrail\original\test_pro_vm_extra.py
+     11.38s  tests\plugins\security_guardrail\original\test_lite_extra.py
+     10.84s  tests\plugins\security_guardrail\test_engine_contract.py
+     10.05s  tests\plugins\security_guardrail\original\test_baseline_routing.py
+      8.52s  tests\plugins\security_guardrail\original\test_ask_baseline.py
+
+=== Failure output ===
+
+--- tests\plugins\security_guardrail\original\test_tool_schema_contract.py ---
+
+=================================== ERRORS ====================================
+_ ERROR collecting tests/plugins/security_guardrail/original/test_tool_schema_contract.py _
+ImportError while importing test module 'D:\liantong\projects\python\hermes-agent\tests\plugins\security_guardrail\original\test_tool_schema_contract.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.hermes\windows-activation\data\tools\python-3.14.7+20260901-win32-x64\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\plugins\security_guardrail\original\test_tool_schema_contract.py:15: in <module>
+    from hexagent.tools import (
+E   ModuleNotFoundError: No module named 'hexagent'
+=========================== short test summary info ===========================
+ERROR tests/plugins/security_guardrail/original/test_tool_schema_contract.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.89s
+
+--- tests\plugins\security_guardrail\original\test_ask_baseline.py ---
+
+=================================== ERRORS ====================================
+_ ERROR collecting tests/plugins/security_guardrail/original/test_ask_baseline.py _
+ImportError while importing test module 'D:\liantong\projects\python\hermes-agent\tests\plugins\security_guardrail\original\test_ask_baseline.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+.hermes\windows-activation\data\tools\python-3.14.7+20260901-win32-x64\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\plugins\security_guardrail\original\test_ask_baseline.py:59: in <module>
+    from tests.unit_tests.harness.guardrail import ASK_ALL_POLICY
+E   ModuleNotFoundError: No module named 'tests.unit_tests'
+=========================== short test summary info ===========================
+ERROR tests/plugins/security_guardrail/original/test_ask_baseline.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 2.48s
+
+--- tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py ---
+.......................................F............                     [100%]
+================================== FAILURES ===================================
+_ test_safe_wrapper_and_subdirectory_operations_are_not_terminal_deny[python helper.py --dump-all] _
+
+command = 'python helper.py --dump-all'
+
+    @pytest.mark.parametrize(
+    
+        "command",
+    
+        [
+    
+            "Start-Process notepad.exe -ArgumentList 'guardrail_test.txt'",
+    
+            "python helper.py --dump-all",
+    
+            "Get-ChildItem D:\\guardrail_test -Force | Remove-Item -Recurse -Force",
+    
+            "powershell -Command \"Set-Content -Path 'D:\\guardrail_test\\hosts' -Value 'test'\"",
+    
+            "Write-Output \"Start-Process format.com -ArgumentList 'E: /Q /Y'\"",
+    
+            "Write-Output 'python sqlmap.py --dump-all'",
+    
+        ],
+    
+    )
+    
+    def test_safe_wrapper_and_subdirectory_operations_are_not_terminal_deny(command: str) -> None:
+    
+>       result = _evaluate(command)
+                 ^^^^^^^^^^^^^^^^^^
+
+tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py:609: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py:57: in _evaluate
+    return check_terminal_baseline(action)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+plugins\security-guardrail\guardrail\baseline.py:33: in check_terminal_baseline
+    result = detector(action)
+             ^^^^^^^^^^^^^^^^
+plugins\security-guardrail\guardrail\detectors\shell\__init__.py:228: in detect_terminal_deny
+    script_result = _detect_referenced_script_terminal_deny(action, script_rules, command_profile, _script_depth)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+plugins\security-guardrail\guardrail\detectors\shell\__init__.py:241: in _detect_referenced_script_terminal_deny
+    for script in script_inspection.load_referenced_scripts(action, command_profile=command_profile):
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+plugins\security-guardrail\guardrail\detectors\shell\script_inspection.py:108: in load_referenced_scripts
+    path = _resolve_script_path(raw_path, current_dir)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+raw_path = 'helper.py', cwd = None
+
+    def _resolve_script_path(raw_path: str, cwd: str | None) -> PurePath:
+        environment = execution_environment()
+        def expand(match):
+            name = next(value for value in match.groups() if value is not None)
+            if name not in environment.variables:
+                raise ContextUnavailableError("Script variable is not supplied by the execution host")
+            return environment.variables[name]
+        expanded = re.sub(r"\$(?:\{(\w+)\}|(\w+))|%(\w+)%", expand, raw_path.strip().strip("\"'`"))
+        if expanded == "~" or expanded.startswith(("~/", "~\\")):
+            if environment.home is None:
+                raise ContextUnavailableError("Script home is unknown")
+            expanded = environment.home + expanded[1:]
+        cls = PureWindowsPath if environment.operating_system == OperatingSystem.WINDOWS else PurePosixPath
+        path = cls(expanded)
+        if not path.is_absolute():
+            if not cwd:
+>               raise ContextUnavailableError("Script working directory is unknown")
+E               _guardrail_migrated.guardrail.runtime.ContextUnavailableError: Script working directory is unknown
+
+plugins\security-guardrail\guardrail\detectors\shell\script_inspection.py:384: ContextUnavailableError
+=========================== short test summary info ===========================
+FAILED tests/plugins/security_guardrail/original/test_lite_bypass_regressions.py::test_safe_wrapper_and_subdirectory_operations_are_not_terminal_deny[python helper.py --dump-all]
+1 failed, 51 passed in 9.27s
+
+--- tests\plugins\security_guardrail\original\test_sensitive_protection.py ---
+........................................................................ [ 42%]
+........................................................................ [ 85%]
+..............F..........                                                [100%]
+================================== FAILURES ===================================
+___ test_policy_is_immutable_and_inspection_is_deterministic_without_writes ___
+
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-538oayr7/pytest-of-unknown/pytest-0/test_policy_is_immutable_and_i0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028600439710>
+caplog = <_pytest.logging.LogCaptureFixture object at 0x0000028600319A90>
+
+    def test_policy_is_immutable_and_inspection_is_deterministic_without_writes(tmp_path, monkeypatch, caplog):
+    
+        choices = {"uniwork.pii.cn-mobile": False}
+    
+        disabled_phone = SensitivePolicySnapshot(revision=5, enabled=True, rule_overrides=choices, reference_date=_TODAY)
+    
+        choices.clear()
+    
+        assert inspect_sensitive_text("手机号：13800138000", policy=disabled_phone)["findings"] == []
+    
+        with pytest.raises(TypeError):
+    
+            disabled_phone.rule_overrides["uniwork.pii.cn-mobile"] = True
+    
+        get_sensitive_catalog()
+    
+        monkeypatch.chdir(tmp_path)
+    
+        text = "手机号：13800138000"
+    
+        first = inspect_sensitive_text(text, policy=policy())
+    
+        first["findings"][0]["original_value"] = "changed return value"
+    
+        second = inspect_sensitive_text(text, policy=policy())
+    
+        assert second == inspect_sensitive_text(text, policy=policy())
+    
+        assert second["findings"][0]["original_value"] == "13800138000"
+    
+>       assert list(tmp_path.iterdir()) == []
+E       AssertionError: assert [WindowsPath(...hermes_test')] == []
+E         
+E         Left contains one more item: WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-538oayr7/pytest-of-unknown/pytest-0/test_policy_is_immutable_and_i0/hermes_test')
+E         Use -v to get more diff
+
+D:\liantong\projects\python\hermes-agent\tests\plugins\security_guardrail\original\test_sensitive_protection.py:325: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/plugins/security_guardrail/original/test_sensitive_protection.py::test_policy_is_immutable_and_inspection_is_deterministic_without_writes
+1 failed, 168 passed in 14.21s
+
+=== 2 files with test failures (2 tests failed) ===
+  tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py  (1 test failed)
+  tests\plugins\security_guardrail\original\test_sensitive_protection.py  (1 test failed)
+=== 2 files where no tests ran (collection/import error, timeout before collection, etc.) ===
+  tests\plugins\security_guardrail\original\test_tool_schema_contract.py
+  tests\plugins\security_guardrail\original\test_ask_baseline.py

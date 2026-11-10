@@ -1,0 +1,3374 @@
+{
+  "source_commit": "c6a66bbf1abaddf4d12483ef66850adcebe528d2",
+  "method": "source deterministic engine with all ASK rules configured ASK vs candidate direct ASK; no dangerous commands executed",
+  "comparisons": [
+    {
+      "case": "common.filesystem.hexagent_config_write",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.hexagent_config_write"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.hexagent_config_write"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.filesystem.hexagent_config_write",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.hexagent_config_write",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.hexagent_config_write"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.hexagent_config_write"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.filesystem.hexagent_config_write",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.hexagent_config_write",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.hexagent_config_write"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.hexagent_config_write"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.filesystem.hexagent_config_write",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.delete_mutation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.delete_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.delete_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.filesystem.delete_mutation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.delete_mutation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.delete_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.delete_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.filesystem.delete_mutation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.delete_mutation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.delete_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.delete_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.filesystem.delete_mutation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.workspace_external_mutation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.workspace_external_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.workspace_external_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.filesystem.workspace_external_mutation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.workspace_external_mutation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.workspace_external_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.workspace_external_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.filesystem.workspace_external_mutation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.filesystem.workspace_external_mutation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.workspace_external_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.filesystem.workspace_external_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.filesystem.workspace_external_mutation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.data.secret_value_candidate",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.secret_value_candidate"
+        ],
+        "source": "ask_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.secret_value_candidate"
+        ],
+        "source": "ask_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "common.data.secret_value_candidate",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.data.secret_value_candidate",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.secret_value_candidate"
+        ],
+        "source": "ask_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.secret_value_candidate"
+        ],
+        "source": "ask_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "common.data.secret_value_candidate",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.data.secret_value_candidate",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.secret_value_candidate"
+        ],
+        "source": "ask_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.secret_value_candidate"
+        ],
+        "source": "ask_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "common.data.secret_value_candidate",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.data.external_file_transfer",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.external_file_transfer"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.external_file_transfer"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      }
+    },
+    {
+      "case": "common.data.external_file_transfer",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.data.external_file_transfer",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.external_file_transfer"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.external_file_transfer"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      }
+    },
+    {
+      "case": "common.data.external_file_transfer",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.data.external_file_transfer",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.external_file_transfer"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.data.external_file_transfer"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      }
+    },
+    {
+      "case": "common.data.external_file_transfer",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.command_history_evasion",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.command_history_evasion"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.command_history_evasion"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.shell.command_history_evasion",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.command_history_evasion",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.command_history_evasion"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.command_history_evasion"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.shell.command_history_evasion",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.command_history_evasion",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.command_history_evasion"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.command_history_evasion"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.shell.command_history_evasion",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.log_audit_destruction",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.log_audit_destruction"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.log_audit_destruction"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.shell.log_audit_destruction",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.log_audit_destruction",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.log_audit_destruction"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.log_audit_destruction"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.shell.log_audit_destruction",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.log_audit_destruction",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.log_audit_destruction"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.log_audit_destruction"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "common.shell.log_audit_destruction",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.git_destructive_operation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.git_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.git_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.git_destructive_operation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.git_destructive_operation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.git_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.git_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.git_destructive_operation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.git_destructive_operation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.git_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.git_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.git_destructive_operation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_repository_mutation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_repository_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_repository_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.external_repository_mutation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_repository_mutation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_repository_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_repository_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.external_repository_mutation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_repository_mutation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_repository_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_repository_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.external_repository_mutation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_communication",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_communication"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_communication"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.external_communication",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_communication",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_communication"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_communication"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.external_communication",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_communication",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_communication"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_communication"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.external_communication",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.supply_chain_execution",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.supply_chain_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.supply_chain_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.supply_chain_execution",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.supply_chain_execution",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.supply_chain_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.supply_chain_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.supply_chain_execution",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.supply_chain_execution",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.supply_chain_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.supply_chain_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.supply_chain_execution",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.resource_exhaustion",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.resource_exhaustion"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.resource_exhaustion"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.resource_exhaustion",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.resource_exhaustion",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.resource_exhaustion"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.resource_exhaustion"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.resource_exhaustion",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.resource_exhaustion",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.resource_exhaustion"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.resource_exhaustion"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.resource_exhaustion",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.force_process_termination",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.force_process_termination"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.force_process_termination"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.force_process_termination",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.force_process_termination",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.force_process_termination"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.force_process_termination"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.force_process_termination",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.force_process_termination",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.force_process_termination"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.force_process_termination"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.force_process_termination",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.persistence_change",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.persistence_change"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.persistence_change"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      }
+    },
+    {
+      "case": "common.shell.persistence_change",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.persistence_change",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.persistence_change"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.persistence_change"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      }
+    },
+    {
+      "case": "common.shell.persistence_change",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.persistence_change",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.persistence_change"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.persistence_change"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      }
+    },
+    {
+      "case": "common.shell.persistence_change",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.docker_destructive_operation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.docker_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.docker_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.docker_destructive_operation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.docker_destructive_operation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.docker_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.docker_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.docker_destructive_operation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.docker_destructive_operation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.docker_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.docker_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.docker_destructive_operation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.cloud_destructive_operation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.cloud_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.cloud_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.cloud_destructive_operation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.cloud_destructive_operation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.cloud_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.cloud_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.cloud_destructive_operation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.cloud_destructive_operation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.cloud_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.cloud_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.cloud_destructive_operation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.network_attack_tool",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.network_attack_tool"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.network_attack_tool"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.network_attack_tool",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.network_attack_tool",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.network_attack_tool"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.network_attack_tool"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.network_attack_tool",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.network_attack_tool",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.network_attack_tool"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.network_attack_tool"
+        ],
+        "source": "ask_baseline",
+        "category": "network_egress"
+      }
+    },
+    {
+      "case": "common.shell.network_attack_tool",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.control_plane_destructive_operation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.control_plane_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.control_plane_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.control_plane_destructive_operation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.control_plane_destructive_operation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.control_plane_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.control_plane_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.control_plane_destructive_operation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.control_plane_destructive_operation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.control_plane_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.control_plane_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.control_plane_destructive_operation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_control_plane_mutation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_control_plane_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_control_plane_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.external_control_plane_mutation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_control_plane_mutation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_control_plane_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_control_plane_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.external_control_plane_mutation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.external_control_plane_mutation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_control_plane_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.external_control_plane_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "common.shell.external_control_plane_mutation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.container_privileged_operation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.container_privileged_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.container_privileged_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "common.shell.container_privileged_operation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.container_privileged_operation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.container_privileged_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.container_privileged_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "common.shell.container_privileged_operation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.container_privileged_operation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.container_privileged_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.container_privileged_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "common.shell.container_privileged_operation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.database_destructive_operation",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.database_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.database_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.database_destructive_operation",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.database_destructive_operation",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.database_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.database_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.database_destructive_operation",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.database_destructive_operation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.database_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.database_destructive_operation"
+        ],
+        "source": "ask_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "common.shell.database_destructive_operation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.dangerous_permission_change",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.dangerous_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.dangerous_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "common.shell.dangerous_permission_change",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.dangerous_permission_change",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.dangerous_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.dangerous_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "common.shell.dangerous_permission_change",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.shell.dangerous_permission_change",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.dangerous_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.shell.dangerous_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "common.shell.dangerous_permission_change",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.tool.public_publish",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.tool.public_publish"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.tool.public_publish"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      }
+    },
+    {
+      "case": "common.tool.public_publish",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.tool.public_publish",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.tool.public_publish"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.tool.public_publish"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      }
+    },
+    {
+      "case": "common.tool.public_publish",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "common.tool.public_publish",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.tool.public_publish"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "common.tool.public_publish"
+        ],
+        "source": "ask_baseline",
+        "category": "data_exfiltration"
+      }
+    },
+    {
+      "case": "common.tool.public_publish",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "lite.shell.windows_software_install",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_software_install"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_software_install"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "lite.shell.windows_software_install",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "lite.shell.windows_permission_change",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_permission_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "lite.shell.windows_permission_change",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "lite.shell.windows_persistence",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_persistence"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_persistence"
+        ],
+        "source": "ask_baseline",
+        "category": "persistence"
+      }
+    },
+    {
+      "case": "lite.shell.windows_persistence",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "lite.shell.windows_security_change",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_security_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_security_change"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "lite.shell.windows_security_change",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "lite.shell.windows_registry_mutation",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_registry_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_registry_mutation"
+        ],
+        "source": "ask_baseline",
+        "category": "privilege_change"
+      }
+    },
+    {
+      "case": "lite.shell.windows_registry_mutation",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "lite.shell.powershell_dynamic_execution",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.powershell_dynamic_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.powershell_dynamic_execution"
+        ],
+        "source": "ask_baseline",
+        "category": "command_execution"
+      }
+    },
+    {
+      "case": "lite.shell.powershell_dynamic_execution",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "lite.shell.windows_event_log_clear",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_event_log_clear"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      },
+      "candidate": {
+        "behavior": "ask",
+        "rule_ids": [
+          "lite.shell.windows_event_log_clear"
+        ],
+        "source": "ask_baseline",
+        "category": "self_protection"
+      }
+    },
+    {
+      "case": "lite.shell.windows_event_log_clear",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "hard-linux",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-linux",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-linux",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-linux",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-linux",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-linux",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.shell.rm_root"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-windows",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-windows",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-windows",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-windows",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-windows",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "hard-windows",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.windows.format_drive"
+        ],
+        "source": "terminal_baseline",
+        "category": "filesystem_modification"
+      }
+    },
+    {
+      "case": "normal-write",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "normal-write",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "normal-write",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "normal-write",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "normal-write",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "normal-write",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      },
+      "candidate": {
+        "behavior": "allow",
+        "rule_ids": [],
+        "source": "default",
+        "category": null
+      }
+    },
+    {
+      "case": "read-credential",
+      "profile": "lite",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "read-credential",
+      "profile": "lite",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "read-credential",
+      "profile": "pro",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "read-credential",
+      "profile": "pro",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "read-credential",
+      "profile": "server",
+      "mode": "ask",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      }
+    },
+    {
+      "case": "read-credential",
+      "profile": "server",
+      "mode": "auto",
+      "reference": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      },
+      "candidate": {
+        "behavior": "deny",
+        "rule_ids": [
+          "common.filesystem.linux_sensitive_path_read"
+        ],
+        "source": "terminal_baseline",
+        "category": "credential_exposure"
+      }
+    }
+  ]
+}

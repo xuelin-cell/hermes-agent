@@ -1,0 +1,37 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 11 test files (~311 tests) under ['tests\\plugins\\security_guardrail']; running with -j 16
+[  1.0% |     3/~311 | ✓3 | ✗0] ✓ tests\plugins\security_guardrail\original\test_baseline_routing.py (3✓, 10.1s)
+[  1.3% |     4/~311 | ✓8 | ✗0] ✓ tests\plugins\security_guardrail\original\test_tool_schema_contract.py (5✓, 10.8s)
+[  2.3% |     7/~311 | ✓23 | ✗ 0] ✓ tests\plugins\security_guardrail\original\test_lite_extra.py (15✓, 11.3s)
+[  2.9% |     9/~311 | ✓25 | ✗ 0] ✓ tests\plugins\security_guardrail\test_engine_contract.py (2✓, 11.8s)
+[  8.4% |    26/~311 | ✓71 | ✗ 0] ✓ tests\plugins\security_guardrail\original\test_pro_vm_extra.py (46✓, 13.2s)
+[ 14.8% |    46/~311 | ✓123 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py (52✓, 13.6s)
+[ 23.8% |    74/~311 | ✓198 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_baseline_rules.py (75✓, 14.4s)
+[ 35.7% |   111/~311 | ✓299 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_runtime_action.py (101✓, 16.1s)
+[ 69.5% |   216/~311 | ✓404 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_common_baseline.py (105✓, 16.8s)
+[ 73.6% |   229/~311 | ✓573 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_sensitive_protection.py (169✓, 19.7s)
+[100.0% |   311/~311 | ✓972 | ✗  0] ✓ tests\plugins\security_guardrail\original\test_ask_baseline.py (399✓, 30.9s)
+
+=== Summary: 11 files, 972 tests passed, 0 failed (100% complete) in 32.4s (16 workers) ===
+  Durations cached to test_durations.json (11 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   11
+  Total subprocess CPU-wall: 168.7s  (runner wall: 32.4s, parallelism: 16x)
+  P50: 13.57s  P90: 19.72s  P95: 30.94s  P99: 30.94s  Max: 30.94s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     30.94s  tests\plugins\security_guardrail\original\test_ask_baseline.py
+     19.72s  tests\plugins\security_guardrail\original\test_sensitive_protection.py
+     16.79s  tests\plugins\security_guardrail\original\test_common_baseline.py
+     16.06s  tests\plugins\security_guardrail\original\test_runtime_action.py
+     14.41s  tests\plugins\security_guardrail\original\test_baseline_rules.py
+     13.57s  tests\plugins\security_guardrail\original\test_lite_bypass_regressions.py
+     13.16s  tests\plugins\security_guardrail\original\test_pro_vm_extra.py
+     11.79s  tests\plugins\security_guardrail\test_engine_contract.py
+     11.31s  tests\plugins\security_guardrail\original\test_lite_extra.py
+     10.85s  tests\plugins\security_guardrail\original\test_tool_schema_contract.py

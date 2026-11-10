@@ -1,0 +1,1900 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "version": "v1.9.0",
+    "commit": "81aff7a638638aae3a659845d089043e1d8fe9ac",
+    "config_sha256": "a8f553eb634ac3c5c1ca3f0dc95e2b8abdea7d14b622604c5af07f30ce7926ef"
+  },
+  "adaptations": [
+    "RE2 ASCII classes/boundaries; whitespace excludes vertical tab except all-character classes.",
+    "Go end-of-text anchor converted to Python strict end-of-text anchor.",
+    "Mid-pattern case flag in common /Users filter is scoped equivalently.",
+    "Domestic JSON candidate regex has one extra escaping layer; execution regex removes that layer.",
+    "Domestic JSON mask declarations match the runtime display masks."
+  ],
+  "common_exclude_if_any": [
+    {
+      "op": "matches_any",
+      "patterns": [
+        "(?i)^true|false|null$",
+        "^(?i:a+|b+|c+|d+|e+|f+|g+|h+|i+|j+|k+|l+|m+|n+|o+|p+|q+|r+|s+|t+|u+|v+|w+|x+|y+|z+|\\*+|\\.+)$",
+        "^\\$(?:\\d+|{\\d+})$",
+        "^\\$(?:[A-Z_]+|[a-z_]+)$",
+        "^\\${(?:[A-Z_]+|[a-z_]+)}$",
+        "^\\{\\{[ \\t]*[\\w ().|]+[ \\t]*}}$",
+        "^\\$\\{\\{[ \\t]*(?:(?:env|github|secrets|vars)(?:\\.[A-Za-z]\\w+)+[\\w \"'&./=|]*)[ \\t]*}}$",
+        "^%(?:[A-Z_]+|[a-z_]+)%$",
+        "^%[+\\-# 0]?[bcdeEfFgGoOpqstTUvxX]$",
+        "^\\{\\d{0,2}}$",
+        "^@(?:[A-Z_]+|[a-z_]+)@$",
+        "^/Users/(?i:[a-z0-9]+/[\\w .-/]+$)",
+        "^/(?:bin|etc|home|opt|tmp|usr|var)/[\\w ./-]+$"
+      ]
+    },
+    {
+      "op": "contains_any",
+      "values": [
+        "abcdefghijklmnopqrstuvwxyz",
+        "014df517-39d1-4453-b7b3-9930c563627c"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "1password-secret-key",
+      "name": "1Password 秘密密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"1password-secret-key\"\ndescription = \"Uncovered a possible 1Password secret key, potentially compromising access to secrets in vaults.\"\nregex = '''\\bA3-[A-Z0-9]{6}-(?:(?:[A-Z0-9]{11})|(?:[A-Z0-9]{6}-[A-Z0-9]{5}))-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}\\b'''\nconfidence = \"high\"\nkeywords = [\"a3-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.8\n'''",
+      "runtime": {
+        "regex": "\\bA3-[A-Z0-9]{6}-(?:(?:[A-Z0-9]{11})|(?:[A-Z0-9]{6}-[A-Z0-9]{5}))-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}\\b",
+        "keywords": [
+          "a3-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.8
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "1password-service-account-token",
+      "name": "1Password 服务账户令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"1password-service-account-token\"\ndescription = \"Uncovered a possible 1Password service account token, potentially compromising access to secrets in vaults.\"\nregex = '''ops_eyJ[a-zA-Z0-9+/]{250,}={0,3}'''\nconfidence = \"high\"\nkeywords = [\"ops_eyj\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "ops_eyJ[a-zA-Z0-9+/]{250,}={0,3}",
+        "keywords": [
+          "ops_eyj"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "age-secret-key",
+      "name": "age 加密私钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"age-secret-key\"\ndescription = \"Discovered a potential Age encryption tool secret key, risking data decryption and unauthorized access to sensitive information.\"\nregex = '''AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}'''\nconfidence = \"high\"\nkeywords = [\"age-secret-key-1\"]",
+      "runtime": {
+        "regex": "AGE-SECRET-KEY-1[QPZRY9X8GF2TVDW0S3JN54KHCE6MUA7L]{58}",
+        "keywords": [
+          "age-secret-key-1"
+        ],
+        "exclude_if_any": []
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "anthropic-admin-api-key",
+      "name": "Anthropic Admin API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"anthropic-admin-api-key\"\ndescription = \"Detected an Anthropic Admin API Key, risking unauthorized access to administrative functions and sensitive AI model configurations.\"\nregex = '''\\b(sk-ant-admin01-[a-zA-Z0-9_\\-]{93}AA)(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"sk-ant-admin01\"]",
+      "runtime": {
+        "regex": "\\b(sk-ant-admin01-[a-zA-Z0-9_\\-]{93}AA)(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "sk-ant-admin01"
+        ],
+        "exclude_if_any": []
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "anthropic-api-key",
+      "name": "Anthropic API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"anthropic-api-key\"\ndescription = \"Identified an Anthropic API Key, which may compromise AI assistant integrations and expose sensitive data to unauthorized access.\"\nregex = '''\\b(sk-ant-api03-[a-zA-Z0-9_\\-]{93}AA)(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"sk-ant-api03\"]",
+      "runtime": {
+        "regex": "\\b(sk-ant-api03-[a-zA-Z0-9_\\-]{93}AA)(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "sk-ant-api03"
+        ],
+        "exclude_if_any": []
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "aws-amazon-bedrock-api-key-long-lived",
+      "name": "AWS Bedrock API 密钥 (长期)",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"aws-amazon-bedrock-api-key-long-lived\"\ndescription = \"Identified a pattern that may indicate long-lived Amazon Bedrock API keys, risking unauthorized Amazon Bedrock usage\"\nregex = '''\\b(ABSK[A-Za-z0-9+/]{109,269}={0,2})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"absk\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "\\b(ABSK[A-Za-z0-9+/]{109,269}={0,2})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "absk"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "aws-amazon-bedrock-api-key-short-lived",
+      "name": "AWS Bedrock API 密钥 (短期)",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"aws-amazon-bedrock-api-key-short-lived\"\ndescription = \"Identified a pattern that may indicate short-lived Amazon Bedrock API keys, risking unauthorized Amazon Bedrock usage\"\nregex = '''bedrock-api-key-YmVkcm9jay5hbWF6b25hd3MuY29t'''\nconfidence = \"high\"\nkeywords = [\"bedrock-api-key-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "bedrock-api-key-YmVkcm9jay5hbWF6b25hd3MuY29t",
+        "keywords": [
+          "bedrock-api-key-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "azure-app-configuration-connection-string",
+      "name": "Azure 应用配置连接凭据",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"azure-app-configuration-connection-string\"\ndescription = \"Detected an Azure App Configuration connection string.\"\nregex = '''(?i)Endpoint=(?P<azure_appconfig_endpoint>https://[a-z0-9-]+\\.azconfig\\.io);Id=(?P<azure_appconfig_id>[^;\\s'\"]{4,80});Secret=([A-Za-z0-9+/]{36,100}={0,2})'''\nsecretGroup = 3\nconfidence = \"high\"\nkeywords = [\"azconfig.io\", \"endpoint=\", \"secret=\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)Endpoint=(?P<azure_appconfig_endpoint>https://[a-z0-9-]+\\.azconfig\\.io);Id=(?P<azure_appconfig_id>[^;\\t\\n\\f\\r '\"]{4,80});Secret=([A-Za-z0-9+/]{36,100}={0,2})",
+        "keywords": [
+          "azconfig.io",
+          "endpoint=",
+          "secret="
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ],
+        "secret_group": 3
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "azure-servicebus-connection-string",
+      "name": "Azure 服务总线连接凭据",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"azure-servicebus-connection-string\"\ndescription = \"Detected an Azure Service Bus or Event Hub shared access connection string.\"\nregex = '''(?i)(Endpoint=sb://[a-z0-9-]+\\.servicebus\\.windows\\.net/;SharedAccessKeyName=[^;=\\s'\"]{1,128};SharedAccessKey=[A-Za-z0-9+/]{32,100}={0,2}(?:;EntityPath=[^;\\s'\"]{1,128})?)'''\nconfidence = \"high\"\nkeywords = [\"endpoint=sb://\", \"sharedaccesskey\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "(?i)(Endpoint=sb://[a-z0-9-]+\\.servicebus\\.windows\\.net/;SharedAccessKeyName=[^;=\\t\\n\\f\\r '\"]{1,128};SharedAccessKey=[A-Za-z0-9+/]{32,100}={0,2}(?:;EntityPath=[^;\\t\\n\\f\\r '\"]{1,128})?)",
+        "keywords": [
+          "endpoint=sb://",
+          "sharedaccesskey"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "brave-search-api-key",
+      "name": "Brave Search API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"brave-search-api-key\"\ndescription = \"Detected a Brave Search API key, which may allow unauthorized use of Brave Search API quota.\"\nregex = '''\\b(BSA[A-Za-z0-9_-]{24,40})\\b'''\nconfidence = \"high\"\nkeywords = [\"bsa\"]\nfilter = '''filter.entropy(finding[\"secret\"]) < 3.2\n'''",
+      "runtime": {
+        "regex": "\\b(BSA[A-Za-z0-9_-]{24,40})\\b",
+        "keywords": [
+          "bsa"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<",
+            "threshold": 3.2
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "deepseek-api-key",
+      "name": "DeepSeek API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"deepseek-api-key\"\ndescription = \"Detected a DeepSeek API Key, which may expose AI model access and associated usage to unauthorized parties.\"\nregex = '''(?i)(?:deepseek)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(sk-[a-f0-9]{32})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"deepseek\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)(?:deepseek)(?:[ \\t\\w.-]{0,20})[\\t\\n\\f\\r '\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\t\\n\\f\\r =]{0,5}(sk-[a-f0-9]{32})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "deepseek"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "dockerhub-organization-access-token",
+      "name": "Docker Hub Organization 访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"dockerhub-organization-access-token\"\ndescription = \"Detected a Docker Hub organization access token, which may expose organization repositories.\"\nregex = '''\\b(dckr_oat_[A-Za-z0-9_-]{32})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"dckr_oat_\"]\nfilter = '''entropy(finding[\"secret\"]) < 3.5\n'''",
+      "runtime": {
+        "regex": "\\b(dckr_oat_[A-Za-z0-9_-]{32})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "dckr_oat_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "dockerhub-personal-access-token",
+      "name": "Docker Hub 个人访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"dockerhub-personal-access-token\"\ndescription = \"Detected a Docker Hub personal access token, which may expose Docker Hub account access.\"\nregex = '''\\b(dckr_pat_[A-Za-z0-9_-]{27})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"dckr_pat_\"]\nfilter = '''entropy(finding[\"secret\"]) < 3.5\n'''",
+      "runtime": {
+        "regex": "\\b(dckr_pat_[A-Za-z0-9_-]{27})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "dckr_pat_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gcp-api-key",
+      "name": "GCP API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gcp-api-key\"\ndescription = \"Uncovered a GCP API key, which could lead to unauthorized access to Google Cloud services and data breaches.\"\nregex = '''\\b(AIza[\\w-]{35})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"aiza\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n|| matchesAny(finding[\"secret\"], [\n  `AIzaSyabcdefghijklmnopqrstuvwxyz1234567`,\n  `AIzaSyAnLA7NfeLquW1tJFpx_eQCxoX-oo6YyIs`,\n  `AIzaSyCkEhVjf3pduRDt6d1yKOMitrUEke8agEM`,\n  `AIzaSyDMAScliyLx7F0NPDEJi1QmyCgHIAODrlU`,\n  `AIzaSyD3asb-2pEZVqMkmL6M9N6nHZRR_znhrh0`,\n  `AIzayDNSXIbFmlXbIE6mCzDLQAqITYefhixbX4A`,\n  `AIzaSyAdOS2zB6NCsk1pCdZ4-P6GBdi_UUPwX7c`,\n  `AIzaSyASWm6HmTMdYWpgMnjRBjxcQ9CKctWmLd4`,\n  `AIzaSyANUvH9H9BsUccjsu2pCmEkOPjjaXeDQgY`,\n  `AIzaSyA5_iVawFQ8ABuTZNUdcwERLJv_a_p4wtM`,\n  `AIzaSyA4UrcGxgwQFTfaI3no3t7Lt1sjmdnP5sQ`,\n  `AIzaSyDSb51JiIcB6OJpwwMicseKRhhrOq1cS7g`,\n  `AIzaSyBF2RrAIm4a0mO64EShQfqfd2AFnzAvvuU`,\n  `AIzaSyBcE-OOIbhjyR83gm4r2MFCu4MJmprNXsw`,\n  `AIzaSyB8qGxt4ec15vitgn44duC5ucxaOi4FmqE`,\n  `AIzaSyA8vmApnrHNFE0bApF4hoZ11srVL_n0nvY`\n])\n'''",
+      "runtime": {
+        "regex": "\\b(AIza[\\w-]{35})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "aiza"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "matches_any",
+            "patterns": [
+              "AIzaSyabcdefghijklmnopqrstuvwxyz1234567",
+              "AIzaSyAnLA7NfeLquW1tJFpx_eQCxoX-oo6YyIs",
+              "AIzaSyCkEhVjf3pduRDt6d1yKOMitrUEke8agEM",
+              "AIzaSyDMAScliyLx7F0NPDEJi1QmyCgHIAODrlU",
+              "AIzaSyD3asb-2pEZVqMkmL6M9N6nHZRR_znhrh0",
+              "AIzayDNSXIbFmlXbIE6mCzDLQAqITYefhixbX4A",
+              "AIzaSyAdOS2zB6NCsk1pCdZ4-P6GBdi_UUPwX7c",
+              "AIzaSyASWm6HmTMdYWpgMnjRBjxcQ9CKctWmLd4",
+              "AIzaSyANUvH9H9BsUccjsu2pCmEkOPjjaXeDQgY",
+              "AIzaSyA5_iVawFQ8ABuTZNUdcwERLJv_a_p4wtM",
+              "AIzaSyA4UrcGxgwQFTfaI3no3t7Lt1sjmdnP5sQ",
+              "AIzaSyDSb51JiIcB6OJpwwMicseKRhhrOq1cS7g",
+              "AIzaSyBF2RrAIm4a0mO64EShQfqfd2AFnzAvvuU",
+              "AIzaSyBcE-OOIbhjyR83gm4r2MFCu4MJmprNXsw",
+              "AIzaSyB8qGxt4ec15vitgn44duC5ucxaOi4FmqE",
+              "AIzaSyA8vmApnrHNFE0bApF4hoZ11srVL_n0nvY"
+            ]
+          },
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gcp-application-default-credentials",
+      "name": "Google Cloud 应用默认凭证",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gcp-application-default-credentials\"\ndescription = \"Google (GCP) Application Default Credentials\"\nregex = '''\\{[^{]+(?:(?:\"client_secret\"\\s*:\\s*\"[^\"]+\"[^}]+\"refresh_token\"\\s*:\\s*\"[^\"]+\")|(?:\"refresh_token\"\\s*:\\s*\"[^\"]+\"[^}]+\"client_secret\"\\s*:\\s*\"[^\"]+\"))[^}]+\\}'''\nconfidence = \"high\"\nkeywords = [\".apps.googleusercontent.com\"]",
+      "runtime": {
+        "regex": "\\{[^{]+(?:(?:\"client_secret\"[\\t\\n\\f\\r ]*:[\\t\\n\\f\\r ]*\"[^\"]+\"[^}]+\"refresh_token\"[\\t\\n\\f\\r ]*:[\\t\\n\\f\\r ]*\"[^\"]+\")|(?:\"refresh_token\"[\\t\\n\\f\\r ]*:[\\t\\n\\f\\r ]*\"[^\"]+\"[^}]+\"client_secret\"[\\t\\n\\f\\r ]*:[\\t\\n\\f\\r ]*\"[^\"]+\"))[^}]+\\}",
+        "keywords": [
+          ".apps.googleusercontent.com"
+        ],
+        "exclude_if_any": []
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "gcp-gemini-api",
+      "name": "Google Gemini API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gcp-gemini-api\"\ndescription = \"Detected a Google Gemini API key, which may expose Gemini model access and usage to unauthorized parties.\"\nregex = '''\\b(AQ\\.Ab8RN6[A-Za-z0-9_-]{44})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"aq.ab8rn6\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "\\b(AQ\\.Ab8RN6[A-Za-z0-9_-]{44})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "aq.ab8rn6"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gcp-service-account",
+      "name": "Google Cloud 服务账户凭证",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gcp-service-account\"\ndescription = \"Google (GCP) Service-account\"\nregex = '''\\{[^{]+(?:(?:\"private_key\"\\s*:\\s*\"-----BEGIN (?:RSA )?PRIVATE KEY-----[^}]+auth_provider_x509_cert_url)|(?:auth_provider_x509_cert_url[^}]+\"private_key\"\\s*:\\s*\"-----BEGIN (?:RSA )?PRIVATE KEY-----))[^}]+\\}'''\nconfidence = \"high\"\nkeywords = [\"provider_x509\"]\nfilter = '''containsAny(finding[\"secret\"], [\"image-pulling@authenticated-image-pulling.iam.gserviceaccount.com\"])\n'''",
+      "runtime": {
+        "regex": "\\{[^{]+(?:(?:\"private_key\"[\\t\\n\\f\\r ]*:[\\t\\n\\f\\r ]*\"-----BEGIN (?:RSA )?PRIVATE KEY-----[^}]+auth_provider_x509_cert_url)|(?:auth_provider_x509_cert_url[^}]+\"private_key\"[\\t\\n\\f\\r ]*:[\\t\\n\\f\\r ]*\"-----BEGIN (?:RSA )?PRIVATE KEY-----))[^}]+\\}",
+        "keywords": [
+          "provider_x509"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "contains_any",
+            "values": [
+              "image-pulling@authenticated-image-pulling.iam.gserviceaccount.com"
+            ]
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "github-fine-grained-pat",
+      "name": "GitHub 细粒度个人访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"github-fine-grained-pat\"\ndescription = \"Found a GitHub Fine-Grained Personal Access Token, risking unauthorized repository access and code manipulation.\"\nregex = '''github_pat_\\w{82}'''\nconfidence = \"high\"\nkeywords = [\"github_pat_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "github_pat_\\w{82}",
+        "keywords": [
+          "github_pat_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "github-oauth",
+      "name": "GitHub OAuth 访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"github-oauth\"\ndescription = \"Discovered a GitHub OAuth Access Token, posing a risk of compromised GitHub account integrations and data leaks.\"\nregex = '''gho_[0-9a-zA-Z]{36}'''\nconfidence = \"high\"\nkeywords = [\"gho_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "gho_[0-9a-zA-Z]{36}",
+        "keywords": [
+          "gho_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "github-refresh-token",
+      "name": "GitHub 刷新令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"github-refresh-token\"\ndescription = \"Detected a GitHub Refresh Token, which could allow prolonged unauthorized access to GitHub services.\"\nregex = '''ghr_[0-9a-zA-Z]{36}'''\nconfidence = \"high\"\nkeywords = [\"ghr_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "ghr_[0-9a-zA-Z]{36}",
+        "keywords": [
+          "ghr_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-cicd-job-token",
+      "name": "GitLab CI/CD Job 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-cicd-job-token\"\ndescription = \"Identified a GitLab CI/CD Job Token, potential access to projects and some APIs on behalf of a user while the CI job is running.\"\nregex = '''glcbt-[0-9a-zA-Z]{1,5}_[0-9a-zA-Z_-]{20}'''\nconfidence = \"high\"\nkeywords = [\"glcbt-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glcbt-[0-9a-zA-Z]{1,5}_[0-9a-zA-Z_-]{20}",
+        "keywords": [
+          "glcbt-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-deploy-token",
+      "name": "GitLab 部署 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-deploy-token\"\ndescription = \"Identified a GitLab Deploy Token, risking access to repositories, packages and containers with write access.\"\nregex = '''gldt-[0-9a-zA-Z_\\-]{20}'''\nconfidence = \"high\"\nkeywords = [\"gldt-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "gldt-[0-9a-zA-Z_\\-]{20}",
+        "keywords": [
+          "gldt-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-feed-token",
+      "name": "GitLab 私有订阅源令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-feed-token\"\ndescription = \"Identified a GitLab feed token, risking exposure of user data.\"\nregex = '''glft-[0-9a-zA-Z_\\-]{20}'''\nconfidence = \"high\"\nkeywords = [\"glft-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glft-[0-9a-zA-Z_\\-]{20}",
+        "keywords": [
+          "glft-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-incoming-mail-token",
+      "name": "GitLab Incoming Mail 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-incoming-mail-token\"\ndescription = \"Identified a GitLab incoming mail token, risking manipulation of data sent by mail.\"\nregex = '''glimt-[0-9a-zA-Z_\\-]{25}'''\nconfidence = \"high\"\nkeywords = [\"glimt-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glimt-[0-9a-zA-Z_\\-]{25}",
+        "keywords": [
+          "glimt-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-kubernetes-agent-token",
+      "name": "GitLab Kubernetes Agent 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-kubernetes-agent-token\"\ndescription = \"Identified a GitLab Kubernetes Agent token, risking access to repos and registry of projects connected via agent.\"\nregex = '''glagent-[0-9a-zA-Z_\\-]{50}'''\nconfidence = \"high\"\nkeywords = [\"glagent-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glagent-[0-9a-zA-Z_\\-]{50}",
+        "keywords": [
+          "glagent-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-oauth-app-secret",
+      "name": "GitLab OAuth App 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-oauth-app-secret\"\ndescription = \"Identified a GitLab OIDC Application Secret, risking access to apps using GitLab as authentication provider.\"\nregex = '''gloas-[0-9a-zA-Z_\\-]{64}'''\nconfidence = \"high\"\nkeywords = [\"gloas-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "gloas-[0-9a-zA-Z_\\-]{64}",
+        "keywords": [
+          "gloas-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-pat",
+      "name": "GitLab 个人访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-pat\"\ndescription = \"Identified a GitLab Personal Access Token, risking unauthorized access to GitLab repositories and codebase exposure.\"\nregex = '''glpat-[\\w-]{20}'''\nconfidence = \"high\"\nkeywords = [\"glpat-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glpat-[\\w-]{20}",
+        "keywords": [
+          "glpat-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-pat-routable",
+      "name": "GitLab 个人访问令牌 (可路由)",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-pat-routable\"\ndescription = \"Identified a GitLab Personal Access Token (routable), risking unauthorized access to GitLab repositories and codebase exposure.\"\nregex = '''\\bglpat-[0-9a-zA-Z_-]{27,300}\\.[0-9a-z]{2}[0-9a-z]{7}\\b'''\nconfidence = \"high\"\nkeywords = [\"glpat-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "\\bglpat-[0-9a-zA-Z_-]{27,300}\\.[0-9a-z]{2}[0-9a-z]{7}\\b",
+        "keywords": [
+          "glpat-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-pat-routable-versioned",
+      "name": "GitLab 个人访问令牌 (版本化)",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-pat-routable-versioned\"\ndescription = \"Identified a GitLab Personal Access Token (routable, versioned), risking unauthorized access to GitLab repositories and codebase exposure.\"\nregex = '''\\bglpat-[0-9a-zA-Z_-]{27,300}\\.[0-9a-z]{2}\\.[0-9a-z]{9}\\b'''\nconfidence = \"high\"\nkeywords = [\"glpat-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "\\bglpat-[0-9a-zA-Z_-]{27,300}\\.[0-9a-z]{2}\\.[0-9a-z]{9}\\b",
+        "keywords": [
+          "glpat-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-ptt",
+      "name": "GitLab 流水线触发令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-ptt\"\ndescription = \"Found a GitLab Pipeline Trigger Token, potentially compromising continuous integration workflows and project security.\"\nregex = '''glptt-[0-9a-f]{40}'''\nconfidence = \"high\"\nkeywords = [\"glptt-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glptt-[0-9a-f]{40}",
+        "keywords": [
+          "glptt-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-rrt",
+      "name": "GitLab Runner 注册令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-rrt\"\ndescription = \"Discovered a GitLab Runner Registration Token, posing a risk to CI/CD pipeline integrity and unauthorized access.\"\nregex = '''GR1348941[\\w-]{20}'''\nconfidence = \"high\"\nkeywords = [\"gr1348941\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "GR1348941[\\w-]{20}",
+        "keywords": [
+          "gr1348941"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-runner-authentication-token",
+      "name": "GitLab Runner 认证令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-runner-authentication-token\"\ndescription = \"Discovered a GitLab Runner Authentication Token, posing a risk to CI/CD pipeline integrity and unauthorized access.\"\nregex = '''glrt-[0-9a-zA-Z_\\-]{20}'''\nconfidence = \"high\"\nkeywords = [\"glrt-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glrt-[0-9a-zA-Z_\\-]{20}",
+        "keywords": [
+          "glrt-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-runner-authentication-token-routable",
+      "name": "GitLab Runner 认证令牌 (可路由)",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-runner-authentication-token-routable\"\ndescription = \"Discovered a GitLab Runner Authentication Token (Routable), posing a risk to CI/CD pipeline integrity and unauthorized access.\"\nregex = '''\\bglrt-t\\d_[0-9a-zA-Z_\\-]{27,300}\\.[0-9a-z]{2}[0-9a-z]{7}\\b'''\nconfidence = \"high\"\nkeywords = [\"glrt-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "\\bglrt-t\\d_[0-9a-zA-Z_\\-]{27,300}\\.[0-9a-z]{2}[0-9a-z]{7}\\b",
+        "keywords": [
+          "glrt-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-scim-token",
+      "name": "GitLab SCIM 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-scim-token\"\ndescription = \"Discovered a GitLab SCIM Token, posing a risk to unauthorized access for a organization or instance.\"\nregex = '''glsoat-[0-9a-zA-Z_\\-]{20}'''\nconfidence = \"high\"\nkeywords = [\"glsoat-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "glsoat-[0-9a-zA-Z_\\-]{20}",
+        "keywords": [
+          "glsoat-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "gitlab-session-cookie",
+      "name": "GitLab 会话 Cookie",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"gitlab-session-cookie\"\ndescription = \"Discovered a GitLab Session Cookie, posing a risk to unauthorized access to a user account.\"\nregex = '''_gitlab_session=[0-9a-z]{32}'''\nconfidence = \"high\"\nkeywords = [\"_gitlab_session=\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "_gitlab_session=[0-9a-z]{32}",
+        "keywords": [
+          "_gitlab_session="
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "groq-api-key",
+      "name": "Groq API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"groq-api-key\"\ndescription = \"Identified a Groq API Key, which may expose high-speed AI inference services to unauthorized access.\"\nregex = '''(?i)\\b(gsk_[A-Z0-9]{52})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"gsk_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(gsk_[A-Z0-9]{52})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "gsk_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "huggingface-access-token",
+      "name": "Hugging Face 访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"huggingface-access-token\"\ndescription = \"Discovered a Hugging Face Access token, which could lead to unauthorized access to AI models and sensitive data.\"\nregex = '''\\b(hf_(?i:[a-z]{34}))(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"hf_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "\\b(hf_(?i:[a-z]{34}))(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "hf_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "huggingface-organization-api-token",
+      "name": "Hugging Face 组织 API 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"huggingface-organization-api-token\"\ndescription = \"Uncovered a Hugging Face Organization API token, potentially compromising AI organization accounts and associated data.\"\nregex = '''\\b(api_org_(?i:[a-z]{34}))(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"api_org_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "\\b(api_org_(?i:[a-z]{34}))(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "api_org_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "kimi-api-key",
+      "name": "Kimi API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"kimi-api-key\"\ndescription = \"Detected a Kimi API key, which may expose Moonshot AI model access and usage to unauthorized parties.\"\nregex = '''(?i)(?:kimi|moonshot)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}(sk-[A-Za-z0-9_-]{48})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"kimi\", \"moonshot\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)(?:kimi|moonshot)(?:[ \\t\\w.-]{0,20})[\\t\\n\\f\\r '\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\t\\n\\f\\r =]{0,5}(sk-[A-Za-z0-9_-]{48})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "kimi",
+          "moonshot"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "minimax-api-key",
+      "name": "MiniMax API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"minimax-api-key\"\ndescription = \"Detected a MiniMax API key, which may expose AI model, speech, image, video, or file services to unauthorized access.\"\nregex = '''(?i)\\b(sk-api-[A-Za-z0-9_-]{119})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"sk-api-\", \"minimax\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(sk-api-[A-Za-z0-9_-]{119})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "sk-api-",
+          "minimax"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "mongodb-connection-string",
+      "name": "MongoDB 连接凭据",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"mongodb-connection-string\"\ndescription = \"Detected a MongoDB connection string with embedded credentials, potentially exposing direct database access and sensitive application data.\"\nregex = '''\\b(mongodb(?:\\+srv)?://(?P<username>[!-9;-~]{3,50}):(?P<password>[!-?A-~]{3,88})@(?P<host>(?:[a-zA-Z0-9][\\w.-]+|\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})(?::\\d{1,5})?(?:,(?:[a-zA-Z0-9][\\w.-]+|\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})(?::\\d{1,5})?)*)/?(?:(?P<authdb>[\\w-]+)?(?P<options>\\?\\w+=[\\w@/.$-]+(?:&(?:amp;)?\\w+=[\\w@/.$-]+)*)?)?)(?:['\"\\s;\\x60]|\\\\[nr]|\\b|$)'''\nconfidence = \"high\"\nkeywords = [\"mongodb://\", \"mongodb+srv://\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n|| matchesAny(finding[\"secret\"], [\n  `(?i)\\bmongodb(?:\\+srv)?:\\/\\/(?:user(?:name)?|foo):(?:pass(?:word)?|bar)(?:[^@\\/]*)?@`,\n  `(?i)\\bmongodb(?:\\+srv)?:\\/\\/[^\\s'\"\\x60]*(?:\\$\\{\\{[^}]+}}|\\$\\{[^}]+}|\\$[A-Za-z_][A-Za-z0-9_]*|{{[^}]+}}|<[^>]+>|\\[[^]]+])[^\\s'\"\\x60]*`\n])\n'''",
+      "runtime": {
+        "regex": "\\b(mongodb(?:\\+srv)?://(?P<username>[!-9;-~]{3,50}):(?P<password>[!-?A-~]{3,88})@(?P<host>(?:[a-zA-Z0-9][\\w.-]+|\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})(?::\\d{1,5})?(?:,(?:[a-zA-Z0-9][\\w.-]+|\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})(?::\\d{1,5})?)*)/?(?:(?P<authdb>[\\w-]+)?(?P<options>\\?\\w+=[\\w@/.$-]+(?:&(?:amp;)?\\w+=[\\w@/.$-]+)*)?)?)(?:['\"\\t\\n\\f\\r ;\\x60]|\\\\[nr]|\\b|$)",
+        "keywords": [
+          "mongodb://",
+          "mongodb+srv://"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "matches_any",
+            "patterns": [
+              "(?i)\\bmongodb(?:\\+srv)?:\\/\\/(?:user(?:name)?|foo):(?:pass(?:word)?|bar)(?:[^@\\/]*)?@",
+              "(?i)\\bmongodb(?:\\+srv)?:\\/\\/[^\\t\\n\\f\\r '\"\\x60]*(?:\\$\\{\\{[^}]+}}|\\$\\{[^}]+}|\\$[A-Za-z_][A-Za-z0-9_]*|{{[^}]+}}|<[^>]+>|\\[[^]]+])[^\\t\\n\\f\\r '\"\\x60]*"
+            ]
+          },
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "notion-api-token",
+      "name": "Notion API 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"notion-api-token\"\ndescription = \"Notion API token\"\nregex = '''\\b(ntn_[0-9]{11}[A-Za-z0-9]{32}[A-Za-z0-9]{3})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"ntn_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "\\b(ntn_[0-9]{11}[A-Za-z0-9]{32}[A-Za-z0-9]{3})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "ntn_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "npm-access-token",
+      "name": "npm 访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"npm-access-token\"\ndescription = \"Uncovered an npm access token, potentially compromising package management and code repository access.\"\nregex = '''(?i)\\b(npm_[a-z0-9]{36})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"npm_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(npm_[a-z0-9]{36})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "npm_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "nvidia-api-key",
+      "name": "NVIDIA NIM API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"nvidia-api-key\"\ndescription = \"Detected an NVIDIA NIM API Key, which may expose AI inference and GPU cloud services to unauthorized access.\"\nregex = '''(?i)\\b(nvapi-[A-Z0-9_-]{60,70})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"nvapi-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(nvapi-[A-Z0-9_-]{60,70})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "nvapi-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "ollama-api-key",
+      "name": "Ollama API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"ollama-api-key\"\ndescription = \"Detected an Ollama API Key, which may expose local and hosted AI model serving to unauthorized access.\"\nregex = '''(?i)(?:ollama)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-f0-9]{32}\\.[a-zA-Z0-9_-]{24})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"ollama\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)(?:ollama)(?:[ \\t\\w.-]{0,20})[\\t\\n\\f\\r '\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\t\\n\\f\\r =]{0,5}([a-f0-9]{32}\\.[a-zA-Z0-9_-]{24})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "ollama"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "openai-api-key",
+      "name": "OpenAI API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"openai-api-key\"\ndescription = \"Found an OpenAI API Key, posing a risk of unauthorized access to AI services and data manipulation.\"\nregex = '''\\b(sk-(?:proj|svcacct|admin)-(?:[A-Za-z0-9_-]{74}|[A-Za-z0-9_-]{58}|[A-Za-z0-9_-]{20})T3BlbkFJ(?:[A-Za-z0-9_-]{74}|[A-Za-z0-9_-]{58}|[A-Za-z0-9_-]{20})\\b|sk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"t3blbkfj\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "\\b(sk-(?:proj|svcacct|admin)-(?:[A-Za-z0-9_-]{74}|[A-Za-z0-9_-]{58}|[A-Za-z0-9_-]{20})T3BlbkFJ(?:[A-Za-z0-9_-]{74}|[A-Za-z0-9_-]{58}|[A-Za-z0-9_-]{20})\\b|sk-[a-zA-Z0-9]{20}T3BlbkFJ[a-zA-Z0-9]{20})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "t3blbkfj"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "openrouter-api-key",
+      "name": "OpenRouter API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"openrouter-api-key\"\ndescription = \"Detected an OpenRouter API Key, which may expose access to multiple AI models through the OpenRouter gateway.\"\nregex = '''(?i)\\b(sk-or-v1-[0-9a-f]{64})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"sk-or-v1-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(sk-or-v1-[0-9a-f]{64})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "sk-or-v1-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "perplexity-api-key",
+      "name": "Perplexity API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"perplexity-api-key\"\ndescription = \"Detected a Perplexity API key, which could lead to unauthorized access to Perplexity AI services and data exposure.\"\nregex = '''\\b(pplx-[a-zA-Z0-9]{48})(?:[\\x60'\"\\s;]|\\\\[nr]|$|\\b)'''\nconfidence = \"high\"\nkeywords = [\"pplx-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "\\b(pplx-[a-zA-Z0-9]{48})(?:[\\x60'\"\\t\\n\\f\\r ;]|\\\\[nr]|$|\\b)",
+        "keywords": [
+          "pplx-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "private-key",
+      "name": "私钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"private-key\"\ndescription = \"Identified a Private Key, which may compromise cryptographic security and sensitive data encryption.\"\nregex = '''(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\\s\\S-]{64,}?KEY(?: BLOCK)?-----'''\nconfidence = \"high\"\nkeywords = [\"-----begin\"]",
+      "runtime": {
+        "regex": "(?i)-----BEGIN[ A-Z0-9_-]{0,100}PRIVATE KEY(?: BLOCK)?-----[\\s\\S-]{64,}?KEY(?: BLOCK)?-----",
+        "keywords": [
+          "-----begin"
+        ],
+        "exclude_if_any": []
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "pypi-upload-token",
+      "name": "PyPI Upload 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"pypi-upload-token\"\ndescription = \"Discovered a PyPI upload token, potentially compromising Python package distribution and repository integrity.\"\nregex = '''pypi-AgEIcHlwaS5vcmc[\\w-]{50,1000}'''\nconfidence = \"high\"\nkeywords = [\"pypi-ageichlwas5vcmc\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "pypi-AgEIcHlwaS5vcmc[\\w-]{50,1000}",
+        "keywords": [
+          "pypi-ageichlwas5vcmc"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "replicate-api-token",
+      "name": "Replicate API 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"replicate-api-token\"\ndescription = \"Detected a Replicate API Token, which may expose AI model hosting and inference services to unauthorized access.\"\nregex = '''(?i)\\b(r8_[A-Za-z0-9]{37})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"r8_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(r8_[A-Za-z0-9]{37})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "r8_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-app-token",
+      "name": "Slack 应用令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-app-token\"\ndescription = \"Detected a Slack App-level token, risking unauthorized access to Slack applications and workspace data.\"\nregex = '''(?i)xapp-\\d-[A-Z0-9]+-\\d+-[a-z0-9]+'''\nconfidence = \"high\"\nkeywords = [\"xapp\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "(?i)xapp-\\d-[A-Z0-9]+-\\d+-[a-z0-9]+",
+        "keywords": [
+          "xapp"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-bot-token",
+      "name": "Slack 机器人令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-bot-token\"\ndescription = \"Identified a Slack Bot token, which may compromise bot integrations and communication channel security.\"\nregex = '''xoxb-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*'''\nconfidence = \"high\"\nkeywords = [\"xoxb\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "xoxb-[0-9]{10,13}-[0-9]{10,13}[a-zA-Z0-9-]*",
+        "keywords": [
+          "xoxb"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-config-access-token",
+      "name": "Slack 配置访问令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-config-access-token\"\ndescription = \"Found a Slack Configuration access token, posing a risk to workspace configuration and sensitive data access.\"\nregex = '''(?i)xoxe.xox[bp]-\\d-[A-Z0-9]{163,166}'''\nconfidence = \"high\"\nkeywords = [\"xoxe.xoxb-\", \"xoxe.xoxp-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "(?i)xoxe.xox[bp]-\\d-[A-Z0-9]{163,166}",
+        "keywords": [
+          "xoxe.xoxb-",
+          "xoxe.xoxp-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-config-refresh-token",
+      "name": "Slack 配置刷新令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-config-refresh-token\"\ndescription = \"Discovered a Slack Configuration refresh token, potentially allowing prolonged unauthorized access to configuration settings.\"\nregex = '''(?i)xoxe-\\d-[A-Z0-9]{146}'''\nconfidence = \"high\"\nkeywords = [\"xoxe-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "(?i)xoxe-\\d-[A-Z0-9]{146}",
+        "keywords": [
+          "xoxe-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-legacy-bot-token",
+      "name": "Slack 旧版机器人令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-legacy-bot-token\"\ndescription = \"Uncovered a Slack Legacy bot token, which could lead to compromised legacy bot operations and data exposure.\"\nregex = '''xoxb-[0-9]{8,14}-[a-zA-Z0-9]{18,26}'''\nconfidence = \"high\"\nkeywords = [\"xoxb\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "xoxb-[0-9]{8,14}-[a-zA-Z0-9]{18,26}",
+        "keywords": [
+          "xoxb"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-legacy-token",
+      "name": "Slack 旧版令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-legacy-token\"\ndescription = \"Detected a Slack Legacy token, risking unauthorized access to older Slack integrations and user data.\"\nregex = '''xox[os]-\\d+-\\d+-\\d+-[a-fA-F\\d]+'''\nconfidence = \"high\"\nkeywords = [\"xoxo\", \"xoxs\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "xox[os]-\\d+-\\d+-\\d+-[a-fA-F\\d]+",
+        "keywords": [
+          "xoxo",
+          "xoxs"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-legacy-workspace-token",
+      "name": "Slack 旧版工作区令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-legacy-workspace-token\"\ndescription = \"Identified a Slack Legacy Workspace token, potentially compromising access to workspace data and legacy features.\"\nregex = '''xox[ar]-(?:\\d-)?[0-9a-zA-Z]{8,48}'''\nconfidence = \"high\"\nkeywords = [\"xoxa\", \"xoxr\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "xox[ar]-(?:\\d-)?[0-9a-zA-Z]{8,48}",
+        "keywords": [
+          "xoxa",
+          "xoxr"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-session-cookie",
+      "name": "Slack 会话 Cookie",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-session-cookie\"\ndescription = \"Detected a Slack session cookie (xoxd-), which authenticates browser and desktop sessions across all of a user's workspaces.\"\nregex = '''(xoxd-[\\w\\/\\\\+-]{100,}={0,2})(?:[^\\w\\/+=-]|\\z)'''\nconfidence = \"high\"\nkeywords = [\"xoxd-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(xoxd-[\\w\\/\\\\+-]{100,}={0,2})(?:[^\\w\\/+=-]|\\Z)",
+        "keywords": [
+          "xoxd-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-session-token",
+      "name": "Slack 会话令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-session-token\"\ndescription = \"Detected a Slack client session token (xoxc-), which provides full user-level API access when paired with a session cookie.\"\nregex = '''xoxc-\\d{9,15}-\\d{9,15}-\\d{9,15}-[a-f0-9]{64}\\b'''\nconfidence = \"high\"\nkeywords = [\"xoxc-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "xoxc-\\d{9,15}-\\d{9,15}-\\d{9,15}-[a-f0-9]{64}\\b",
+        "keywords": [
+          "xoxc-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-user-token",
+      "name": "Slack 用户令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-user-token\"\ndescription = \"Found a Slack User token, posing a risk of unauthorized user impersonation and data access within Slack workspaces.\"\nregex = '''xox[pe](?:-[0-9]{10,13}){3}-[a-zA-Z0-9-]{28,34}'''\nconfidence = \"high\"\nkeywords = [\"xoxp-\", \"xoxe-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 2.0\n'''",
+      "runtime": {
+        "regex": "xox[pe](?:-[0-9]{10,13}){3}-[a-zA-Z0-9-]{28,34}",
+        "keywords": [
+          "xoxp-",
+          "xoxe-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 2.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "slack-webhook-url",
+      "name": "Slack Webhook 地址凭据",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"slack-webhook-url\"\ndescription = \"Discovered a Slack Webhook, which could lead to unauthorized message posting and data leakage in Slack channels.\"\nregex = '''(?:https?://)?hooks.slack.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}'''\nconfidence = \"high\"\nkeywords = [\"hooks.slack.com\"]",
+      "runtime": {
+        "regex": "(?:https?://)?hooks.slack.com/(?:services|workflows|triggers)/[A-Za-z0-9+/]{43,56}",
+        "keywords": [
+          "hooks.slack.com"
+        ],
+        "exclude_if_any": []
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "telegram-bot-api-token",
+      "name": "Telegram 机器人 API 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"telegram-bot-api-token\"\ndescription = \"Detected a Telegram Bot API Token, risking unauthorized bot operations and message interception on Telegram.\"\nregex = '''(?i)(?:telegr)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([0-9]{5,16}:(?-i:A)[a-z0-9_\\-]{34})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"telegr\"]",
+      "runtime": {
+        "regex": "(?i)(?:telegr)(?:[ \\t\\w.-]{0,20})[\\t\\n\\f\\r '\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\t\\n\\f\\r =]{0,5}([0-9]{5,16}:(?-i:A)[a-z0-9_\\-]{34})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "telegr"
+        ],
+        "exclude_if_any": []
+      },
+      "methods": [
+        "keyword",
+        "regex"
+      ]
+    },
+    {
+      "id": "togetherai-api-key",
+      "name": "Together.ai API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"togetherai-api-key\"\ndescription = \"Detected a Together.ai API Key, which may expose access to open-source AI models and inference services.\"\nregex = '''(?i)\\b(tgp_v1_[A-Za-z0-9_-]{43})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"tgp_v1_\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.0\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(tgp_v1_[A-Za-z0-9_-]{43})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "tgp_v1_"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "vault-batch-token",
+      "name": "Vault 批量 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"vault-batch-token\"\ndescription = \"Detected a Vault Batch Token, risking unauthorized access to secret management services and sensitive data.\"\nregex = '''\\b(hvb\\.[\\w-]{138,300})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"hvb.\"]\nfilter = '''entropy(finding[\"secret\"]) <= 4.0\n'''",
+      "runtime": {
+        "regex": "\\b(hvb\\.[\\w-]{138,300})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "hvb."
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 4.0
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "vault-service-token",
+      "name": "Vault 服务 令牌",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"vault-service-token\"\ndescription = \"Identified a Vault Service Token, potentially compromising infrastructure security and access to sensitive credentials.\"\nregex = '''\\b((?:hvs\\.[\\w-]{90,120}|s\\.(?i:[a-z0-9]{24})))(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"hvs.\", \"vault\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n|| matchesAny(finding[\"secret\"], [`s\\.[A-Za-z]{24}`])\n'''",
+      "runtime": {
+        "regex": "\\b((?:hvs\\.[\\w-]{90,120}|s\\.(?i:[a-z0-9]{24})))(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "hvs.",
+          "vault"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "matches_any",
+            "patterns": [
+              "s\\.[A-Za-z]{24}"
+            ]
+          },
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "xai-api-key",
+      "name": "xAI API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"xai-api-key\"\ndescription = \"Detected an xAI (Grok) API Key, which may expose Grok AI model access to unauthorized parties.\"\nregex = '''(?i)\\b(xai-[A-Za-z0-9_-]{70,120})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"high\"\nkeywords = [\"xai-\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)\\b(xai-[A-Za-z0-9_-]{70,120})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "xai-"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "zai-api-key",
+      "name": "Z.ai API 密钥",
+      "kind": "credential",
+      "source": "Betterleaks",
+      "definition_format": "toml",
+      "definition_text": "[[rules]]\nid = \"zai-api-key\"\ndescription = \"Detected a Z.ai API key, which may expose GLM model access and usage to unauthorized parties.\"\nregex = '''(?i)(?:zai|z_ai|z\\.ai|glm|zlm)(?:[ \\t\\w.-]{0,20})[\\s'\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\s=]{0,5}([a-f0-9]{32}\\.[a-z0-9]{16})(?:\\\\?['\"\\x60]|[\\s;]|\\\\[nr]|$)'''\nconfidence = \"medium\"\nkeywords = [\"zai\", \"z_ai\", \"z.ai\", \"glm\", \"zlm\"]\nfilter = '''entropy(finding[\"secret\"]) <= 3.5\n'''",
+      "runtime": {
+        "regex": "(?i)(?:zai|z_ai|z\\.ai|glm|zlm)(?:[ \\t\\w.-]{0,20})[\\t\\n\\f\\r '\"]{0,3}(?:=|>|:{1,3}=|\\|\\||:|=>|\\?=|,)[\\x60'\"\\t\\n\\f\\r =]{0,5}([a-f0-9]{32}\\.[a-z0-9]{16})(?:\\\\?['\"\\x60]|[\\t\\n\\f\\r ;]|\\\\[nr]|$)",
+        "keywords": [
+          "zai",
+          "z_ai",
+          "z.ai",
+          "glm",
+          "zlm"
+        ],
+        "exclude_if_any": [
+          {
+            "op": "entropy",
+            "comparison": "<=",
+            "threshold": 3.5
+          }
+        ]
+      },
+      "methods": [
+        "keyword",
+        "regex",
+        "entropy"
+      ]
+    },
+    {
+      "id": "uniwork.pii.cn-id-card",
+      "name": "中国大陆居民身份证号",
+      "kind": "pii",
+      "source": "public",
+      "definition_format": "json",
+      "definition_text": "{\n  \"id\": \"uniwork.pii.cn-id-card\",\n  \"displayNameZh\": \"中国大陆居民身份证号\",\n  \"category\": \"personal_identifier\",\n  \"candidateRegex\": \"([1-9][0-9]{5}(?:18|19|20)[0-9]{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9Xx])\",\n  \"captureGroup\": 1,\n  \"normalization\": \"uppercase\",\n  \"validator\": \"cn_id_card\",\n  \"priority\": 30,\n  \"contextKeywords\": [\n    \"身份证\",\n    \"证件号\",\n    \"居民身份\",\n    \"公民身份\",\n    \"id card\",\n    \"identity number\"\n  ],\n  \"mask\": \"first6_last4\",\n  \"limitsZh\": \"18 位大陆居民身份证候选；校验日期、省级前缀、非 000 顺序码及 MOD 11-2。未验证县级历史行政区划/证件真实性；不覆盖旧 15 位和港澳台居住证。\"\n}",
+      "runtime": {
+        "regex": "([1-9][0-9]{5}(?:18|19|20)[0-9]{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9Xx])",
+        "secret_group": 1,
+        "validator": "cn_id_card",
+        "context_keywords": [
+          "身份证",
+          "证件号",
+          "居民身份",
+          "公民身份",
+          "id card",
+          "identity number"
+        ],
+        "require_context": false,
+        "priority": 30
+      },
+      "methods": [
+        "regex",
+        "validation"
+      ]
+    },
+    {
+      "id": "uniwork.pii.bank-card-number",
+      "name": "银行卡号候选",
+      "kind": "pii",
+      "source": "public",
+      "definition_format": "json",
+      "definition_text": "{\n  \"id\": \"uniwork.pii.bank-card-number\",\n  \"displayNameZh\": \"银行卡号候选\",\n  \"category\": \"financial_identifier\",\n  \"candidateRegex\": \"([0-9](?:[ \\\\t-]?[0-9]){12,18})\",\n  \"captureGroup\": 1,\n  \"normalization\": \"remove_ascii_separators\",\n  \"validator\": \"luhn_pan\",\n  \"priority\": 20,\n  \"contextKeywords\": [\n    \"银行卡\",\n    \"卡号\",\n    \"借记卡\",\n    \"信用卡\",\n    \"card number\",\n    \"bank card\",\n    \"debit card\",\n    \"credit card\",\n    \"pan\"\n  ],\n  \"mask\": \"first6_last4\",\n  \"requireContext\": true,\n  \"limitsZh\": \"默认只识别 13–19 位、Luhn 通过且有银行卡语境的 PAN 候选；不查询 BIN/真实账户，不覆盖所有银行账号/不采用 Luhn 的卡。无语境仅可列为低置信候选。\"\n}",
+      "runtime": {
+        "regex": "([0-9](?:[ \\t-]?[0-9]){12,18})",
+        "secret_group": 1,
+        "validator": "luhn_pan",
+        "context_keywords": [
+          "银行卡",
+          "卡号",
+          "借记卡",
+          "信用卡",
+          "card number",
+          "bank card",
+          "debit card",
+          "credit card",
+          "pan"
+        ],
+        "require_context": true,
+        "priority": 20
+      },
+      "methods": [
+        "regex",
+        "validation",
+        "context"
+      ]
+    },
+    {
+      "id": "uniwork.pii.cn-mobile",
+      "name": "中国大陆手机号候选",
+      "kind": "pii",
+      "source": "public",
+      "definition_format": "json",
+      "definition_text": "{\n  \"id\": \"uniwork.pii.cn-mobile\",\n  \"displayNameZh\": \"中国大陆手机号候选\",\n  \"category\": \"contact_identifier\",\n  \"candidateRegex\": \"(?:\\\\+86[ \\\\t-]?)?(1[3-9][0-9](?:[ \\\\t-]?[0-9]){8})\",\n  \"captureGroup\": 1,\n  \"normalization\": \"remove_ascii_separators\",\n  \"validator\": \"cn_mobile_format\",\n  \"priority\": 10,\n  \"contextKeywords\": [\n    \"手机号\",\n    \"手机\",\n    \"联系电话\",\n    \"电话\",\n    \"mobile\",\n    \"phone\",\n    \"tel\"\n  ],\n  \"mask\": \"first3_last4\",\n  \"requireContext\": true,\n  \"limitsZh\": \"11 位普通大陆移动号码候选，兼容 +86、空格/连字符；采用 1[3-9] 宽格式，不作实时号段/在用/实名验证。无手机号语境仅可列为低置信候选；不覆盖座机/其他国家/物联网长号码。\"\n}",
+      "runtime": {
+        "regex": "(?:\\+86[ \\t-]?)?(1[3-9][0-9](?:[ \\t-]?[0-9]){8})",
+        "secret_group": 1,
+        "validator": "cn_mobile_format",
+        "context_keywords": [
+          "手机号",
+          "手机",
+          "联系电话",
+          "电话",
+          "mobile",
+          "phone",
+          "tel"
+        ],
+        "require_context": true,
+        "priority": 10
+      },
+      "methods": [
+        "regex",
+        "validation",
+        "context"
+      ]
+    }
+  ]
+}

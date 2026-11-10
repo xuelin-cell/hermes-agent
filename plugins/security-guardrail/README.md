@@ -1,5 +1,32 @@
 # security-guardrail
 
+## 阶段二任务 2：引擎已迁入
+
+插件内已迁入规则引擎、规范化器、匹配器、全部 138 条原基线规则以及独立敏感检测 API 和资源。
+本次排除安全中心的页面、逐条规则设置、审计采集及其存储查询链路。来源、测试和已知差异见
+[迁入记录](docs/task2-migration.md)。本次没有修改 Hermes core 或启动代码。
+
+内部同步入口为 `contracts.evaluate_tool_call(request: GuardrailRequest) -> PermissionDecision`。
+请求明确提供原标准工具参数、执行端 OS、产品规则组、最终 cwd、工作区根、保护目录及来源；
+`profile=None` 仅选择通用规则，不根据 UniClaw 环境变量推断 PRO。其 `profile` 是规则产品组，
+不等同于 Hermes 账号 profile。执行上下文的文件存在性、目录探测和限额脚本读取均由宿主注入。
+缺少脚本读取能力、脚本过大或读取信息无效时抛出 `ContextUnavailableError`，后续宿主适配器必须阻断。
+声明的运行依赖为 `pydantic>=2,<3`，经 Hermes PM 管理；当前测试复用已有符合范围的解释器环境。
+
+敏感检测通过 `guardrail.sensitive_protection.inspect_sensitive_text(text, policy=...)` 独立调用，
+按实际安装包名读取资源。输出包含原值，调用方不能把完整检测结果写入普通日志；本阶段不新增自动外发过滤。
+
+保留的判断顺序是硬拒绝、固定放行、可信来源、用户拒绝/允许、会话允许、AUTO、ASK 和默认允许。
+移除安全中心逐条设置后，ASK 模式直接执行适用的原 ASK 基线；这与原版未配置 `ask_policy` 时默认允许不同。
+UniClaw 专用的产品目录/安装器等豁免默认关闭，只能在可信执行上下文中显式启用用于等价场景。
+
+**当前聊天仍使用下述第一阶段目录规则。** 引擎与真实 Hermes 工具回调的接线、通用 `pre_tool_execute`
+及完整审批对接属于任务 3～5；迁入引擎不表示这些工具已经受到新规则保护。
+
+运行 `scripts/run_tests.sh tests/plugins/security_guardrail/ tests/plugins/test_security_guardrail.py` 验证内部引擎与现有 Demo。
+
+## 当前执行中的第一阶段规则
+
 第一阶段只验证本地文件后端的 `write_file` 执行前目录规则。命中规则时返回
 `block`，Hermes 在实际写入前结束该工具调用。普通路径继续进入原工具检查。
 
