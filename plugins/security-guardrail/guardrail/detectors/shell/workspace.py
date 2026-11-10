@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...runtime import path_exists
+from ...runtime import path_exists, resolve_execution_path
 
 import posixpath
 import re
@@ -690,6 +690,7 @@ def _resolve_path(raw_path: str, current_dir: str | None) -> str:
     path = raw_path.strip().strip("\"'`").rstrip(";,|&")
     if not path or path == "-" or path.startswith("~") or _is_dynamic(path):
         return ""
+    path = resolve_execution_path(path, current_dir)
     normalized = path.replace("\\", "/")
     if normalized.casefold().startswith("//?/unc/"):
         normalized = "//" + normalized[len("//?/unc/") :]

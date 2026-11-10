@@ -613,6 +613,11 @@ def read_file_tool(path: str, offset: int = 1, limit: int = DEFAULT_READ_LIMIT, 
     try:
         offset, limit = normalize_read_pagination(offset, limit)
 
+        from tools.prepared_execution import authorize_file, check_prepared_paths, resolve_execution_target, FileExecutionTarget
+        raw_error = check_prepared_paths([path])
+        if raw_error:
+            return tool_error(raw_error, status="blocked")
+
         # On the RAW model-supplied string, before any expanduser()/resolve():
         # on Windows resolving \??\UNC\host\share already sends SMB auth (NTLM
         # leak); on POSIX the task-base join would anchor the prefix as a
@@ -628,6 +633,11 @@ def read_file_tool(path: str, offset: int = 1, limit: int = DEFAULT_READ_LIMIT, 
                 "block or produce infinite output.")
 
         _resolved = _resolve_path_for_task(path, task_id)
+        _resolved = type(_resolved)(resolve_execution_target(str(_resolved), task_id))
+        block = authorize_file("read_file", {"path": path, "offset": offset, "limit": limit},
+            [FileExecutionTarget("read", str(_resolved), path)], task_id=task_id)
+        if block:
+            return tool_error(block, status="blocked")
 
         # A read on a FIFO/socket blocks until the exec timeout: a self-shipped DoS.
         if _file_ops_uses_host_paths(_get_file_ops(task_id)):
@@ -867,6 +877,10 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
     (unadvertised in the schema; the mirror rejection error teaches it — the
     cross-PROFILE guard it was named for no longer exists).
     """
+    from tools.prepared_execution import authorize_file, check_prepared_paths, resolve_execution_target, FileExecutionTarget
+    target_error = check_prepared_paths([path])
+    if target_error:
+        return tool_error(target_error)
     # write_file checks the binary-document guard before the mirror guard.
     err = (_check_sensitive_path(path, task_id)
            or _check_binary_document_write(path, task_id)
@@ -882,8 +896,13 @@ def write_file_tool(path: str, content: str, task_id: str = "default",
     try:
         # Resolution failure falls back to the legacy unlocked path (the write
         # still proceeds; the per-task staleness check still runs).
-        _resolved = _resolve_or_none(path, task_id)
+        _resolved = resolve_execution_target(_resolve_or_none(path, task_id), task_id)
         path_to_resolved = {path: _resolved}
+        block = authorize_file("write_file", {"path": path, "content": content},
+                               [FileExecutionTarget("write", _resolved or "", path, content=content)],
+                               task_id=task_id, session_id=session_id or "")
+        if block:
+            return tool_error(block, status="blocked")
         with ExitStack() as _lock:
             if _resolved:
                 # Per-path lock serializes read→modify→write across concurrent
@@ -973,6 +992,13 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
         _paths_to_check += collected[0]
         _content_write_paths += collected[1]
         _entry_paths = collected[2]
+    from tools.prepared_execution import (
+        authorize_file, check_prepared_paths, execution_policy_available,
+        patch_execution_targets, resolve_execution_target,
+    )
+    raw_error = check_prepared_paths(_paths_to_check)
+    if raw_error:
+        return tool_error(raw_error, status="blocked")
     precheck_err = _write_precheck_error(_paths_to_check, _content_write_paths, task_id, cross_profile)
     if precheck_err:
         return tool_error(precheck_err)
@@ -980,8 +1006,15 @@ def patch_tool(mode: str = "replace", path: str = None, old_string: str = None,
         # Lock paths in sorted, deduplicated order so concurrent callers with
         # overlapping multi-file patches can't deadlock (every caller locks in
         # the same order). An unresolvable path is simply not locked.
-        _path_to_resolved: dict[str, str] = {_p: _resolve_or_none(_p, task_id) for _p in _paths_to_check}
-        _path_to_entry: dict[str, str] = {_p: _resolve_or_none(_p, task_id, entry=True) for _p in _entry_paths}
+        _path_to_resolved: dict[str, str] = {_p: resolve_execution_target(_resolve_or_none(_p, task_id), task_id) for _p in _paths_to_check}
+        _path_to_entry: dict[str, str] = {_p: resolve_execution_target(_resolve_or_none(_p, task_id, entry=True), task_id, entry=True) for _p in _entry_paths}
+        if execution_policy_available():
+            targets = patch_execution_targets(mode, path, new_string, patch, _path_to_resolved, _path_to_entry, task_id)
+            block = authorize_file("patch", {"mode": mode, "path": path, "old_string": old_string,
+                "new_string": new_string, "replace_all": replace_all, "patch": patch}, targets,
+                task_id=task_id, session_id=session_id)
+            if block:
+                return tool_error(block, status="blocked")
         with ExitStack() as _locks:
             for _r in sorted({_r for _r in (*_path_to_resolved.values(), *_path_to_entry.values()) if _r}):
                 _locks.enter_context(file_state.lock_path(_r))
@@ -1051,6 +1084,10 @@ def search_tool(pattern: str, target: str = "content", path: str = ".",
                 task_id: str = "default") -> str:
     """Search for content or files."""
     try:
+        from tools.prepared_execution import authorize_file, check_prepared_paths, execution_policy_available, resolve_execution_target, FileExecutionTarget
+        raw_error = check_prepared_paths([path])
+        if raw_error:
+            return tool_error(raw_error, status="blocked")
         offset, limit = normalize_search_pagination(offset, limit)
 
         # Pagination args (and order) are part of the key so paging through truncated
@@ -1086,6 +1123,11 @@ def search_tool(pattern: str, target: str = "content", path: str = ".",
         block_error = get_read_block_error(resolved_search_path)
         if block_error:
             return tool_error(block_error)
+        resolved_search_path = resolve_execution_target(resolved_search_path, task_id)
+        block = authorize_file("search_files", {"path": path, "pattern": pattern, "target": target},
+            [FileExecutionTarget("read", resolved_search_path, path)], task_id=task_id)
+        if block:
+            return tool_error(block, status="blocked")
 
         # A missing search root costs two shells (search + parent listing for
         # "Similar paths"); cache the miss so a retry skips both.
@@ -1094,7 +1136,7 @@ def search_tool(pattern: str, target: str = "content", path: str = ".",
             return cached_search_nf
 
         result = _get_file_ops(task_id).search(
-            pattern=pattern, path=path, target=target, file_glob=file_glob,
+            pattern=pattern, path=resolved_search_path if execution_policy_available() else path, target=target, file_glob=file_glob,
             limit=limit, offset=offset, output_mode=output_mode, context=context, order=order)
         omitted = _filter_read_blocked_search_results(result, task_id)
         for m in getattr(result, "matches", None) or ():
@@ -1382,8 +1424,8 @@ def _read_file_schema_overrides():
     return {}
 
 
-registry.register(name="read_file", toolset="file", schema=READ_FILE_SCHEMA, handler=_handle_read_file, check_fn=_check_file_reqs, emoji="📖", max_result_size_chars=100_000, dynamic_schema_overrides=_read_file_schema_overrides)
-registry.register(name="write_file", toolset="file", schema=WRITE_FILE_SCHEMA, handler=_handle_write_file, check_fn=_check_file_reqs, emoji="✍️", max_result_size_chars=100_000)
+registry.register(name="read_file", toolset="file", schema=READ_FILE_SCHEMA, handler=_handle_read_file, check_fn=_check_file_reqs, emoji="📖", max_result_size_chars=100_000, dynamic_schema_overrides=_read_file_schema_overrides, prepared_execution=True)
+registry.register(name="write_file", toolset="file", schema=WRITE_FILE_SCHEMA, handler=_handle_write_file, check_fn=_check_file_reqs, emoji="✍️", max_result_size_chars=100_000, prepared_execution=True)
 def _patch_schema_overrides():
     """Layer the V4A patch mode onto the base replace-only schema for
     OpenAI-family mains (see PATCH_SCHEMA comment). Config/context probe
@@ -1406,8 +1448,8 @@ def _patch_schema_overrides():
         return {}
 
 
-registry.register(name="patch", toolset="file", schema=PATCH_SCHEMA, handler=_handle_patch, check_fn=_check_file_reqs, emoji="🔧", max_result_size_chars=100_000, dynamic_schema_overrides=_patch_schema_overrides)
-registry.register(name="search_files", toolset="file", schema=SEARCH_FILES_SCHEMA, handler=_handle_search_files, check_fn=_check_file_reqs, emoji="🔎", max_result_size_chars=100_000)
+registry.register(name="patch", toolset="file", schema=PATCH_SCHEMA, handler=_handle_patch, check_fn=_check_file_reqs, emoji="🔧", max_result_size_chars=100_000, dynamic_schema_overrides=_patch_schema_overrides, prepared_execution=True)
+registry.register(name="search_files", toolset="file", schema=SEARCH_FILES_SCHEMA, handler=_handle_search_files, check_fn=_check_file_reqs, emoji="🔎", max_result_size_chars=100_000, prepared_execution=True)
 
 
 # ---- BEGIN PLUGIN-COMPAT (revert-scheduled; see COMPAT_MANIFEST.md) ----

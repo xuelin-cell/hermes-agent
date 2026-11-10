@@ -1,7 +1,8 @@
 """Normalize raw tool calls into :class:`RuntimeAction`.
 
-The normalizer is intentionally deterministic and side-effect free: it does
-not read files, resolve symlinks, call models, or decide allow/deny.
+Without an injected execution-path resolver, normalization is deterministic: it does
+not read files or resolve symlinks. A host may explicitly supply path resolution;
+normalization never calls models or decides allow/deny.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from .action import RuntimeAction, RuntimeOperation, TargetKind, ToolType, WorkspaceScope
 from .path_policy import is_sensitive_path_candidate
 from .shell_syntax import analyze_shell_text
+from .runtime import resolve_execution_path
 from .tool_schema import (
     CANONICAL_TOOL_CLASSIFICATION,
     TOOL_ACTION_OPERATION_OVERRIDES,
@@ -284,6 +286,7 @@ def _normalize_path(path: str, cwd: str | None) -> str:
     cleaned = _clean_path_token(path)
     if not cleaned:
         return ""
+    cleaned = resolve_execution_path(cleaned, cwd)
     path_for_norm = cleaned.replace("\\", "/")
     if _WINDOWS_DRIVE_ROOT_RE.match(path_for_norm):
         return path_for_norm.casefold()

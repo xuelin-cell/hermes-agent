@@ -1,0 +1,28 @@
+{
+  "base_commit": "9c2539b2ed",
+  "plugin_version": "0.3.0",
+  "vendor_adaptations": [
+    {
+      "path": "plugins/security-guardrail/guardrail/runtime.py",
+      "sha256": "f5beabe3ef54cf924cc463d29ec235af1b43135ac2659b31a34bdd1d143839bf"
+    },
+    {
+      "path": "plugins/security-guardrail/guardrail/normalizer.py",
+      "sha256": "a866138ccb1d63b027f63f955fb758a3fe0cf58f7c4df2d8d1ec15a0eb8ef22c"
+    },
+    {
+      "path": "plugins/security-guardrail/guardrail/detectors/shell/workspace.py",
+      "sha256": "9e6d0a816fefc80fdf6a313cfb9bc1904feef787376217caf688fb1ee6ebc70a"
+    },
+    {
+      "path": "plugins/security-guardrail/guardrail/detectors/shell/script_inspection.py",
+      "sha256": "9eebc1b4d7fd250c0cade51fd176c285bb3946777111a5df93ed2c00c9b3ca79"
+    }
+  ],
+  "vendor_purpose": "Optional injected execution-side path resolution; default without capability retains source behavior.",
+  "rule_definition_files_changed": [],
+  "security_center_migrated": false,
+  "active_account_configuration_changed": false,
+  "startup_source_changed": false,
+  "status": "tasks3-5 implementation; task6 acceptance pending"
+}

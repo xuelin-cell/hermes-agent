@@ -1,0 +1,163 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 4 test files (~21 tests) under ['tests\\plugins\\test_security_guardrail_terminal.py', 'tests\\plugins\\test_security_guardrail_policy.py', 'tests\\plugins\\test_security_guardrail_other_tools.py', 'tests\\tools\\test_file_tools_live.py']; running with -j 4
+[  9.5% |     2/~21 | ✓2 | ✗0] ✓ tests\plugins\test_security_guardrail_other_tools.py (2✓, 29.7s)
+[ 28.6% |     6/~21 | ✓5 | ✗1] ✗ tests\plugins\test_security_guardrail_terminal.py (3✓ 1✗, 34.7s)
+
+  ╔╍ Failed: tests\plugins\test_security_guardrail_terminal.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ ...F                                                                     [100%]
+  ║ ================================== FAILURES ===================================
+  ║ ____________ test_session_cd_does_not_move_file_security_boundary _____________
+  ║ 
+  ║ tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-y4t86xir/pytest-of-unknown/pytest-0/test_session_cd_does_not_move_0')
+  ║ 
+  ║     def test_session_cd_does_not_move_file_security_boundary(tmp_path):
+  ║         from tests.plugins.test_security_guardrail import write
+  ║         root = workspace(tmp_path)
+  ║         outside = tmp_path / "outside"
+  ║         outside.mkdir()
+  ║         with profile(tmp_path / "home", root) as task_id:
+  ║             result = terminal(f"cd {shlex.quote(outside.as_posix())}", task_id)
+  ║             assert not result.get("error"), result
+  ║             result = write("after-cd.txt", task_id)
+  ║ >           assert result.get("status") == "blocked", result
+  ║ E           AssertionError: {'bytes_written': 11, 'dirs_created': True, 'verified': True, 'lint': {'status': 'skipped', 'message': 'No linter for .txt files'}, ...}
+  ║ E           assert None == 'blocked'
+  ║ E            +  where None = <built-in method get of dict object at 0x000002137A2C6480>('status')
+  ║ E            +    where <built-in method get of dict object at 0x000002137A2C6480> = {'bytes_written': 11, 'dirs_created': True, 'verified': True, 'lint': {'status': 'skipped', 'message': 'No linter for .txt files'}, ...}.get
+  ║ 
+  ║ tests\plugins\test_security_guardrail_terminal.py:86: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/plugins/test_security_guardrail_terminal.py::test_session_cd_does_not_move_file_security_boundary
+  ║ 1 failed, 3 passed in 29.68s
+  ║
+  ║  Repro: python -m pytest tests\plugins\test_security_guardrail_terminal.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[ 33.3% |     7/~21 | ✓6 | ✗1] ✓ tests\plugins\test_security_guardrail_policy.py (1✓, 35.0s)
+[100.0% |    21/~21 | ✓18 | ✗ 3] ✗ tests\tools\test_file_tools_live.py (12✓ 2✗, 96.4s)
+
+  ╔╍ Failed: tests\tools\test_file_tools_live.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ 
+  ║     def test_cat_deterministic_content(self, env, tmp_path):
+  ║         f = tmp_path / "det.txt"
+  ║         f.write_text(SIMPLE_CONTENT)
+  ║         result = env.execute(f"cat {f}")
+  ║ >       assert result["returncode"] == 0
+  ║ E       assert 1 == 0
+  ║ 
+  ║ tests\tools\test_file_tools_live.py:93: AssertionError
+  ║ _______________________ TestExpandPath.test_tilde_exact _______________________
+  ║ 
+  ║ self = <tests.tools.test_file_tools_live.TestExpandPath object at 0x000001B4AB91FED0>
+  ║ ops = <tools.file_operations.ShellFileOperations object at 0x000001B4AECB4150>
+  ║ 
+  ║     def test_tilde_exact(self, ops):
+  ║         result = ops._expand_path("~/test.txt")
+  ║         expected = f"{Path.home()}/test.txt"
+  ║ >       assert result == expected
+  ║ E       AssertionError: assert '/c/Users/lihuadu/test.txt' == 'C:\\Users\\lihuadu/test.txt'
+  ║ E         
+  ║ E         - C:\Users\lihuadu/test.txt
+  ║ E         ? ^^^     ^
+  ║ E         + /c/Users/lihuadu/test.txt
+  ║ E         ? ^^^     ^
+  ║ 
+  ║ tests\tools\test_file_tools_live.py:176: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_cat_deterministic_content
+  ║ FAILED tests/tools/test_file_tools_live.py::TestExpandPath::test_tilde_exact
+  ║ 2 failed, 12 passed in 90.59s (0:01:30)
+  ║
+  ║  Repro: python -m pytest tests\tools\test_file_tools_live.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+
+=== Summary: 4 files, 18 tests passed, 3 failed (100% complete) in 97.8s (4 workers) ===
+  Durations cached to test_durations.json (2 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   4
+  Total subprocess CPU-wall: 195.9s  (runner wall: 97.8s, parallelism: 4x)
+  P50: 35.02s  P90: 96.42s  P95: 96.42s  P99: 96.42s  Max: 96.42s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     96.42s  tests\tools\test_file_tools_live.py
+     35.02s  tests\plugins\test_security_guardrail_policy.py
+     34.75s  tests\plugins\test_security_guardrail_terminal.py
+     29.71s  tests\plugins\test_security_guardrail_other_tools.py
+
+=== Failure output ===
+
+--- tests\plugins\test_security_guardrail_terminal.py ---
+...F                                                                     [100%]
+================================== FAILURES ===================================
+____________ test_session_cd_does_not_move_file_security_boundary _____________
+
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-y4t86xir/pytest-of-unknown/pytest-0/test_session_cd_does_not_move_0')
+
+    def test_session_cd_does_not_move_file_security_boundary(tmp_path):
+        from tests.plugins.test_security_guardrail import write
+        root = workspace(tmp_path)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        with profile(tmp_path / "home", root) as task_id:
+            result = terminal(f"cd {shlex.quote(outside.as_posix())}", task_id)
+            assert not result.get("error"), result
+            result = write("after-cd.txt", task_id)
+>           assert result.get("status") == "blocked", result
+E           AssertionError: {'bytes_written': 11, 'dirs_created': True, 'verified': True, 'lint': {'status': 'skipped', 'message': 'No linter for .txt files'}, ...}
+E           assert None == 'blocked'
+E            +  where None = <built-in method get of dict object at 0x000002137A2C6480>('status')
+E            +    where <built-in method get of dict object at 0x000002137A2C6480> = {'bytes_written': 11, 'dirs_created': True, 'verified': True, 'lint': {'status': 'skipped', 'message': 'No linter for .txt files'}, ...}.get
+
+tests\plugins\test_security_guardrail_terminal.py:86: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/plugins/test_security_guardrail_terminal.py::test_session_cd_does_not_move_file_security_boundary
+1 failed, 3 passed in 29.68s
+
+--- tests\tools\test_file_tools_live.py ---
+..F........F..                                                           [100%]
+================================== FAILURES ===================================
+_________ TestLocalEnvironmentExecute.test_cat_deterministic_content __________
+
+self = <tests.tools.test_file_tools_live.TestLocalEnvironmentExecute object at 0x000001B4AB985CD0>
+env = <tools.environments.local.LocalEnvironment object at 0x000001B4AEB87750>
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-tma2ll46/pytest-of-unknown/pytest-0/test_cat_deterministic_content0')
+
+    def test_cat_deterministic_content(self, env, tmp_path):
+        f = tmp_path / "det.txt"
+        f.write_text(SIMPLE_CONTENT)
+        result = env.execute(f"cat {f}")
+>       assert result["returncode"] == 0
+E       assert 1 == 0
+
+tests\tools\test_file_tools_live.py:93: AssertionError
+_______________________ TestExpandPath.test_tilde_exact _______________________
+
+self = <tests.tools.test_file_tools_live.TestExpandPath object at 0x000001B4AB91FED0>
+ops = <tools.file_operations.ShellFileOperations object at 0x000001B4AECB4150>
+
+    def test_tilde_exact(self, ops):
+        result = ops._expand_path("~/test.txt")
+        expected = f"{Path.home()}/test.txt"
+>       assert result == expected
+E       AssertionError: assert '/c/Users/lihuadu/test.txt' == 'C:\\Users\\lihuadu/test.txt'
+E         
+E         - C:\Users\lihuadu/test.txt
+E         ? ^^^     ^
+E         + /c/Users/lihuadu/test.txt
+E         ? ^^^     ^
+
+tests\tools\test_file_tools_live.py:176: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_cat_deterministic_content
+FAILED tests/tools/test_file_tools_live.py::TestExpandPath::test_tilde_exact
+2 failed, 12 passed in 90.59s (0:01:30)
+
+=== 2 files with test failures (3 tests failed) ===
+  tests\plugins\test_security_guardrail_terminal.py  (1 test failed)
+  tests\tools\test_file_tools_live.py  (2 tests failed)

@@ -1,0 +1,22 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 2 test files (~9 tests) under ['tests\\plugins\\test_security_guardrail.py', 'tests\\plugins\\test_security_guardrail_patch.py']; running with -j 4
+[ 66.7% |     6/~9 | ✓5 | ✗0] ✓ tests\plugins\test_security_guardrail.py (5✓ 1s, 36.5s)
+[100.0% |     9/~9 | ✓7 | ✗0] ✓ tests\plugins\test_security_guardrail_patch.py (2✓ 1s, 44.6s)
+
+=== Summary: 2 files, 7 tests passed, 0 failed, 2 skipped (100% complete) in 46.0s (4 workers) ===
+
+  note: platforms('posix') tests (in 2 files) were SKIPPED on this host (win32); they run on the main Linux CI lane, the macOS Python-tests lane.
+  Durations cached to test_durations.json (2 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   2
+  Total subprocess CPU-wall: 81.1s  (runner wall: 46.0s, parallelism: 4x)
+  P50: 44.58s  P90: 44.58s  P95: 44.58s  P99: 44.58s  Max: 44.58s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     44.58s  tests\plugins\test_security_guardrail_patch.py
+     36.50s  tests\plugins\test_security_guardrail.py

@@ -1,0 +1,512 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 4 test files (~155 tests) under ['tests\\hermes_cli\\test_plugins.py', 'tests\\tools\\test_file_tools_cwd_resolution.py', 'tests\\tools\\test_file_tools.py', 'tests\\tools\\test_file_tools_live.py']; running with -j 4
+[  7.7% |    12/~155 | ✓ 7 | ✗ 4] ✗ tests\tools\test_file_tools_cwd_resolution.py (7✓ 4✗ 6s, 24.0s)
+
+  ╔╍ Failed: tests\tools\test_file_tools_cwd_resolution.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║     def test_warning_fires_from_terminal_cwd_when_registry_empty(_isolated_cwd, monkeypatch):
+  ║         """Divergence warning must fire even before any terminal command runs.
+  ║     
+  ║         PR #35399's warning required a live terminal cwd; a fresh worktree session
+  ║         (empty registry) silently misrouted with no warning. Now the warning falls
+  ║         back to the absolute TERMINAL_CWD anchor, so an edit aimed outside the
+  ║         worktree is flagged on the very first write.
+  ║         """
+  ║         workspace, decoy = _isolated_cwd
+  ║         monkeypatch.setattr(terminal_tool, "_session_cwd", {})
+  ║         monkeypatch.setenv("TERMINAL_CWD", str(workspace))
+  ║     
+  ║         # Relative path that escapes the worktree into the decoy/main checkout.
+  ║         escaping = os.path.relpath(str(decoy / "target.py"), str(workspace))
+  ║         resolved = ftp._resolve_path_for_task(escaping, task_id="default")
+  ║     
+  ║         warn = ftp._path_resolution_warning(escaping, resolved, task_id="default")
+  ║     
+  ║         assert warn is not None
+  ║ >       assert str(workspace) in warn
+  ║ E       assert 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_warning_fires_from_termin0\\workspace' in "Relative path '..\\\\decoy\\\\target.py' resolved to 'C:\\\\Users\\\\lihuadu\\\\AppData\\\\Local\\\\Temp\\\\hermes-py...ended (e.g. a git-worktree session writing into the main checkout), pass an absolute path under the workspace instead."
+  ║ E        +  where 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_warning_fires_from_termin0\\workspace' = str(WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_warning_fires_from_termin0/workspace'))
+  ║ 
+  ║ D:\liantong\projects\python\hermes-agent\.pytest_cache\guardrail-task3-5-baseline\tests\tools\test_file_tools_cwd_resolution.py:197: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/tools/test_file_tools_cwd_resolution.py::test_container_absolute_input_path_does_not_follow_host_symlink
+  ║ FAILED tests/tools/test_file_tools_cwd_resolution.py::test_container_relative_path_keeps_container_cwd_symlink
+  ║ FAILED tests/tools/test_file_tools_cwd_resolution.py::test_warning_fires_when_relative_path_escapes_workspace
+  ║ FAILED tests/tools/test_file_tools_cwd_resolution.py::test_warning_fires_from_terminal_cwd_when_registry_empty
+  ║ 4 failed, 7 passed, 6 skipped in 19.35s
+  ║
+  ║  Repro: python -m pytest tests\tools\test_file_tools_cwd_resolution.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[ 35.5% |    55/~155 | ✓46 | ✗ 8] ✗ tests\tools\test_file_tools.py (39✓ 4✗, 32.1s)
+
+  ╔╍ Failed: tests\tools\test_file_tools.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║         result = json.loads(write_file_tool("/etc/passwd", "evil"))
+  ║         assert "error" in result
+  ║ >       assert "sensitive system path" in result["error"]
+  ║ E       assert 'sensitive system path' in "Write denied: 'D:\\etc\\passwd' is a protected system/credential file."
+  ║ 
+  ║ tests\tools\test_file_tools.py:378: AssertionError
+  ║ ___________ TestSensitivePathCheck.test_macos_private_var_carveouts ___________
+  ║ 
+  ║ self = <tests.tools.test_file_tools.TestSensitivePathCheck object at 0x000001A8ABA04050>
+  ║ 
+  ║     def test_macos_private_var_carveouts(self):
+  ║         """macOS temp dirs under /private/var must not be blanket-blocked,
+  ║         while the genuinely-sensitive /private/var subtrees still are."""
+  ║         from tools.file_tools_write_guards import _check_sensitive_path
+  ║     
+  ║         # $TMPDIR / /tmp / /var/folders realpath into these on macOS.
+  ║         assert _check_sensitive_path("/private/var/folders/xy/T/tmp.txt") is None
+  ║         assert _check_sensitive_path("/private/var/tmp/build.log") is None
+  ║         # Sensitive subtrees remain blocked.
+  ║ >       assert _check_sensitive_path("/private/var/db/secret") is not None
+  ║ E       AssertionError: assert None is not None
+  ║ E        +  where None = <function _check_sensitive_path at 0x000001A8AB9ACA90>('/private/var/db/secret')
+  ║ 
+  ║ tests\tools\test_file_tools.py:389: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/tools/test_file_tools.py::TestPatchSensitivePathExtraction::test_patch_move_to_sensitive_dst_blocked
+  ║ FAILED tests/tools/test_file_tools.py::TestPatchSensitivePathExtraction::test_patch_update_no_space_after_asterisks_blocked
+  ║ FAILED tests/tools/test_file_tools.py::TestSensitivePathCheck::test_system_path_still_blocked
+  ║ FAILED tests/tools/test_file_tools.py::TestSensitivePathCheck::test_macos_private_var_carveouts
+  ║ 4 failed, 39 passed in 26.57s
+  ║
+  ║  Repro: python -m pytest tests\tools\test_file_tools.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[ 91.0% |   141/~155 | ✓132 | ✗  9] ✗ tests\hermes_cli\test_plugins.py (86✓ 1✗, 52.1s)
+
+  ╔╍ Failed: tests\hermes_cli\test_plugins.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║         native.mkdir()
+  ║         (native / "plugin.yaml").write_text(
+  ║             yaml.safe_dump({"name": "native", "version": "1.0.0"})
+  ║         )
+  ║         (native / "__init__.py").write_text("def register(ctx):\n    pass\n", encoding="utf-8")
+  ║         home.mkdir(exist_ok=True)
+  ║         (home / "config.yaml").write_text(
+  ║             yaml.safe_dump({"plugins": {"enabled": ["portable.test", "native"]}})
+  ║         )
+  ║         empty_bundled = tmp_path / "bundled"
+  ║         empty_bundled.mkdir()
+  ║         monkeypatch.setenv("HOME", str(tmp_path / "os-home"))
+  ║         monkeypatch.setenv("HERMES_HOME", str(home))
+  ║         monkeypatch.setattr(plugins_mod, "get_bundled_plugins_dir", lambda: empty_bundled)
+  ║     
+  ║         manager = PluginManager()
+  ║         manager.discover_and_load()
+  ║     
+  ║ >       [qualified] = manager.list_plugin_skill_metadata()
+  ║         ^^^^^^^^^^^
+  ║ E       ValueError: not enough values to unpack (expected 1, got 0)
+  ║ 
+  ║ tests\hermes_cli\test_plugins.py:212: ValueError
+  ║ ------------------------------ Captured log call ------------------------------
+  ║ INFO     hermes_cli.plugin_capabilities:plugin_capabilities.py:144 capability_check plugin=native capability=tools.override decision=deny checked_by=plugin_capability_granted evidence=not granted
+  ║ WARNING  hermes_cli.plugins:plugins_loader.py:602 Agent Plugin 'portable.test' disabled: plugin.json extension server 'worker': app.darwin.location must be absolute or start with ~ / %VAR% / $VAR, without '..' or a URL scheme
+  ║ INFO     hermes_cli.plugins:plugins.py:1447 Plugin discovery complete: 2 found, 1 enabled
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/hermes_cli/test_plugins.py::TestPluginDiscovery::test_enabled_portable_plugin_registers_components
+  ║ 1 failed, 86 passed in 46.75s
+  ║
+  ║  Repro: python -m pytest tests\hermes_cli\test_plugins.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[100.0% |   155/~155 | ✓144 | ✗ 11] ✗ tests\tools\test_file_tools_live.py (12✓ 2✗, 56.6s)
+
+  ╔╍ Failed: tests\tools\test_file_tools_live.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ 
+  ║     def test_cat_deterministic_content(self, env, tmp_path):
+  ║         f = tmp_path / "det.txt"
+  ║         f.write_text(SIMPLE_CONTENT)
+  ║         result = env.execute(f"cat {f}")
+  ║ >       assert result["returncode"] == 0
+  ║ E       assert 1 == 0
+  ║ 
+  ║ tests\tools\test_file_tools_live.py:93: AssertionError
+  ║ _______________________ TestExpandPath.test_tilde_exact _______________________
+  ║ 
+  ║ self = <tests.tools.test_file_tools_live.TestExpandPath object at 0x00000143BDDACE10>
+  ║ ops = <tools.file_operations.ShellFileOperations object at 0x00000143C10A8B50>
+  ║ 
+  ║     def test_tilde_exact(self, ops):
+  ║         result = ops._expand_path("~/test.txt")
+  ║         expected = f"{Path.home()}/test.txt"
+  ║ >       assert result == expected
+  ║ E       AssertionError: assert '/c/Users/lihuadu/test.txt' == 'C:\\Users\\lihuadu/test.txt'
+  ║ E         
+  ║ E         - C:\Users\lihuadu/test.txt
+  ║ E         ? ^^^     ^
+  ║ E         + /c/Users/lihuadu/test.txt
+  ║ E         ? ^^^     ^
+  ║ 
+  ║ tests\tools\test_file_tools_live.py:176: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_cat_deterministic_content
+  ║ FAILED tests/tools/test_file_tools_live.py::TestExpandPath::test_tilde_exact
+  ║ 2 failed, 12 passed in 52.24s
+  ║
+  ║  Repro: python -m pytest tests\tools\test_file_tools_live.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+
+=== Summary: 4 files, 144 tests passed, 11 failed, 6 skipped (100% complete) in 58.0s (4 workers) ===
+
+  note: platforms('posix') tests (in 1 file) were SKIPPED on this host (win32); they run on the main Linux CI lane, the macOS Python-tests lane.
+
+=== Per-file subprocess time distribution ===
+  Files:   4
+  Total subprocess CPU-wall: 164.8s  (runner wall: 58.0s, parallelism: 4x)
+  P50: 52.08s  P90: 56.64s  P95: 56.64s  P99: 56.64s  Max: 56.64s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     56.64s  tests\tools\test_file_tools_live.py
+     52.08s  tests\hermes_cli\test_plugins.py
+     32.11s  tests\tools\test_file_tools.py
+     23.97s  tests\tools\test_file_tools_cwd_resolution.py
+
+=== Failure output ===
+
+--- tests\tools\test_file_tools_cwd_resolution.py ---
+...F.F.FF..ssssss                                                        [100%]
+================================== FAILURES ===================================
+_______ test_container_absolute_input_path_does_not_follow_host_symlink _______
+
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_container_absolute_input_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000196B2574050>
+
+    def test_container_absolute_input_path_does_not_follow_host_symlink(tmp_path, monkeypatch):
+        """Docker paths are sandbox-local and must not be host-dereferenced.
+    
+        A user may have a host symlink at a container-looking path such as
+        ``/workspace/projects``. For Docker file ops, resolving that symlink on the
+        host rewrites the path before Docker sees it, making file tools and terminal
+        disagree about where the file lives.
+        """
+        host_project = tmp_path / "host-project"
+        host_project.mkdir()
+        container_mount = tmp_path / "workspace-projects"
+>       container_mount.symlink_to(host_project, target_is_directory=True)
+
+tests\tools\test_file_tools_cwd_resolution.py:105: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_container_absolute_input_0/workspace-projects')
+target = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_container_absolute_input_0/host-project')
+target_is_directory = True
+
+    def symlink_to(self, target, target_is_directory=False):
+        """
+        Make this path a symlink pointing to the target path.
+        Note the order of arguments (link, target) is the reverse of os.symlink.
+        """
+>       os.symlink(target, self, target_is_directory)
+E       OSError: [WinError 1314] 客户端没有所需的特权。: 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_container_absolute_input_0\\host-project' -> 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_container_absolute_input_0\\workspace-projects'
+
+..\..\.hermes\windows-activation\data\tools\python-3.14.7+20260901-win32-x64\Lib\pathlib\__init__.py:1213: OSError
+__________ test_container_relative_path_keeps_container_cwd_symlink ___________
+
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_container_relative_path_k0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000196B25E4550>
+
+    def test_container_relative_path_keeps_container_cwd_symlink(tmp_path, monkeypatch):
+        """Relative Docker paths should stay under the container cwd textually."""
+        host_project = tmp_path / "host-project"
+        host_project.mkdir()
+        container_mount = tmp_path / "workspace-projects"
+>       container_mount.symlink_to(host_project, target_is_directory=True)
+
+tests\tools\test_file_tools_cwd_resolution.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_container_relative_path_k0/workspace-projects')
+target = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_container_relative_path_k0/host-project')
+target_is_directory = True
+
+    def symlink_to(self, target, target_is_directory=False):
+        """
+        Make this path a symlink pointing to the target path.
+        Note the order of arguments (link, target) is the reverse of os.symlink.
+        """
+>       os.symlink(target, self, target_is_directory)
+E       OSError: [WinError 1314] 客户端没有所需的特权。: 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_container_relative_path_k0\\host-project' -> 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_container_relative_path_k0\\workspace-projects'
+
+..\..\.hermes\windows-activation\data\tools\python-3.14.7+20260901-win32-x64\Lib\pathlib\__init__.py:1213: OSError
+___________ test_warning_fires_when_relative_path_escapes_workspace ___________
+
+_isolated_cwd = (WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_warning_fir...lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_warning_fires_when_relati0/decoy'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000196B25E2030>
+
+    def test_warning_fires_when_relative_path_escapes_workspace(_isolated_cwd, monkeypatch):
+        """Relative path resolving outside the live workspace must warn."""
+        workspace, decoy = _isolated_cwd
+        # Live cwd = workspace, but the relative path resolves to decoy (process cwd)
+        # because TERMINAL_CWD is the poison '.'.  Simulate by recording workspace
+        # as the session cwd while the resolved path is under decoy.
+        terminal_tool.record_session_cwd("default", str(workspace))
+        resolved_in_decoy = decoy / "target.py"
+    
+        warn = ftp._path_resolution_warning("target.py", resolved_in_decoy, task_id="default")
+    
+        assert warn is not None
+>       assert str(decoy) in warn
+E       assert 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_warning_fires_when_relati0\\decoy' in "Relative path 'target.py' resolved to 'C:\\\\Users\\\\lihuadu\\\\AppData\\\\Local\\\\Temp\\\\hermes-pytest\\\\r-3b88c...ended (e.g. a git-worktree session writing into the main checkout), pass an absolute path under the workspace instead."
+E        +  where 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_warning_fires_when_relati0\\decoy' = str(WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_warning_fires_when_relati0/decoy'))
+
+D:\liantong\projects\python\hermes-agent\.pytest_cache\guardrail-task3-5-baseline\tests\tools\test_file_tools_cwd_resolution.py:165: AssertionError
+__________ test_warning_fires_from_terminal_cwd_when_registry_empty ___________
+
+_isolated_cwd = (WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_warning_fir...lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_warning_fires_from_termin0/decoy'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000196B25E19A0>
+
+    def test_warning_fires_from_terminal_cwd_when_registry_empty(_isolated_cwd, monkeypatch):
+        """Divergence warning must fire even before any terminal command runs.
+    
+        PR #35399's warning required a live terminal cwd; a fresh worktree session
+        (empty registry) silently misrouted with no warning. Now the warning falls
+        back to the absolute TERMINAL_CWD anchor, so an edit aimed outside the
+        worktree is flagged on the very first write.
+        """
+        workspace, decoy = _isolated_cwd
+        monkeypatch.setattr(terminal_tool, "_session_cwd", {})
+        monkeypatch.setenv("TERMINAL_CWD", str(workspace))
+    
+        # Relative path that escapes the worktree into the decoy/main checkout.
+        escaping = os.path.relpath(str(decoy / "target.py"), str(workspace))
+        resolved = ftp._resolve_path_for_task(escaping, task_id="default")
+    
+        warn = ftp._path_resolution_warning(escaping, resolved, task_id="default")
+    
+        assert warn is not None
+>       assert str(workspace) in warn
+E       assert 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_warning_fires_from_termin0\\workspace' in "Relative path '..\\\\decoy\\\\target.py' resolved to 'C:\\\\Users\\\\lihuadu\\\\AppData\\\\Local\\\\Temp\\\\hermes-py...ended (e.g. a git-worktree session writing into the main checkout), pass an absolute path under the workspace instead."
+E        +  where 'C:\\Users\\lihuadu\\AppData\\Local\\Temp\\hermes-pytest\\r-3b88car2\\pytest-of-unknown\\pytest-0\\test_warning_fires_from_termin0\\workspace' = str(WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-3b88car2/pytest-of-unknown/pytest-0/test_warning_fires_from_termin0/workspace'))
+
+D:\liantong\projects\python\hermes-agent\.pytest_cache\guardrail-task3-5-baseline\tests\tools\test_file_tools_cwd_resolution.py:197: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tools/test_file_tools_cwd_resolution.py::test_container_absolute_input_path_does_not_follow_host_symlink
+FAILED tests/tools/test_file_tools_cwd_resolution.py::test_container_relative_path_keeps_container_cwd_symlink
+FAILED tests/tools/test_file_tools_cwd_resolution.py::test_warning_fires_when_relative_path_escapes_workspace
+FAILED tests/tools/test_file_tools_cwd_resolution.py::test_warning_fires_from_terminal_cwd_when_registry_empty
+4 failed, 7 passed, 6 skipped in 19.35s
+
+--- tests\tools\test_file_tools.py ---
+...........FF........FF....................                              [100%]
+================================== FAILURES ===================================
+__ TestPatchSensitivePathExtraction.test_patch_move_to_sensitive_dst_blocked __
+
+self = <tests.tools.test_file_tools.TestPatchSensitivePathExtraction object at 0x000001A8AB6DBD90>
+mock_get = <MagicMock name='_get_file_ops' id='1824001077808'>
+
+    @patch("tools.file_tools._get_file_ops")
+    def test_patch_move_to_sensitive_dst_blocked(self, mock_get):
+        from tools.file_tools import patch_tool
+        patch_text = (
+            "*** Begin Patch\n"
+            "*** Move File: /tmp/work.txt -> /etc/crontab\n"
+            "*** End Patch\n"
+        )
+        result = json.loads(patch_tool(mode="patch", patch=patch_text))
+        assert "error" in result
+>       assert "sensitive" in result["error"].lower()
+E       AssertionError: assert 'sensitive' in 'object of type magicmock is not json serializable'
+E        +  where 'object of type magicmock is not json serializable' = <built-in method lower of str object at 0x000001A8AF0A20D0>()
+E        +    where <built-in method lower of str object at 0x000001A8AF0A20D0> = 'Object of type MagicMock is not JSON serializable'.lower
+
+tests\tools\test_file_tools.py:188: AssertionError
+_ TestPatchSensitivePathExtraction.test_patch_update_no_space_after_asterisks_blocked _
+
+self = <tests.tools.test_file_tools.TestPatchSensitivePathExtraction object at 0x000001A8AB6DBED0>
+mock_get = <MagicMock name='_get_file_ops' id='1823945139136'>
+
+    @patch("tools.file_tools._get_file_ops")
+    def test_patch_update_no_space_after_asterisks_blocked(self, mock_get):
+        """``***Update File:`` (no space after asterisks) must also be caught.
+    
+        patch_parser.py accepts this form (``\\s*`` in its regex), so the
+        sensitive path check must be at least as lenient or the check
+        is bypassed.
+        """
+        from tools.file_tools import patch_tool
+        patch_text = (
+            "*** Begin Patch\n"
+            "***Update File: /etc/resolv.conf\n"
+            "@@ @@\n"
+            "-old\n"
+            "+new\n"
+            "*** End Patch\n"
+        )
+        result = json.loads(patch_tool(mode="patch", patch=patch_text))
+        assert "error" in result
+>       assert "sensitive" in result["error"].lower()
+E       AssertionError: assert 'sensitive' in 'object of type magicmock is not json serializable'
+E        +  where 'object of type magicmock is not json serializable' = <built-in method lower of str object at 0x000001A8AF2A21F0>()
+E        +    where <built-in method lower of str object at 0x000001A8AF2A21F0> = 'Object of type MagicMock is not JSON serializable'.lower
+
+tests\tools\test_file_tools.py:211: AssertionError
+____________ TestSensitivePathCheck.test_system_path_still_blocked ____________
+
+self = <tests.tools.test_file_tools.TestSensitivePathCheck object at 0x000001A8ABA00910>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A8AF171860>
+
+    def test_system_path_still_blocked(self, monkeypatch):
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved", "/some/other/path")
+        monkeypatch.setattr("tools.file_tools_write_guards._hermes_config_resolved_loaded", True)
+    
+        from tools.file_tools import write_file_tool
+        result = json.loads(write_file_tool("/etc/passwd", "evil"))
+        assert "error" in result
+>       assert "sensitive system path" in result["error"]
+E       assert 'sensitive system path' in "Write denied: 'D:\\etc\\passwd' is a protected system/credential file."
+
+tests\tools\test_file_tools.py:378: AssertionError
+___________ TestSensitivePathCheck.test_macos_private_var_carveouts ___________
+
+self = <tests.tools.test_file_tools.TestSensitivePathCheck object at 0x000001A8ABA04050>
+
+    def test_macos_private_var_carveouts(self):
+        """macOS temp dirs under /private/var must not be blanket-blocked,
+        while the genuinely-sensitive /private/var subtrees still are."""
+        from tools.file_tools_write_guards import _check_sensitive_path
+    
+        # $TMPDIR / /tmp / /var/folders realpath into these on macOS.
+        assert _check_sensitive_path("/private/var/folders/xy/T/tmp.txt") is None
+        assert _check_sensitive_path("/private/var/tmp/build.log") is None
+        # Sensitive subtrees remain blocked.
+>       assert _check_sensitive_path("/private/var/db/secret") is not None
+E       AssertionError: assert None is not None
+E        +  where None = <function _check_sensitive_path at 0x000001A8AB9ACA90>('/private/var/db/secret')
+
+tests\tools\test_file_tools.py:389: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tools/test_file_tools.py::TestPatchSensitivePathExtraction::test_patch_move_to_sensitive_dst_blocked
+FAILED tests/tools/test_file_tools.py::TestPatchSensitivePathExtraction::test_patch_update_no_space_after_asterisks_blocked
+FAILED tests/tools/test_file_tools.py::TestSensitivePathCheck::test_system_path_still_blocked
+FAILED tests/tools/test_file_tools.py::TestSensitivePathCheck::test_macos_private_var_carveouts
+4 failed, 39 passed in 26.57s
+
+--- tests\hermes_cli\test_plugins.py ---
+..F..................................................................... [ 82%]
+...............                                                          [100%]
+================================== FAILURES ===================================
+____ TestPluginDiscovery.test_enabled_portable_plugin_registers_components ____
+
+self = <tests.hermes_cli.test_plugins.TestPluginDiscovery object at 0x000002315CF72490>
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-y086eset/pytest-of-unknown/pytest-0/test_enabled_portable_plugin_r0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002315E1D8CB0>
+
+    def test_enabled_portable_plugin_registers_components(
+        self, tmp_path, monkeypatch
+    ):
+        from hermes_cli.agent_plugins import MCP_SCHEMA_V1, PLUGIN_SCHEMA_V1
+        from hermes_cli import plugins as plugins_mod
+    
+        home = tmp_path / "home"
+        plugin = home / "plugins" / "portable"
+        skill = plugin / "skills" / "summarize"
+        skill.mkdir(parents=True)
+        app = tmp_path / "example-app"
+        app.write_text("", encoding="utf-8")
+        (plugin / "plugin.json").write_text(
+            json.dumps({
+                "$schema": PLUGIN_SCHEMA_V1,
+                "name": "portable.test",
+                "extensions": {"com.nousresearch.hermes": {"servers": {"worker": {
+                    "app": {"darwin": {"presence": "executable", "location": str(app)}},
+                    "requires": {"app": True},
+                    "liveness": {"kind": "static"},
+                }}}},
+            })
+        )
+        (skill / "SKILL.md").write_text(
+            "---\nname: summarize\ndescription: Summarize reports.\n---\nBody.\n"
+        )
+        (plugin / "mcp.json").write_text(
+            json.dumps(
+                {
+                    "$schema": MCP_SCHEMA_V1,
+                    "mcpServers": {
+                        "worker": {"type": "stdio", "command": "python"}
+                    },
+                }
+            )
+        )
+        native = home / "plugins" / "native"
+        native.mkdir()
+        (native / "plugin.yaml").write_text(
+            yaml.safe_dump({"name": "native", "version": "1.0.0"})
+        )
+        (native / "__init__.py").write_text("def register(ctx):\n    pass\n", encoding="utf-8")
+        home.mkdir(exist_ok=True)
+        (home / "config.yaml").write_text(
+            yaml.safe_dump({"plugins": {"enabled": ["portable.test", "native"]}})
+        )
+        empty_bundled = tmp_path / "bundled"
+        empty_bundled.mkdir()
+        monkeypatch.setenv("HOME", str(tmp_path / "os-home"))
+        monkeypatch.setenv("HERMES_HOME", str(home))
+        monkeypatch.setattr(plugins_mod, "get_bundled_plugins_dir", lambda: empty_bundled)
+    
+        manager = PluginManager()
+        manager.discover_and_load()
+    
+>       [qualified] = manager.list_plugin_skill_metadata()
+        ^^^^^^^^^^^
+E       ValueError: not enough values to unpack (expected 1, got 0)
+
+tests\hermes_cli\test_plugins.py:212: ValueError
+------------------------------ Captured log call ------------------------------
+INFO     hermes_cli.plugin_capabilities:plugin_capabilities.py:144 capability_check plugin=native capability=tools.override decision=deny checked_by=plugin_capability_granted evidence=not granted
+WARNING  hermes_cli.plugins:plugins_loader.py:602 Agent Plugin 'portable.test' disabled: plugin.json extension server 'worker': app.darwin.location must be absolute or start with ~ / %VAR% / $VAR, without '..' or a URL scheme
+INFO     hermes_cli.plugins:plugins.py:1447 Plugin discovery complete: 2 found, 1 enabled
+=========================== short test summary info ===========================
+FAILED tests/hermes_cli/test_plugins.py::TestPluginDiscovery::test_enabled_portable_plugin_registers_components
+1 failed, 86 passed in 46.75s
+
+--- tests\tools\test_file_tools_live.py ---
+..F........F..                                                           [100%]
+================================== FAILURES ===================================
+_________ TestLocalEnvironmentExecute.test_cat_deterministic_content __________
+
+self = <tests.tools.test_file_tools_live.TestLocalEnvironmentExecute object at 0x00000143BDD6A8B0>
+env = <tools.environments.local.LocalEnvironment object at 0x00000143C0F99590>
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-2bz3bkcy/pytest-of-unknown/pytest-0/test_cat_deterministic_content0')
+
+    def test_cat_deterministic_content(self, env, tmp_path):
+        f = tmp_path / "det.txt"
+        f.write_text(SIMPLE_CONTENT)
+        result = env.execute(f"cat {f}")
+>       assert result["returncode"] == 0
+E       assert 1 == 0
+
+tests\tools\test_file_tools_live.py:93: AssertionError
+_______________________ TestExpandPath.test_tilde_exact _______________________
+
+self = <tests.tools.test_file_tools_live.TestExpandPath object at 0x00000143BDDACE10>
+ops = <tools.file_operations.ShellFileOperations object at 0x00000143C10A8B50>
+
+    def test_tilde_exact(self, ops):
+        result = ops._expand_path("~/test.txt")
+        expected = f"{Path.home()}/test.txt"
+>       assert result == expected
+E       AssertionError: assert '/c/Users/lihuadu/test.txt' == 'C:\\Users\\lihuadu/test.txt'
+E         
+E         - C:\Users\lihuadu/test.txt
+E         ? ^^^     ^
+E         + /c/Users/lihuadu/test.txt
+E         ? ^^^     ^
+
+tests\tools\test_file_tools_live.py:176: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tools/test_file_tools_live.py::TestLocalEnvironmentExecute::test_cat_deterministic_content
+FAILED tests/tools/test_file_tools_live.py::TestExpandPath::test_tilde_exact
+2 failed, 12 passed in 52.24s
+
+=== 4 files with test failures (11 tests failed) ===
+  tests\tools\test_file_tools_cwd_resolution.py  (4 tests failed)
+  tests\tools\test_file_tools.py  (4 tests failed)
+  tests\hermes_cli\test_plugins.py  (1 test failed)
+  tests\tools\test_file_tools_live.py  (2 tests failed)

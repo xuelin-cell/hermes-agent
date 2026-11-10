@@ -382,6 +382,10 @@ async def web_extract_tool(urls: List[Any], format: str = None, char_limit: Opti
     normalized_urls, normalized_indices, invalid_urls, blocked = _validate_extract_urls(urls)
     if blocked is not None:
         return blocked
+    from tools.prepared_execution import authorize_arguments
+    block = authorize_arguments("web_extract", {"urls": normalized_urls, "format": format, "char_limit": char_limit})
+    if block:
+        return json.dumps({"error": block, "status": "blocked"}, ensure_ascii=False)
     debug_call_data = {
         "parameters": {"urls": normalized_urls, "format": format, "char_limit": char_limit}, "error": None,
         "pages_extracted": 0, "pages_truncated": 0, "original_response_size": 0, "final_response_size": 0,
@@ -547,6 +551,7 @@ registry.register(
 )
 registry.register(
     name="web_extract", toolset="web", schema=WEB_EXTRACT_SCHEMA,
+    prepared_execution=True,
     handler=lambda args, **kw: web_extract_tool(
         args.get("urls", [])[:5] if isinstance(args.get("urls"), list) else [], "markdown",
         char_limit=args.get("char_limit"),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from contextlib import contextmanager
 from pathlib import Path
@@ -28,13 +29,14 @@ def workspace(tmp_path):
 
 
 @contextmanager
-def profile(home, workspace, *, enabled=True, protected=None):
+def profile(home, workspace, *, enabled=True, protected=None, settings=None):
     home.mkdir(exist_ok=True)
     (home / "config.yaml").write_text(json.dumps({
         "plugins": {
             "enabled": ["security-guardrail"] if enabled else [],
             "entries": {"security-guardrail": {"settings": {
                 "protected_directory": str(protected or workspace / "protected"),
+                **(settings or {}),
             }}},
         },
         "terminal": {"backend": "local", "cwd": str(workspace)},
@@ -47,7 +49,7 @@ def profile(home, workspace, *, enabled=True, protected=None):
     try:
         manager = get_plugin_manager()
         manager.discover_and_load(force=True)
-        assert manager.has_hook("pre_tool_call") == enabled
+        assert manager.has_hook("pre_tool_execute") == enabled
         yield task_id
     finally:
         clear_task_env_overrides(task_id)
@@ -80,11 +82,6 @@ def test_write_guard_matches_real_targets(tmp_path, workspace):
         assert allowed.read_text(encoding="utf-8") == "new content"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileExistsError,
-    reason="Known execution gap: pre_tool_call modification is applied after the guard checks its input; fix in phase 2 task 3",
-)
 def test_rewritten_protected_target_is_blocked(tmp_path, workspace):
     """A later parameter rewrite must not bypass a directory decision."""
     protected = workspace / "protected" / "rewritten.txt"
@@ -108,6 +105,20 @@ def test_rewritten_protected_target_is_blocked(tmp_path, workspace):
             assert not allowed.exists()
         finally:
             registration.dispose()
+
+
+def test_installed_copy_loads_policy_from_profile(tmp_path, workspace):
+    home = tmp_path / "installed-home"
+    installed = home / "plugins" / "security-guardrail"
+    source = Path(__file__).resolve().parents[2] / "plugins" / "security-guardrail"
+    shutil.copytree(source, installed, ignore=shutil.ignore_patterns("__pycache__"))
+    with profile(home, workspace) as task_id:
+        loaded = get_plugin_manager()._plugins["security-guardrail"]
+        assert Path(loaded.module.__file__).resolve() == (installed / "__init__.py").resolve()
+        target = workspace / "protected" / "installed-denied.txt"
+        result = write(target, task_id)
+        assert "common.filesystem.product_install_dir_access" in result["error"], result
+        assert not target.exists()
 
 
 def test_profile_rules_follow_a_b_a_and_disable(tmp_path, workspace):
@@ -136,8 +147,14 @@ def test_windows_case_and_junction_match_target(tmp_path, workspace):
     try:
         with profile(tmp_path / "home", workspace) as task_id:
             for target in (str(workspace / "protected" / "case.txt").upper().replace("\\", "/"), alias / "linked.txt"):
+                descriptions = []
+                observer = PluginContext(PluginManifest(name="execution-inspector"), get_plugin_manager())
+                registration = observer.register_hook("pre_tool_execute", lambda execution, **kw: descriptions.append(
+                    [(item.path, item.original_path) for item in execution.targets]))
                 result = write(target, task_id)
-                assert "security-guardrail" in result["error"], result
+                registration.dispose()
+                assert "security-guardrail" in result.get("error", ""), json.dumps(
+                    {"target": str(target), "snapshot": descriptions, "actual": result}, ensure_ascii=False)
             assert not list((workspace / "protected").iterdir())
     finally:
         alias.rmdir()

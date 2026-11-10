@@ -376,6 +376,8 @@ def _resolve_script_path(raw_path: str, cwd: str | None) -> PurePath:
         if environment.home is None:
             raise ContextUnavailableError("Script home is unknown")
         expanded = environment.home + expanded[1:]
+    if environment.resolve_path is not None:
+        expanded = environment.resolve_path(expanded, cwd)
     cls = PureWindowsPath if environment.operating_system == OperatingSystem.WINDOWS else PurePosixPath
     path = cls(expanded)
     if not path.is_absolute():

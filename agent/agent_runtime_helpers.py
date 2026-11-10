@@ -2438,7 +2438,9 @@ def invoke_tool(agent, function_name: str, function_args: dict, effective_task_i
         )
 
         def _execute(next_args: dict) -> Any:
-            result = inline_executor(agent, next_args, inline_ctx)
+            from agent.inline_tool_executors import execute_with_policy
+            result = execute_with_policy(agent, function_name, next_args, inline_ctx,
+                                         lambda final_args: inline_executor(agent, final_args, inline_ctx))
             call_args = next_args if isinstance(next_args, dict) else function_args
             duration_ms = int((time.monotonic() - tool_start_time) * 1000)
             emit_terminal_post_tool_call(

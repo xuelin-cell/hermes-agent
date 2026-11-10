@@ -1,6 +1,6 @@
 # Guardrail 迁移清单（阶段二任务 1）
 
-日期：2026-11-10。任务 1 盘点后已执行任务 2：范围内引擎与资源已迁入，实际逐文件哈希和原测试处理见 [任务 2 结果](../../../docs/guardrail/evidence/phase2-task2/migration-result.json)。工具接线尚待任务 3～5。
+日期：2026-11-10。任务 1 盘点后已执行任务 2：范围内引擎与资源已迁入，实际逐文件哈希和原测试处理见 [任务 2 结果](../../../docs/guardrail/evidence/phase2-task2/migration-result.json)。任务 3～5 已进行真实工具接线，当前基础证据与无法等价项见 [适配记录](task3-5-adaptation.md) 和 [覆盖表](capability-matrix.md)。下列源清单及任务 1 快照保持不变。
 
 源提交：`c6a66bbf1abaddf4d12483ef66850adcebe528d2`；Hermes 基线：`05b4b8155831d7e7df0df3e81e7980c338b6a09c`。
 

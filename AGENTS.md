@@ -526,3 +526,5 @@ Long-form background lives in `website/docs/developer-guide/` (agent-loop, promp
 context-compression-and-caching, gateway-internals, tools-runtime, plugins/, cron-internals,
 session-storage, ...). Workflow rules (PR/issue/review/salvage process) live in the
 `hermes-agent-dev` skill, not here.
+
+安全能力插件的开发（security_guardrail）：在 Hermes 上开发，请优先走 plugin 外挂，尽量不动 core；缺能力就先扩展通用 hook 或 ctx 接口，不要在 core 里写专用分支。

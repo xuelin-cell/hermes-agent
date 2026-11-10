@@ -705,7 +705,8 @@ def _emit_post_tool_call_hook(
 
 
 def _dispatch_bridge_tool(function_name: str, function_args: Dict[str, Any],
-                          enabled_toolsets: Optional[List[str]], disabled_toolsets: Optional[List[str]]):
+                          enabled_toolsets: Optional[List[str]], disabled_toolsets: Optional[List[str]],
+                          context: Optional[Dict[str, Any]] = None):
     """Handle a Tool Search bridge call (tool_search / tool_describe / tool_call).
 
     None when *function_name* is not a bridge tool; ``(result, None)`` for a
@@ -726,10 +727,13 @@ def _dispatch_bridge_tool(function_name: str, function_args: Dict[str, Any],
     except Exception:
         current_defs = []
     args = function_args or {}
+    from tools.prepared_execution import dispatch_with_execution_policy
     if function_name == ts.TOOL_SEARCH_NAME:
-        return ts.dispatch_tool_search(args, current_tool_defs=current_defs), None
+        return dispatch_with_execution_policy(function_name, args, context or {},
+            lambda final_args: ts.dispatch_tool_search(final_args, current_tool_defs=current_defs)), None
     if function_name == ts.TOOL_DESCRIBE_NAME:
-        return ts.dispatch_tool_describe(args, current_tool_defs=current_defs), None
+        return dispatch_with_execution_policy(function_name, args, context or {},
+            lambda final_args: ts.dispatch_tool_describe(final_args, current_tool_defs=current_defs)), None
     underlying_name, underlying_args, err = ts.resolve_underlying_call(args)
     if err or not underlying_name:
         return tool_error(err or "tool_call could not be resolved"), None
@@ -824,7 +828,7 @@ def _execute_tool(function_name: str, function_args: Dict[str, Any], original_ar
                   *, user_task: Optional[str], enabled_tools: Optional[List[str]], skip_tool_execution_middleware: bool) -> Any:
     """Run the registry handler (through tool-execution middleware unless skipped)
     with the approval observability context bound for the duration."""
-    dispatch_kwargs: Dict[str, Any] = {"task_id": ids.task_id, "session_id": ids.session_id}
+    dispatch_kwargs: Dict[str, Any] = asdict(ids)
     if function_name == "execute_code":
         # Prefer the caller's list so subagents can't overwrite the parent's
         # tool set via the process-global.
@@ -835,7 +839,9 @@ def _execute_tool(function_name: str, function_args: Dict[str, Any], original_ar
     def _dispatch(next_args: Dict[str, Any]) -> Any:
         from tools.connectors import dispatch_connector_call, is_connector_name
         if is_connector_name(function_name):
-            return dispatch_connector_call(function_name, next_args, ids.tool_call_id)
+            from tools.prepared_execution import dispatch_with_execution_policy
+            return dispatch_with_execution_policy(function_name, next_args, asdict(ids),
+                lambda final_args: dispatch_connector_call(function_name, final_args, ids.tool_call_id))
         return registry.dispatch(function_name, next_args, **dispatch_kwargs)
 
     with _approval_observability(ids):
@@ -903,7 +909,7 @@ def handle_function_call(
     # Tool Search bridge: tool_search / tool_describe are catalog reads handled
     # inline; tool_call is unwrapped so every downstream hook (pre/post, edit
     # approval, guardrails) sees the real tool name, never the bridge.
-    bridged = _dispatch_bridge_tool(function_name, function_args, enabled_toolsets, disabled_toolsets)
+    bridged = _dispatch_bridge_tool(function_name, function_args, enabled_toolsets, disabled_toolsets, asdict(ids))
     if bridged is not None:
         result, underlying = bridged
         if underlying is None:

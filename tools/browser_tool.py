@@ -1340,6 +1340,13 @@ def _routed_check_fn(name: str):
 
 def _routed_handler(name: str, fallback):
     def handler(args, **kw):
+        if name == "browser_navigate":
+            from tools.prepared_execution import authorize_arguments
+            from tools.url_safety import normalize_url_for_request
+            args = {**args, "url": normalize_url_for_request(args.get("url", ""))}
+            block = authorize_arguments(name, args, task_id=kw.get("task_id"), session_id=kw.get("session_id", ""))
+            if block:
+                return json.dumps({"error": block, "status": "blocked"}, ensure_ascii=False)
         return routed_browser_handler(name, args, fallback=lambda: fallback(args, kw),
                                       task_id=kw.get("task_id"), session_id=kw.get("session_id"))
     return handler
@@ -1350,7 +1357,7 @@ for _name, _emoji, _check_fn, _defaults, *_extra in _BROWSER_TOOL_TABLE:
         _check_fn = globals()[f"check_{_name}_requirements"] = _routed_check_fn(_name)
     registry.register(name=_name, toolset="browser", schema=_BROWSER_SCHEMA_MAP[_name],
                       handler=_routed_handler(_name, _fallback_call(_name, _defaults, *_extra)),
-                      check_fn=_check_fn, emoji=_emoji)
+                      check_fn=_check_fn, emoji=_emoji, prepared_execution=_name == "browser_navigate")
 
 
 # ---- BEGIN PLUGIN-COMPAT (revert-scheduled; see COMPAT_MANIFEST.md) ----

@@ -1,87 +1,85 @@
-# Hermes Guardrail 能力覆盖表（任务 2 更新）
+# Hermes Guardrail 能力覆盖表（任务 3～5）
 
-日期：2026-11-10。源版本 `c6a66bbf`，Hermes `05b4b81558`。任务 2 已迁入范围内引擎和独立 API，规则及内部语义验证见 [任务 2 记录](task2-migration.md)；下面的 Hermes 工具对应仍是待接入/核对的适配关系。不能把原 Demo 的阻断证据算作 138 条规则已经接入。
+日期：2026-11-10；源 `c6a66bbf`；本轮开发基线 `9c2539b2ed`。引擎 138 条规则定义及优先级保留，真实插件已替换 Demo。详细实现见 [适配记录](task3-5-adaptation.md)。**本表区分接线、基础测试和等价缺口，不宣称第二阶段整体完成。**
 
-## 1. 规则与能力族闭合
+## 规则与能力族
 
-逐条规则 ID、原顺序、OS、规则组、源定义、原测试直接引用、文件 SHA-256 见 [迁移清单](migration-inventory.md) 和 [机器快照](../../../docs/guardrail/evidence/phase2-task1/source-manifest.json)。实际读取 ALL_RULES：138 条，108 硬拒绝、30 ASK；common=120、lite=7、pro=11。所有规则定义保留，未将产品专用的路径例外与整条安全规则一同删除。
+| 能力族 | 原规则数 | 当前接入 | 基础证据/限制 |
+|---|---:|---|---|
+| Shell 规范化与决策 | 112 | 本地 Bash 前台/后台；字面路径脚本；本机路径、MSYS 盘符、稳定链接目标 | terminal 测试；不能确认执行端/脚本变量展开时拒绝；其他 OS 保留但本轮未实测 |
+| 文件操作与保护 | 11 | write_file、replace/V4A Add/Update/Delete/Move、read/search | file/patch 测试，真实磁盘不变/实际修改；Move 两端和目录项；复杂移动链接依赖拒绝 |
+| 工具契约 | 7 | 必填命令/路径/URL/查询、域过滤冲突、未知执行字段 | other_tools 测试；公开发布规则保留 API，当前无同义模型工具入口 |
+| 网络目标 | 2 | 规范化后的 web_extract 每一实际 URL、browser_navigate；查询 | 拒绝发生在 Provider/浏览器路由前；搜索/提取 ALLOW 用本地测试 Provider 验证；未访问公网；重定向另列 |
+| 数据暴露 | 6 | 源 Shell/URL/载荷检测经同一引擎执行 | 保留原检测条件，合成数据原回归；不将任意工具文本当成 Shell，不新增自动敏感过滤 |
+| 决策与状态 | 辅助 | 硬拒绝/原固定放行/用户规则/会话允许/AUTO/ASK | policy 测试与原语义回归；ASK 复用宿主审批；跨账号保护根 A→B→A 已测，完整审批隔离仍属任务 6 |
+| 独立敏感 API | 独立 API | 可调用、包内资源、Pydantic 依赖 | task2 独立安装及原合成样本测试；不代表自动外发拦截 |
 
-| 能力族 | 原规则数 | Hermes 入口/输入 | 可信信息与缺口 | 实施任务 | 当前状态 |
-|---|---:|---|---|---|---|
-| Shell 操作识别与决策 | 112 | terminal.command；前台/后台及本地脚本 | 实际 OS/Shell、最终 cwd、workspace_root、受限脚本读取；需要准备后的通用 Hook | 2、3、5 | 引擎已迁入；宿主接口待接入 |
-| 文件操作与保护 | 11 | write_file、patch、read_file、search_files；部分规则也由 Shell 触发 | 文件实际目标、操作类型、Delete/Move 目录项、Move 两端、保护根；已有单路径 ctx，缺完整执行描述 | 2、3、4、5 | Demo 目录规则已通；规则已迁入，正式回调待接入 |
-| 工具契约 | 7 | 命令/文件/URL/查询必填校验、未知执行字段、搜索域过滤、公开发布 | 不能把宿主默认路径误判为空目标；公开发布需核对交付工具实际语义 | 2、3、4、5 | 未适配；发布入口待核对 |
-| 网络目标 | 2 | web_extract.urls、browser_navigate.url；其他 URL 参数 | URL 批量拆分、原参数与最终使用值一致；实际 URL 重定向防护不由初始参数检查自动获得 | 2、3、5 | 未适配 |
-| 数据暴露 | 6 | Shell 外发、URL/载荷及源检测器实际支持的工具类型 | 保留源检测条件，不把任意工具载荷强行当 Shell；日志/审批摘要不含原值 | 2、3、5 | 未适配 |
-| 规范化、匹配、决策优先级 | 辅助能力 | 全部适配请求经 RuntimeAction/evaluate_tool_call | 操作类型、全部目标、调用来源由宿主构造，产品组与 Hermes profile 分离 | 2、4、5 | 内部契约与规则测试通过；工具待接线 |
-| 独立敏感文本检测 API | 独立 API，不计为新增基线规则 | inspect_sensitive_text(text, policy=...) | 插件包资源、Pydantic 声明、合成测试；不新增自动外发拦截 | 2、6 | API 迁入验证通过；不代表自动外发拦截 |
+规则计数：108 deny、30 ASK；common=120、lite=7、pro=11。选择沿用源 OS/规则组条件。`protected_roots` 复用原 product_install_dir_access：可拒绝读取、写入和 Shell 路径引用；配置时应选择真正需要隔离的目录。
 
-保留 Linux/macOS/VM 规则不代表本机 Windows 可以验证它们。规则选取沿用原 OS/产品组条件；远端和其他平台保留待验证状态，不把未知 OS 自动设为本机。产品安装目录、关键配置路径、便携 sessions、可信安装器、VM 挂载与 MCP 缓存必须由 Hermes 适配或显式登记限制，不能默认继承 UniClaw 的例外。
+## 全部 35 个源标准工具的去向
 
-## 2. 全部 35 个源标准工具的去向
+“API 保留”表示可通过插件内部 GuardrailRequest 显式调用原标准工具语义，没有冒充 Hermes 已具备相同模型工具。
 
-此表从源 CANONICAL_TOOL_CLASSIFICATION 逐项登记。多数源标准工具本来没有专属基线规则，保留分类/固定放行语义即可，不因此新增安全算法。列为候选的对应关系尚未证明参数等价；任务 5 必须核对实际 schema 和执行路径。只有“源码名称相近”不构成已适配证据。
+| 源标准工具 | Hermes 入口/当前判定 | 证据与边界 |
+|---|---|---|
+| Bash | terminal → Bash | 前台/后台 ALLOW/DENY/ASK；真实脚本、cwd、MSYS/链接回归 |
+| PowerShell | API 保留；无独立原生 Shell 入口 | 不从命令文字猜宿主 Shell；Bash 启动的 ps1 仍按原引用脚本检测器处理；独立 PS 待宿主实际信息 |
+| Read | read_file → Read | 真实读取；实际路径；硬拒绝先于固定放行 |
+| Glob | search_files(target=files) → Glob | 真实文件搜索；缺省路径采用宿主实际根 |
+| Grep | search_files(target=content) → Grep | 真实内容搜索；路径和 pattern 传入 |
+| Write | write_file → Write | 真实保护目录拒绝/普通目录允许/用户和会话规则 |
+| Edit | patch → Edit + 实际操作 | replace、V4A 全操作与多目标验证 |
+| NotebookEdit | API 保留；无结构化单元格工具 | execute_code Python 不能当单元格编辑同义入口 |
+| FileWrite | write_file 使用 Write 标准入口 | 源 FileWrite 别名/API 保留；Hermes user_rules 使用 Write；不做两个入口的重复审批 |
+| FileEdit | patch 使用 Edit 标准入口 | 源 FileEdit 别名/API 保留；Hermes user_rules 使用 Edit |
+| WebFetch | browser_navigate / 单 URL 检查 → WebFetch | 规范化 URL，硬拒绝先于原固定放行；浏览器业务后端未在本轮启动 |
+| WebBatchFetch | web_extract 保留批次契约，并逐 URL 硬拒绝 | 批次用户规则不被 WebFetch 固定放行替代；实际 Provider 输入一致 |
+| WebCrawl | API 保留；无递归抓取同义入口 | 不将 extract 的 URL 列表称为 crawl |
+| WebSearch | web_search → WebSearch | 真实查询、本地测试 Provider、缺 query/域过滤冲突拒绝 |
+| Agent | API 保留；delegate_task 选择 DelegateTask 语义 | 无 resume/subagent_type 等完整对等字段，不声称两类接口同时等价 |
+| CronJob | cronjob_manage → CronJob | action/prompt/job_id 传入；真实 list 已验；调度触发/无人值守完整业务属任务 6 |
+| TaskOutput | process_manage list/poll/log/wait → TaskOutput | 真实后台进程 list/poll/log/kill 已验；action/会话标识映射；更完整生命周期留验收 |
+| TaskStop | process_manage kill → TaskStop | 发起口已接；不将 write/submit/close/handoff 误作只读 TaskOutput |
+| Skill | skill_view → Skill | name 转 skill；真实临时技能读取；来源保持普通 Agent，模型名称不授予可信特权 |
+| ToolSearch | tool_search/tool_describe → ToolSearch | 目录读取有最终 gate；tool_call 解包后只授权实际工具；真实 todo 解包验证 |
+| TodoWrite | todo_list → TodoWrite | 真实内联 TodoStore，保留固定放行语义 |
+| Memory | memory → Memory | 真实内联保存、串行/线程拒绝无写入 |
+| AskUserQuestion | clarify → AskUserQuestion | 单/批问题转 questions；真实 clarify handler 和本地回答回调已验，桌面 UI 待任务 6 |
+| ReadMe | API 保留；无模块说明同义入口 | read_file 不作为该 API 的等价证明 |
+| ShowWidget | API 保留；无同义结构化模型工具 | 现有 desktop_preview/预览回调不是 widget_code 接口 |
+| PresentToUser | API 保留；无同义模型工具 | desktop-deliverables 是自动结果观察/交付，不是显式文件列表工具；不改其业务 |
+| PptxProgress | API 保留；无专用进度入口 | 不新增 PPT 进度系统 |
+| PublishArtifact | API 保留；无同义模型公开发布工具 | conversation_share 是 Dashboard API；现有本地交付不能冒称 publish；不对 UI 路由宣称已防护 |
+| Conversation | API 保留；session_search 使用 SessionSearch 语义 | 浏览最近会话/定位消息存在宿主差异，不追加另一个原标准分类改变用户规则含义 |
+| SessionSearch | session_search → SessionSearch | query/session_id 传入，Agent 内联同一最终入口；真实临时 SessionDB 读取已验 |
+| Digest | API 保留；无同义摘要存取入口 | memory 的一般内容写入不冒称 save/latest 接口 |
+| DelegateTask | delegate_task → DelegateTask | goal/tasks 转 task_description；Agent 回调允许/用户拒绝已验；真实模型子任务启动留任务 6 |
+| QueryAgentStatus | API 保留；无同义入口 | 后台进程状态不能当作 Agent 状态 |
+| ReportStatus | API 保留；无同义入口 | 不把 send_message 任意消息认作原任务状态协议 |
+| AskColleague | API 保留；无同义入口 | 不从模型提供的同事名推导权限 |
 
-| 源标准工具 | Hermes 对应或候选 | 关键输入/边界 | 任务 | 状态 |
-|---|---|---|---|---|
-| Bash | terminal | command、实际 Shell、最终 cwd、工作区、脚本 | 3、5 | 待接入 |
-| PowerShell | terminal | 以真实执行 Shell 判定，不能根据命令文本猜类型 | 3、5 | 待接入 |
-| Read | read_file | path 及宿主解析目标；原固定放行前仍检查硬拒绝 | 3、5 | 待接入 |
-| Glob | search_files(target=files) | 实际默认路径、pattern、解析目标 | 3、5 | 待 schema 核对/接入 |
-| Grep | search_files(target=content) | 实际默认路径、pattern、解析目标 | 3、5 | 待 schema 核对/接入 |
-| Write | write_file | path、content、实际内容目标 | 3、4 | 原引擎待接入 |
-| Edit | patch replace/V4A | 替换内容、多目标、操作语义 | 3、4 | 待接入 |
-| NotebookEdit | 无已确认的结构化单元格等价入口 | 不能把通用 JSON patch 当成同义；保留源分类/规则 | 5 | 无直接对应候选，待最终核对 |
-| FileWrite | write_file | 与 Write 同一适配器，保留别名 | 3、4 | 待接入 |
-| FileEdit | patch | 与 Edit 同一适配器，保留别名 | 3、4 | 待接入 |
-| WebFetch | web_extract / browser_navigate | url、urls 批量、最终参数；浏览器交互另列 | 3、5 | 待接入 |
-| WebBatchFetch | web_extract | URL 列表逐项决策并聚合 | 3、5 | 待接入 |
-| WebCrawl | 未确认递归抓取等价入口 | 普通 extract 不自动具有 crawl 的深度语义 | 5 | 无直接对应候选，待最终核对 |
-| WebSearch | web_search | query 和实际域过滤参数；保留源固定放行顺序 | 3、5 | 待接入 |
-| Agent | delegate_task 候选 | 子任务提示、执行类型；发起请求与子任务内部调用分开 | 5 | 待语义核对 |
-| CronJob | cronjob_manage | create/update/remove/trigger 等动作映射；调度实际触发另验 | 5 | 待语义核对 |
-| TaskOutput | process_manage 候选 | poll/log/wait 与任务输出身份的区别 | 5 | 待语义核对 |
-| TaskStop | process_manage 候选 | kill 与原任务停止范围的区别 | 5 | 待语义核对 |
-| Skill | skill_view 候选 | skill 名不构成可信来源；skill_manage 写动作另分 | 5 | 待语义核对 |
-| ToolSearch | tool_search/tool_describe/tool_call | 搜索可保留固定放行；解包后检查实际执行工具 | 3、5 | 待接入 |
-| TodoWrite | todo_list | todo 数据；保留原固定放行语义 | 5 | 待语义核对 |
-| Memory | memory | action/content/new/old 等操作字段 | 5 | 待语义核对 |
-| AskUserQuestion | clarify | 提问内容、宿主交互，与权限审批分开 | 5 | 待语义核对 |
-| ReadMe | 未确认模块说明等价入口 | read_file 可读文件，不代表其模块说明参数等价 | 5 | 无直接对应候选，待最终核对 |
-| ShowWidget | 未确认同义展示工具 | Desktop 能力和实际工具 schema 需核对 | 5 | 待宿主入口核对 |
-| PresentToUser | Desktop 交付插件候选 | 文件列表、附件、真实交付点；不等于公网发布 | 5 | 待宿主入口核对 |
-| PptxProgress | 未确认专用进度工具 | 原文件目标、展示语义；不新增 PPT 进度系统 | 5 | 无直接对应候选，待最终核对 |
-| PublishArtifact | 交付/分享插件候选 | action=publish 才触发源公开发布 ASK；本地展示不等价 | 5 | 待真实发送/发布入口核对 |
-| Conversation | session_search 候选 | 会话列表/读取与语义搜索的动作差异 | 5 | 待语义核对 |
-| SessionSearch | session_search | query、session_id 与来源范围 | 5 | 待语义核对 |
-| Digest | memory 候选 | 保存/读取摘要与一般记忆不同，不硬映射 | 5 | 待语义核对 |
-| DelegateTask | delegate_task | 子任务描述、身份、调用范围 | 5 | 待语义核对 |
-| QueryAgentStatus | 未确认同义入口 | 后台进程状态不自动等于 Agent 状态 | 5 | 无直接对应候选，待最终核对 |
-| ReportStatus | 未确认同义入口 | 状态上报内容、收件范围和发送点 | 5 | 待宿主入口核对 |
-| AskColleague | 未确认同义入口 | 同事身份与权限不能从模型参数认定 | 5 | 无直接对应候选，待最终核对 |
+## 执行链覆盖与缺口
 
-额外边界：源 execute_code 别名指向 Bash，而 Hermes execute_code 运行 Python。明确不套用该错误别名。其内部工具调用需要沿实际分发路径检查；直接 Python 文件/网络副作用不因此得到拦截。当前任务只登记此差异，不声称覆盖，也不重新开启 Codex runtime 适配。MCP、Connector、自定义工具仍需未知执行字段等通用契约判断，不能因名称或模型声明成为可信来源。
+| 项目 | 当前状态 |
+|---|---|
+| 原 pre_tool_call 后改参数 | 已修复；回归由 XFAIL 转 PASS，执行使用最后检查的目标 |
+| 请求/执行中间件后最终检查 | 已接；注册表、连接器和非注册表 Agent 入口共用 generic gate |
+| 文件准备 | 已接；Windows 链接/大小写/相似前缀、目录项及 Move 两端；复杂移动链接依赖整批拒绝 |
+| 终端准备 | 本地 Bash 支持；最终 cwd 和固定工作区分离；前台/后台固定实际 cwd；拒绝优先于审批 |
+| 脚本读取 | 本地常规文件、1MiB+1 上限；缺信息/过大拒绝；持久环境变量脚本路径尚不能等价放行 |
+| 远端/未知 Shell | 不套本机元数据；相关文件/命令拒绝。需执行端 OS、Shell 和同环境读取接口后再支持 |
+| Python execute_code | 不映射 Bash，当前 unknown_exec_field 拒绝；Python 直接副作用分析未实现 |
+| process stdin / 其他浏览器交互 / UI 分享 | 无对应源协议或未准备完整语义；仅通用未知工具规则，不能声称目录保护覆盖 |
+| MCP/Connector/自定义工具 | 最终分发运行通用未知执行字段规则；不自动变可信、不自动过滤全部外发文本 |
+| ASK | 原生 approve/deny/无人值守路径复用；键绑定输入/策略/作用域和脚本摘要；原宿主自动批准配置继续适用 |
+| 多 profile | 原保护根 A→B→A 和禁用真实验证；完整同 session 审批缓存隔离尚由任务 6 验收 |
+| 独立 API | task2 已迁入，当前继续回归；不要求自动挂发送 Hook |
+| Desktop/Gateway/cron/真实子 Agent | 公共 Python 入口已接；本轮未重启用户桌面或实际调用模型，不写成客户端端到端已通过 |
 
-## 3. 执行信息、调用路径和基础验收
+## 验证入口
 
-| 项目 | 所需宿主信息/行为 | 当前情况 | 后续任务 |
-|---|---|---|---|
-| 本地单路径 | 任务 cwd、profile、实际文件后端 | 已有 ctx.resolve_file_path；本机 Path 可解析，远端 PurePosixPath 不在宿主解引用 | 4、5 |
-| V4A | 全部操作、全部目标、Move 两端、内容/目录项目标 | 原 Demo 无；必须复用宿主解析结果 | 3、4 |
-| 终端执行 | 后端、OS、Shell、最终 cwd、workspace_root、本地脚本受限读取 | 原始 command/workdir 不足，需要准备后快照 | 3、5 |
-| 最终参数一致性 | 所有改写之后检查，执行使用同份只读快照 | 已知缺口已真实复现；阻塞阶段二最终通过 | 3 |
-| 直接分发 | model_tools.handle_function_call 到真实工具 | Demo 已测；新引擎/新 Hook 未接入 | 3、4、5 |
-| Agent 串行/并行、Tool Search 解包 | 实际调用标识与最终工具；单次最终授权 | 代码路径待运行时验证，不以直接分发测试替代 | 3、5 |
-| ALLOW / DENY / ASK | 返回宿主决策；拒绝无副作用，审批绑定实际输入 | Demo 仅 DENY/继续；ASK 未接入 | 3、4、5 |
-| profile A→B→A | 策略、模式、保护根、授权缓存隔离 | Demo 目录配置已测；正式策略/审批状态待验 | 6 |
-| 独立敏感 API | 可调用、有合成正反例、资源缺损错误、原值不出日志 | 独立安装和资源损坏测试通过；不要求自动挂发送 Hook | 2、6 |
+新增/更新：tests/plugins/test_security_guardrail*.py（含 data_tools 的真实存储/宿主回调/后台进程），tests/hermes_cli/test_plugins_execution.py，tests/agent/test_final_execution_policy.py。原 138 条定义及判断继续由 tests/plugins/security_guardrail/ 回归。
 
-本阶段 Windows 本地工具后端为已确定的实施环境；Unix/macOS、SSH、容器等为待验证，不伪造平台。Desktop 已有第一阶段用户手测记录，第二阶段仍需验证新引擎；Gateway、cron、子 Agent 内部调用分别登记真实执行路径，不能由“共享 Python 模块”推断已通过。
+日志与确切通过数见 [verification.md](../../../docs/guardrail/evidence/phase2-task3-5/verification.md)。原始源清单、逐文件处理、规则对照保留在 migration-inventory.md 和 phase2-task1/task2 evidence，未用适配表替代来源审计。
 
-## 4. 状态与通过条件
-
-- 任务 1 已完成盘点；任务 2 已完成内部引擎/资源/API 迁入。除 Demo 基线外，Hermes 真实工具适配项仍未标为完成。
-- 任务 2 的迁入结果见 task2-migration.md；下一任务 3 负责已知执行链缺口；任务 4/5 负责所有范围内对应能力；任务 6 负责总验收。
-- 后续为每个实际接入项补充测试名称、命令、OS/后端、模式、调用/规则标识、真实副作用结果及差异，不只写“可调用”。
-- 无对应入口须附依据并经差异审阅；有等价工具但未接入、缺接口、存在已知绕过或缺基础验证的项目，不能计为适配通过。
-- 独立 API 迁移通过、排除项闭合与运行时防护接入通过分别统计。第三阶段再系统检验防护效果、误报漏报和复杂绕过。
+完成口径：任务 3/4 支持链路和任务 5 已确认入口已实现；“发起口接线但业务待验”“API 保留/无等价”“拒绝未知信息”分别登记。任务 6 逐项审阅与总验收之前，不把这些状态合并为全量等价适配通过；第三阶段再评估真实安全效果、误报漏报、复杂绕过和竞态。

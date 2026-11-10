@@ -26,6 +26,13 @@ def tool_hook_ids(agent, effective_task_id: str, tool_call_id: Optional[str]) ->
     }
 
 
+def execute_with_policy(agent, name, args, ctx, execute):
+    """Final gate for tools that bypass the registry, after execution middleware."""
+    from tools.prepared_execution import dispatch_with_execution_policy
+    return dispatch_with_execution_policy(name, args,
+        tool_hook_ids(agent, ctx.effective_task_id, ctx.tool_call_id), execute)
+
+
 def emit_terminal_post_tool_call(
     agent,
     *,

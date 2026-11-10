@@ -1,0 +1,30 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 6 test files (~21 tests) under ['tests\\plugins\\test_security_guardrail_data_tools.py', 'tests\\plugins\\test_security_guardrail_other_tools.py', 'tests\\plugins\\test_security_guardrail_terminal.py', 'tests\\plugins\\test_security_guardrail_patch.py', 'tests\\agent\\test_final_execution_policy.py', 'tests\\hermes_cli\\test_plugins_execution.py']; running with -j 4
+[  9.5% |     2/~21 | ✓2 | ✗0] ✓ tests\agent\test_final_execution_policy.py (2✓, 18.5s)
+[ 33.3% |     7/~21 | ✓7 | ✗0] ✓ tests\hermes_cli\test_plugins_execution.py (5✓, 20.9s)
+[ 42.9% |     9/~21 | ✓9 | ✗0] ✓ tests\plugins\test_security_guardrail_data_tools.py (2✓, 24.9s)
+[ 57.1% |    12/~21 | ✓12 | ✗ 0] ✓ tests\plugins\test_security_guardrail_other_tools.py (3✓, 31.3s)
+[ 85.7% |    18/~21 | ✓18 | ✗ 0] ✓ tests\plugins\test_security_guardrail_terminal.py (6✓, 26.4s)
+[100.0% |    21/~21 | ✓20 | ✗ 0] ✓ tests\plugins\test_security_guardrail_patch.py (2✓ 1s, 48.1s)
+
+=== Summary: 6 files, 20 tests passed, 0 failed, 1 skipped (100% complete) in 68.3s (4 workers) ===
+
+  note: platforms('posix') tests (in 1 file) were SKIPPED on this host (win32); they run on the main Linux CI lane, the macOS Python-tests lane.
+  Durations cached to test_durations.json (6 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   6
+  Total subprocess CPU-wall: 170.1s  (runner wall: 68.3s, parallelism: 4x)
+  P50: 26.42s  P90: 48.08s  P95: 48.08s  P99: 48.08s  Max: 48.08s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     48.08s  tests\plugins\test_security_guardrail_patch.py
+     31.29s  tests\plugins\test_security_guardrail_other_tools.py
+     26.42s  tests\plugins\test_security_guardrail_terminal.py
+     24.86s  tests\plugins\test_security_guardrail_data_tools.py
+     20.92s  tests\hermes_cli\test_plugins_execution.py
+     18.50s  tests\agent\test_final_execution_policy.py

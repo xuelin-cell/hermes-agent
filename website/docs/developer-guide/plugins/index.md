@@ -1080,6 +1080,7 @@ Each hook is documented in full on the **[Event Hooks reference](../../user-guid
 | Hook | Fires when | Callback signature | Returns |
 |------|-----------|-------------------|---------|
 | [`pre_tool_call`](../../user-guide/features/hooks.md#pre_tool_call) | Before any tool executes | `tool_name: str, args: dict, task_id: str` | optional directive: `{"action": "block", "message": ...}` vetoes the call; `{"action": "approve", "message": ...}` escalates to the human-approval gate |
+| `pre_tool_execute` | After the host prepares final execution input | `execution: PreparedToolExecution` and call IDs | read-only final authorization: None / block / approve; see the prepared execution contract below |
 | [`post_tool_call`](../../user-guide/features/hooks.md#post_tool_call) | After any tool returns | `tool_name: str, args: dict, result: str, task_id: str, duration_ms: int` | ignored |
 | [`pre_llm_call`](../../user-guide/features/hooks.md#pre_llm_call) | Once per turn, before the tool-calling loop | `session_id: str, user_message: str, conversation_history: list, is_first_turn: bool, model: str, platform: str` | [context injection](#pre_llm_call-context-injection) |
 | [`post_llm_call`](../../user-guide/features/hooks.md#post_llm_call) | Once per turn, after the tool-calling loop (successful turns only) | `session_id: str, user_message: str, assistant_response: str, conversation_history: list, model: str, platform: str` | ignored |
@@ -1097,9 +1098,9 @@ Each hook is documented in full on the **[Event Hooks reference](../../user-guid
 | `kanban_task_completed` | A kanban task completes (worker process) | `task_id, board, assignee, run_id, profile_name, summary: str \| None` | ignored |
 | `kanban_task_blocked` | A kanban task is blocked (worker process) | `task_id, board, assignee, run_id, profile_name, reason: str \| None` | ignored |
 
-Most hooks are fire-and-forget observers — their return values are ignored. The exceptions are `pre_llm_call`, which can inject context into the conversation, and `pre_tool_call`, which can return a block/approve directive.
+Most hooks are fire-and-forget observers. The control hooks include `pre_llm_call` (context injection), `pre_tool_call` (early directives), and `pre_tool_execute` (final read-only execution authorization, described below).
 
-All callbacks should accept `**kwargs` for forward compatibility. If a hook callback crashes, it's logged and skipped. Other hooks and the agent continue normally.
+All callbacks should accept `**kwargs` for forward compatibility. Observer failures are logged and skipped; policy-hook failures (`pre_tool_call` and `pre_tool_execute`) block execution.
 
 The kanban lifecycle hooks fire **after** the board DB change commits, so a callback always sees durable state and can never hold the SQLite write lock. Because kanban workers run as separate `hermes -p <profile> chat -q` subprocesses, `kanban_task_claimed` fires in the **dispatcher** process while `kanban_task_completed` / `kanban_task_blocked` fire in the **worker** process — hook in the dispatcher to observe every transition centrally, or in the worker for per-task in-session context.
 
@@ -1958,3 +1959,13 @@ def handler(args, **kwargs):
 # Good — model knows exactly when and how
 "description": "Evaluate a mathematical expression. Use for arithmetic, trig, logarithms. Supports: +, -, *, /, **, sqrt, sin, cos, log, pi, e."
 ```
+
+### `pre_tool_execute`: prepared execution authorization
+
+`ctx.register_hook("pre_tool_execute", callback)` receives `execution: PreparedToolExecution` from `hermes_cli.plugins_execution`. It runs after tool-request and tool-execution middleware. Registry tools use a final dispatch gate; tools that normalize execution targets register `prepared_execution=True` and call the same gate after preparation. That flag is a host implementation contract: the handler must authorize before its first side effect. Agent inline tools, connector calls and Tool Search catalog reads also use the generic gate; a deferred tool call is authorized as its actual underlying tool.
+
+The frozen description includes deeply read-only `arguments`, `targets` (operation, actual path, original path, content/entry role and content), backend, execution OS/Shell, cwd, workspace_root, task/session/call/turn IDs and profile_scope. `environment` contains selected non-secret initial child path facts; it is **not proof of a persistent shell's current exports**. Unknown execution-side information is `None`. ExecutionCapabilities supplies optional bounded script reading, existence/directory probes and execution-side path resolution; a remote environment must not use local host probes. Capabilities are trusted host callbacks, not model-provided permissions.
+
+Return `None` to continue, `{"action": "block", "message": "static reason"}` to veto, or `{"action": "approve", "message": "static reason", "rule_key": "policy fingerprint"}` to use Hermes native approval. Every veto wins before approval is requested. `modify`, malformed results, callback exceptions and timeouts block. The hook is bounded by `plugins.hook_callback_timeout`; approval runs after the callback and uses its own native lifecycle. The host hashes the actual prepared input and profile/session together with the optional policy fingerprint for approval caching. Policy implementations should include mutable policy revisions and inspected script digests in their fingerprints and keep secrets out of reasons/logs.
+
+Approved tools execute the prepared target/input; changed inputs require another authorization. File contents follow actual content targets; delete/move targets preserve directory-entry semantics. Multi-target patches authorize the full set before the first edit. This contract does not make filesystem checks atomic against another process replacing links, sandbox Python or arbitrary interactive process stdin, intercept every UI/HTTP action, or supply a missing execution backend. A policy must explicitly reject or document unsupported semantics.

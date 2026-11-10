@@ -46,7 +46,7 @@ _HOOK_TIMEOUT_BOUNDED_HOOKS: Set[str] = {
 }
 
 # Policy hooks: timeout / still-running must fail closed (block the tool).
-_HOOK_TIMEOUT_FAIL_CLOSED_HOOKS: Set[str] = {"pre_tool_call"}
+_HOOK_TIMEOUT_FAIL_CLOSED_HOOKS: Set[str] = {"pre_tool_call", "pre_tool_execute"}
 # Documented parent-thread serialization contract — never run on a timeout worker (hooks.md).
 _HOOK_CALLER_THREAD_HOOKS: Set[str] = {"subagent_stop"}
 # After a timeout, suppress the same callback this long so a hung hook cannot pile up threads.
@@ -60,6 +60,8 @@ def _policy_error_block_directive(hook_name: str, cb: Callable, exc: BaseExcepti
     """Block directive for a fail-closed hook whose callback raised: names the callback and the
     error (truncated — a hook that embeds tool args in its exception must not grow the tool
     result) so the operator can tell a crashing guard from a slow one."""
+    if hook_name == "pre_tool_execute":
+        return {"action": "block", "message": "Final execution policy callback failed: " + type(exc).__name__}
     callback_name = getattr(cb, "__name__", repr(cb))
     return {"action": "block",
             "message": f"{hook_name} plugin callback {callback_name} raised {type(exc).__name__}: {str(exc)[:200]}"}
@@ -210,8 +212,8 @@ class PluginDispatchMixin:
         """Call all callbacks for *hook_name*; return their non-``None`` results.
 
         Payloads evolve additively: ``**kwargs`` callbacks get everything, narrow signatures only
-        what they declare. Each callback is isolated. Bounded hooks and ``pre_tool_call`` run under
-        ``plugins.hook_callback_timeout`` (worker abandoned, never joined); ``pre_tool_call`` fails
+        what they declare. Each callback is isolated. Bounded hooks and policy hooks run under
+        ``plugins.hook_callback_timeout`` (worker abandoned, never joined); policy hooks fail
         closed with a block directive, others skip. ``_HOOK_CALLER_THREAD_HOOKS`` always run on the
         caller thread. ``pre_llm_call`` may return ``{"context": "..."}`` (or a str) to inject.
         """
@@ -230,7 +232,9 @@ class PluginDispatchMixin:
                     ret = self._run_hook_callback_bounded(hook_name, cb, kwargs, timeout)
                     if ret is _HOOK_SKIPPED:
                         if fail_closed:  # policy hook: fail closed with a block directive
-                            results.append({"action": "block", "message": _PRE_TOOL_CALL_TIMEOUT_BLOCK_MESSAGE})
+                            message = (_PRE_TOOL_CALL_TIMEOUT_BLOCK_MESSAGE if hook_name == "pre_tool_call"
+                                       else f"{hook_name} policy callback timed out or is still running")
+                            results.append({"action": "block", "message": message})
                         continue
                 else:
                     ret = self._invoke_hook_callback(cb, kwargs)
@@ -255,6 +259,9 @@ class PluginDispatchMixin:
         truncates the message so a hook that embeds tool args in its error cannot grow the set
         per call; the set is cleared on unload alongside the timeout-suppression map.
         """
+        if hook_name == "pre_tool_execute":
+            logger.warning("Final execution policy callback failed (%s); arguments omitted", type(exc).__name__)
+            return
         callback_name = getattr(cb, "__name__", repr(cb))
         key = (hook_name, getattr(cb, "__module__", ""), getattr(cb, "__qualname__", callback_name),
                type(exc).__name__, str(exc)[:200])
@@ -509,7 +516,9 @@ class PluginDispatchMixin:
             except asyncio.TimeoutError:
                 logger.warning("Hook '%s' callback %s timed out after %.0fs", hook_name, callback_name, timeout)
                 if fail_closed:  # policy hook: fail closed with a block directive
-                    results.append({"action": "block", "message": _PRE_TOOL_CALL_TIMEOUT_BLOCK_MESSAGE})
+                    message = (_PRE_TOOL_CALL_TIMEOUT_BLOCK_MESSAGE if hook_name == "pre_tool_call"
+                               else f"{hook_name} policy callback timed out or is still running")
+                    results.append({"action": "block", "message": message})
             except (Exception, SystemExit) as exc:
                 # Same isolation + failure contract as the sync path (#111922 warn-once, #109624
                 # a raising policy guard fails closed).

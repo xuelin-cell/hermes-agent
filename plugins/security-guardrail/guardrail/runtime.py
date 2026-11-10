@@ -24,6 +24,7 @@ class ExecutionEnvironment:
     script_reader: Callable[[str, int], bytes | None] | None = None
     exists: Callable[[str], bool | None] | None = None
     is_directory: Callable[[str], bool | None] | None = None
+    resolve_path: Callable[[str, str | None], str] | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "variables", MappingProxyType(dict(self.variables)))
@@ -54,3 +55,8 @@ def path_exists(path: str) -> bool:
 def path_is_directory(path: str) -> bool:
     probe = execution_environment().is_directory
     return probe is not None and probe(str(path)) is True
+
+
+def resolve_execution_path(path: str, cwd: str | None) -> str:
+    resolver = execution_environment().resolve_path
+    return resolver(path, cwd) if resolver is not None else path

@@ -1,74 +1,52 @@
 # security-guardrail
 
-## 阶段二任务 2：引擎已迁入
+当前版本 0.3.0：真实 Guardrail 引擎通过通用 `pre_tool_execute` 接入 Hermes。第一阶段 Demo 已移除，原有 `protected_directory` 配置继续可用。规则/资源来源见 [任务 2 记录](docs/task2-migration.md)，逐项适配状态见 [覆盖表](docs/capability-matrix.md)，本轮实现与限制见 [任务 3～5 记录](docs/task3-5-adaptation.md)。
 
-插件内已迁入规则引擎、规范化器、匹配器、全部 138 条原基线规则以及独立敏感检测 API 和资源。
-本次排除安全中心的页面、逐条规则设置、审计采集及其存储查询链路。来源、测试和已知差异见
-[迁入记录](docs/task2-migration.md)。本次没有修改 Hermes core 或启动代码。
+## 配置
 
-内部同步入口为 `contracts.evaluate_tool_call(request: GuardrailRequest) -> PermissionDecision`。
-请求明确提供原标准工具参数、执行端 OS、产品规则组、最终 cwd、工作区根、保护目录及来源；
-`profile=None` 仅选择通用规则，不根据 UniClaw 环境变量推断 PRO。其 `profile` 是规则产品组，
-不等同于 Hermes 账号 profile。执行上下文的文件存在性、目录探测和限额脚本读取均由宿主注入。
-缺少脚本读取能力、脚本过大或读取信息无效时抛出 `ContextUnavailableError`，后续宿主适配器必须阻断。
-声明的运行依赖为 `pydantic>=2,<3`，经 Hermes PM 管理；当前测试复用已有符合范围的解释器环境。
-
-敏感检测通过 `guardrail.sensitive_protection.inspect_sensitive_text(text, policy=...)` 独立调用，
-按实际安装包名读取资源。输出包含原值，调用方不能把完整检测结果写入普通日志；本阶段不新增自动外发过滤。
-
-保留的判断顺序是硬拒绝、固定放行、可信来源、用户拒绝/允许、会话允许、AUTO、ASK 和默认允许。
-移除安全中心逐条设置后，ASK 模式直接执行适用的原 ASK 基线；这与原版未配置 `ask_policy` 时默认允许不同。
-UniClaw 专用的产品目录/安装器等豁免默认关闭，只能在可信执行上下文中显式启用用于等价场景。
-
-**当前聊天仍使用下述第一阶段目录规则。** 引擎与真实 Hermes 工具回调的接线、通用 `pre_tool_execute`
-及完整审批对接属于任务 3～5；迁入引擎不表示这些工具已经受到新规则保护。
-
-运行 `scripts/run_tests.sh tests/plugins/security_guardrail/ tests/plugins/test_security_guardrail.py` 验证内部引擎与现有 Demo。
-
-## 当前执行中的第一阶段规则
-
-第一阶段只验证本地文件后端的 `write_file` 执行前目录规则。命中规则时返回
-`block`，Hermes 在实际写入前结束该工具调用。普通路径继续进入原工具检查。
-
-## 配置与启用
-
-在当前 profile 的 `config.yaml` 中合并以下设置，保留已有插件与其他设置。
-`protected_directory` 必须是绝对本地路径，例如一个专门用于验证的目录。
+在拥有该会话的 Hermes profile 的 `config.yaml` 中合并下列配置，保留其他设置。插件是内置 Python 插件，不新增桌面管理页面。
 
 ```yaml
 plugins:
+  enabled:
+    - security-guardrail # 与已有 enabled 项合并
   entries:
     security-guardrail:
       settings:
         protected_directory: 'D:\liantong\projects\python\hermes-agent\.hermes\security-check\protected'
+        protected_roots: []
+        mode: ask
+        build_profile: common
+        user_rules: []
 ```
 
-通过同一 profile 的 CLI 执行 `hermes plugins enable security-guardrail`，然后在
-对应桌面后端重启或新建会话，确认插件已加载。插件依赖本次新增的
-`ctx.resolve_file_path()`，部署需包含该通用接口的 Hermes 版本。
+至少配置一个绝对本地保护目录；目录、模式或规则配置无效时拒绝执行。保护根复用源 product_install_dir_access，覆盖读取、写入及 Shell 路径引用。`mode=ask` 使用原 ASK 基线和 Hermes 原生审批；`auto` 跳过 ASK，硬拒绝仍生效。Hermes 原生审批自身的无人值守/单次查询/自动批准配置继续适用。
 
-配置在调用时读取，按当前 profile 生效。已启用但配置缺失、路径无法解析时，
-拒绝 `write_file` 并说明原因。目录不必预先存在，子目录同样受保护。
+`build_profile` 选择源规则组：`common`、`lite`、`pro`、`server`，不表示 Hermes 账号或执行端；不能根据名称认定正在 VM 内。默认 common；138 条规则定义全部保留，但每次只选适用的规则。UniClaw 产品路径和可信安装器等豁免默认关闭。
+
+`user_rules` 保留源用户规则的 allow/deny 语义，例如 `{tool: Write, pattern: '**/generated/**', behavior: allow}`。工具名使用源标准名；硬拒绝和原固定放行顺序不变。可信宿主可以调用 `adapters.policy.allow_session(profile_scope, session_id, tool_name, pattern='')` 设置内存允许规则；会话结束或插件卸载清除。此接口不作为模型工具暴露。
+
+## 执行链
+
+`模型调用 → 参数 Hook/请求中间件 → 执行中间件 → 宿主准备最终输入 → pre_tool_execute → DENY / 原生 ASK / ALLOW → 执行`。
+
+文件、补丁、终端和 URL 工具在准备位置授权；其余注册表工具、连接器与 Agent 内联入口使用同一通用最终分发。快照只读，最终 Hook 不接受 modify；任何拒绝优先于审批。异常、超时、无效返回拒绝执行。批准键绑定实际参数、目标、cwd、工作区、OS/Shell、profile/会话与策略；脚本检查摘要也进入插件授权键。
+
+已接入 write_file、replace/V4A Add/Update/Delete/Move、read_file/search_files、本地 Bash 前后台及字面路径脚本、Web 查询和逐 URL 检查、用户/会话规则及对应数据工具。具体入口和证据须查看覆盖表，不能据此称所有写入渠道都受到文件保护。
+
+## 限制
+
+- Windows 本地后端为本轮验证环境。映射文件/终端若执行端信息不明，直接拒绝；不把 SSH、容器认成本机。其他 OS 的规则与测试保留，未伪造平台验证。
+- Windows Bash 支持本机绝对路径、MSYS 盘符路径和已有本地链接解析。无法确认的虚拟根/设备/网络路径拒绝；`/dev/null` 保留其空设备语义。
+- 持久 Bash 环境可被此前命令改变，初始 HOME 等不是最终事实。目前仅确认字面脚本路径；依赖 `$HOME`、`~` 等环境展开的脚本拒绝，待宿主提供可靠的持久环境快照后扩展。
+- V4A 整批在首次修改前判断。移动链接后继续操作其受影响路径的复杂顺序补丁拒绝，要求拆为两次工具调用；普通文件 Move 后 Update 仍支持。不能保证外部进程在检查后更换链接的并发竞态。
+- Hermes execute_code 运行 Python，不能套源 Bash 别名。目前按未知执行字段规则拒绝，不代表已分析 Python 副作用。交互进程 stdin、网页交互/重定向和模型之外的 UI 路由不自动具有同等防护。
+- “设置－安全中心”、逐条规则设置、审计采集/存储/查询/UI 均未迁移。独立敏感检测 API 保留可调用，不自动挂到发送或外发工具。
 
 ## 验证
 
-运行 `scripts/run_tests.sh tests/plugins/test_security_guardrail.py`。
-测试使用临时 profile、真实插件发现和 `model_tools.handle_function_call()`，
-正常路径通过真实文件后端写入。验证创建阻断、已有文件字节与修改时间不变、
-相对路径、目录跳转、相似前缀、Windows 大小写和 junction，以及 A→B→A 配置隔离。
-POSIX 的符号链接用例在对应 OS 上运行。
+```bash
+scripts/run_tests.sh tests/plugins/security_guardrail/ tests/plugins/test_security_guardrail.py tests/plugins/test_security_guardrail_patch.py tests/plugins/test_security_guardrail_terminal.py tests/plugins/test_security_guardrail_other_tools.py tests/plugins/test_security_guardrail_policy.py tests/hermes_cli/test_plugins_execution.py tests/agent/test_final_execution_policy.py
+```
 
-桌面手工复验时，分别要求模型调用 `write_file` 向受保护目录和其旁边普通目录
-写入一个测试文件，核对实际工具名称、阻断原因和磁盘结果。再对保护目录的现有
-测试文件请求覆盖，确认原字节和修改时间未变。只有模型确实调用 `write_file`
-的结果才属于本阶段验证。
-
-## 覆盖范围
-
-路径通过 `ctx.resolve_file_path()` 采用文件工具的任务 cwd、profile home 与后端
-规则，再在本地解析链接并按目录归属匹配。Windows 使用原生大小写语义。
-当前对网络路径、容器及 SSH 后端的 `write_file` 返回不支持提示。
-
-`patch`、终端、MCP 和其他写入渠道尚未接入。链接在检查后被并发替换、其他插件在
-后续改写工具参数等场景需要后续执行边界验证。本插件用于第一阶段链路验证，
-完整 Guardrail 规则迁入、其他工具覆盖和部署防护属于后续阶段。
+桌面复验需完整重启后端并新建日常聊天会话，确认加载新版本；仅启动已在运行的前端不会替换旧进程中的插件。依次验证保护目录写入/覆盖、普通目录写入、补丁混合目标拒绝、终端保护路径拒绝、工作区外 ASK 批准/拒绝。检查实际工具名和磁盘结果。无需改启动源码或重装环境；本轮没有修改活动账号配置。任务 6 仍负责完整安装、客户端/cron/子 Agent 的最终验收。

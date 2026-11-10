@@ -1,13 +1,29 @@
 name: security-guardrail
-version: "0.2.0"
-description: "Guardrail engine and detection APIs; phase-one write_file hook retained until execution adapters are connected."
+version: "0.3.0"
+description: "Guardrail safety policies at the prepared Hermes execution boundary, with independent detection APIs."
 python_dependencies:
   - "pydantic>=2,<3"
 provides_hooks:
-  - pre_tool_call
+  - pre_tool_execute
+  - on_session_end
 config_schema:
   protected_directory:
     type: str
     default: ""
-    description: "Absolute local directory protected from write_file (including descendants)."
-    required: true
+    description: "Absolute local protection root, retained for phase-one configuration compatibility."
+  protected_roots:
+    type: list
+    default: []
+    description: "Additional absolute local protection directories; configure at least one protection root."
+  mode:
+    type: str
+    default: ask
+    description: "ask preserves baseline confirmation; auto skips ASK only, never hard denies."
+  build_profile:
+    type: str
+    default: common
+    description: "Explicit source rule group: common, lite, pro or server; unrelated to Hermes account profiles."
+  user_rules:
+    type: list
+    default: []
+    description: "Source-semantic rules: {tool: canonical name, pattern: wildcard, behavior: allow or deny}."

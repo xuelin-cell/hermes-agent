@@ -1,0 +1,150 @@
+▶ not activated — using HERMES_PYTHON: /d/liantong/projects/python/hermes-agent/.hermes/windows-activation/data/installs/e4df25ac6f432167/test-environment/gen-384d282ffd9a46cc881052663c52cd7e/venv/Scripts/python.exe
+▶ running per-file parallel test suite via run_tests_parallel.py
+  (TZ=UTC LANG=C.UTF-8 PYTHONHASHSEED=0; clean env)
+▶ pre-compiling bytecode cache
+▶ launching test runner
+Discovered 5 test files (~39 tests) under ['tests\\plugins\\test_security_guardrail_other_tools.py', 'tests\\tools\\test_model_tools.py', 'tests\\tools\\test_web_extract_robustness.py', 'tests\\tools\\test_browser_hybrid_routing.py', 'tests\\agent\\test_final_execution_policy.py']; running with -j 4
+[ 23.1% |     9/~39 | ✓8 | ✗1] ✗ tests\tools\test_browser_hybrid_routing.py (8✓ 1✗, 16.3s)
+
+  ╔╍ Failed: tests\tools\test_browser_hybrid_routing.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ F........                                                                [100%]
+  ║ ================================== FAILURES ===================================
+  ║ _________ TestNavigationSessionKey.test_public_url_uses_bare_task_id __________
+  ║ 
+  ║ self = <tests.tools.test_browser_hybrid_routing.TestNavigationSessionKey object at 0x00000243E124DA90>
+  ║ monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000243E103B230>
+  ║ 
+  ║     def test_public_url_uses_bare_task_id(self, monkeypatch):
+  ║         """Public URL with cloud provider configured → bare task_id (cloud)."""
+  ║         monkeypatch.setattr(bt_cloud, "_get_cloud_provider", lambda: Mock())
+  ║         key = browser_tool._navigation_session_key("default", "https://github.com/x/y")
+  ║ >       assert key == "default"
+  ║ E       AssertionError: assert 'default::local' == 'default'
+  ║ E         
+  ║ E         - default
+  ║ E         + default::local
+  ║ 
+  ║ tests\tools\test_browser_hybrid_routing.py:46: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/tools/test_browser_hybrid_routing.py::TestNavigationSessionKey::test_public_url_uses_bare_task_id
+  ║ 1 failed, 8 passed in 9.80s
+  ║
+  ║  Repro: python -m pytest tests\tools\test_browser_hybrid_routing.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+[ 28.2% |    11/~39 | ✓10 | ✗ 1] ✓ tests\agent\test_final_execution_policy.py (2✓, 21.6s)
+[ 33.3% |    13/~39 | ✓12 | ✗ 1] ✓ tests\tools\test_web_extract_robustness.py (2✓, 13.7s)
+[ 41.0% |    16/~39 | ✓15 | ✗ 1] ✓ tests\plugins\test_security_guardrail_other_tools.py (3✓, 34.8s)
+[100.0% |    39/~39 | ✓37 | ✗ 2] ✗ tests\tools\test_model_tools.py (22✓ 1✗, 47.5s)
+
+  ╔╍ Failed: tests\tools\test_model_tools.py ╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+  ║ ......................F                                                  [100%]
+  ║ ================================== FAILURES ===================================
+  ║ _____ test_tool_defs_cache_key_sees_config_replacement_with_pinned_mtime ______
+  ║ 
+  ║ tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-ac6mj_lc/pytest-of-unknown/pytest-0/test_tool_defs_cache_key_sees_0')
+  ║ 
+  ║     def test_tool_defs_cache_key_sees_config_replacement_with_pinned_mtime(tmp_path):
+  ║         """#111105: a same-size config.yaml swapped in with the old mtime must change the memo key."""
+  ║         import os
+  ║         import shutil
+  ║     
+  ║         from model_tools import _tool_defs_cache_key
+  ║     
+  ║         cfg = tmp_path / "config.yaml"
+  ║         cfg.write_text("mcp_servers:\n  aa: {command: a}\n", encoding="utf-8")
+  ║         with patch("hermes_cli.config.get_config_path", return_value=cfg):
+  ║             before = _tool_defs_cache_key(None, None, False)
+  ║             st = cfg.stat()
+  ║             other = tmp_path / "other.yaml"
+  ║             other.write_text("mcp_servers:\n  bb: {command: b}\n", encoding="utf-8")
+  ║             shutil.copy2(other, cfg)
+  ║             os.utime(cfg, ns=(st.st_atime_ns, st.st_mtime_ns))
+  ║ >           assert _tool_defs_cache_key(None, None, False) != before
+  ║ E           AssertionError: assert ('c:\\users\\lihuadu\\appdata\\local\\temp\\hermes-pytest\\r-ac6mj_lc\\pytest-of-unknown\\pytest-0\\test_tool_defs_cac...y_sees_0\\hermes_test', None, None, 449, (1794299024789154500, 34, 89790517570818703, 1794299024788158000), False, ...) != ('c:\\users\\lihuadu\\appdata\\local\\temp\\hermes-pytest\\r-ac6mj_lc\\pytest-of-unknown\\pytest-0\\test_tool_defs_cac...y_sees_0\\hermes_test', None, None, 449, (1794299024789154500, 34, 89790517570818703, 1794299024788158000), False, ...)
+  ║ E            +  where ('c:\\users\\lihuadu\\appdata\\local\\temp\\hermes-pytest\\r-ac6mj_lc\\pytest-of-unknown\\pytest-0\\test_tool_defs_cac...y_sees_0\\hermes_test', None, None, 449, (1794299024789154500, 34, 89790517570818703, 1794299024788158000), False, ...) = <function _tool_defs_cache_key at 0x00000159BDBED0C0>(None, None, False)
+  ║ 
+  ║ tests\tools\test_model_tools.py:555: AssertionError
+  ║ =========================== short test summary info ===========================
+  ║ FAILED tests/tools/test_model_tools.py::test_tool_defs_cache_key_sees_config_replacement_with_pinned_mtime
+  ║ 1 failed, 22 passed in 41.02s
+  ║
+  ║  Repro: python -m pytest tests\tools\test_model_tools.py -q
+  ╚╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍╍
+
+
+=== Summary: 5 files, 37 tests passed, 2 failed (100% complete) in 50.1s (4 workers) ===
+  Durations cached to test_durations.json (3 files)
+
+=== Per-file subprocess time distribution ===
+  Files:   5
+  Total subprocess CPU-wall: 133.9s  (runner wall: 50.1s, parallelism: 4x)
+  P50: 21.58s  P90: 47.51s  P95: 47.51s  P99: 47.51s  Max: 47.51s
+  <1s: 0 files (0%)  <2s: 0 files (0%)
+  Top 10 slowest:
+     47.51s  tests\tools\test_model_tools.py
+     34.78s  tests\plugins\test_security_guardrail_other_tools.py
+     21.58s  tests\agent\test_final_execution_policy.py
+     16.30s  tests\tools\test_browser_hybrid_routing.py
+     13.70s  tests\tools\test_web_extract_robustness.py
+
+=== Failure output ===
+
+--- tests\tools\test_browser_hybrid_routing.py ---
+F........                                                                [100%]
+================================== FAILURES ===================================
+_________ TestNavigationSessionKey.test_public_url_uses_bare_task_id __________
+
+self = <tests.tools.test_browser_hybrid_routing.TestNavigationSessionKey object at 0x00000243E124DA90>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000243E103B230>
+
+    def test_public_url_uses_bare_task_id(self, monkeypatch):
+        """Public URL with cloud provider configured → bare task_id (cloud)."""
+        monkeypatch.setattr(bt_cloud, "_get_cloud_provider", lambda: Mock())
+        key = browser_tool._navigation_session_key("default", "https://github.com/x/y")
+>       assert key == "default"
+E       AssertionError: assert 'default::local' == 'default'
+E         
+E         - default
+E         + default::local
+
+tests\tools\test_browser_hybrid_routing.py:46: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tools/test_browser_hybrid_routing.py::TestNavigationSessionKey::test_public_url_uses_bare_task_id
+1 failed, 8 passed in 9.80s
+
+--- tests\tools\test_model_tools.py ---
+......................F                                                  [100%]
+================================== FAILURES ===================================
+_____ test_tool_defs_cache_key_sees_config_replacement_with_pinned_mtime ______
+
+tmp_path = WindowsPath('C:/Users/lihuadu/AppData/Local/Temp/hermes-pytest/r-ac6mj_lc/pytest-of-unknown/pytest-0/test_tool_defs_cache_key_sees_0')
+
+    def test_tool_defs_cache_key_sees_config_replacement_with_pinned_mtime(tmp_path):
+        """#111105: a same-size config.yaml swapped in with the old mtime must change the memo key."""
+        import os
+        import shutil
+    
+        from model_tools import _tool_defs_cache_key
+    
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text("mcp_servers:\n  aa: {command: a}\n", encoding="utf-8")
+        with patch("hermes_cli.config.get_config_path", return_value=cfg):
+            before = _tool_defs_cache_key(None, None, False)
+            st = cfg.stat()
+            other = tmp_path / "other.yaml"
+            other.write_text("mcp_servers:\n  bb: {command: b}\n", encoding="utf-8")
+            shutil.copy2(other, cfg)
+            os.utime(cfg, ns=(st.st_atime_ns, st.st_mtime_ns))
+>           assert _tool_defs_cache_key(None, None, False) != before
+E           AssertionError: assert ('c:\\users\\lihuadu\\appdata\\local\\temp\\hermes-pytest\\r-ac6mj_lc\\pytest-of-unknown\\pytest-0\\test_tool_defs_cac...y_sees_0\\hermes_test', None, None, 449, (1794299024789154500, 34, 89790517570818703, 1794299024788158000), False, ...) != ('c:\\users\\lihuadu\\appdata\\local\\temp\\hermes-pytest\\r-ac6mj_lc\\pytest-of-unknown\\pytest-0\\test_tool_defs_cac...y_sees_0\\hermes_test', None, None, 449, (1794299024789154500, 34, 89790517570818703, 1794299024788158000), False, ...)
+E            +  where ('c:\\users\\lihuadu\\appdata\\local\\temp\\hermes-pytest\\r-ac6mj_lc\\pytest-of-unknown\\pytest-0\\test_tool_defs_cac...y_sees_0\\hermes_test', None, None, 449, (1794299024789154500, 34, 89790517570818703, 1794299024788158000), False, ...) = <function _tool_defs_cache_key at 0x00000159BDBED0C0>(None, None, False)
+
+tests\tools\test_model_tools.py:555: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/tools/test_model_tools.py::test_tool_defs_cache_key_sees_config_replacement_with_pinned_mtime
+1 failed, 22 passed in 41.02s
+
+=== 2 files with test failures (2 tests failed) ===
+  tests\tools\test_browser_hybrid_routing.py  (1 test failed)
+  tests\tools\test_model_tools.py  (1 test failed)

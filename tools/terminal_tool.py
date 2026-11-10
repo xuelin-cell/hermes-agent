@@ -1219,6 +1219,7 @@ def _run_foreground(
     command: str, env: Any, plan: _ExecPlan, *,
     task_id: Optional[str], session_id: Optional[str], session_key: str,
     workdir: Optional[str], approval_note: Optional[str], clear_interrupt: bool,
+    execution_cwd: Optional[str] = None,
 ) -> str:
     """Execute in the foreground with retry on transient errors, then finalize."""
     max_retries = 3
@@ -1235,7 +1236,7 @@ def _run_foreground(
 
     for retry_count in range(max_retries + 1):
         try:
-            command_cwd = _resolve_command_cwd(
+            command_cwd = execution_cwd if execution_cwd is not None else _resolve_command_cwd(
                 workdir=workdir, default_cwd=plan.cwd, session_key=session_key, env_type=env_type,
                 mounted_host=getattr(env, "host_cwd", None) or plan.host_cwd,
                 env=env,
@@ -1428,10 +1429,20 @@ def terminal_tool(
             # Promotion implies notify_on_complete; watch_patterns is a background-only flag the
             # caller could not have meant for a foreground call, and the two are exclusive anyway.
             background, notify_on_complete, watch_patterns = True, True, None
+        from tools.prepared_execution import authorize_terminal, execution_policy_available, prepare_terminal_cwd
+        prepared_cwd = None
+        if execution_policy_available():
+            prepared_cwd, workspace_root = prepare_terminal_cwd(
+                plan, env, workdir=workdir, session_key=session_key, task_id=task_id)
+            block = authorize_terminal(command, env=env, backend=env_type, cwd=prepared_cwd,
+                workspace_root=workspace_root, task_id=task_id, session_id=session_id,
+                background=background, pty=pty and not pty_disabled)
+            if block:
+                return _error_json(block, status="blocked")
         if background:
             result = spawn_background_process(
                 command=command, env=env, env_type=env_type, effective_task_id=effective_task_id,
-                task_id=task_id, session_key=session_key, workdir=workdir, cwd=cwd,
+                task_id=task_id, session_key=session_key, workdir=prepared_cwd or workdir, cwd=cwd,
                 mounted_host=getattr(env, "host_cwd", None) or plan.host_cwd,
                 effective_pty=pty and not pty_disabled, notify_on_complete=notify_on_complete,
                 watch_patterns=watch_patterns, approval_note=verdict.note,
@@ -1447,6 +1458,7 @@ def terminal_tool(
             command, env, plan,
             task_id=task_id, session_id=session_id, session_key=session_key,
             workdir=workdir, approval_note=verdict.note, clear_interrupt=verdict.approved_run,
+            execution_cwd=prepared_cwd,
         )
     except _Rejected as r:
         return r.result_json
@@ -1603,6 +1615,7 @@ registry.register(
     toolset="terminal",
     schema=TERMINAL_SCHEMA,
     handler=_handle_terminal,
+    prepared_execution=True,
     check_fn=check_terminal_requirements,
     emoji="💻",
     max_result_size_chars=100_000,
