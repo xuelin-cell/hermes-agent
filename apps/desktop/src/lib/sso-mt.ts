@@ -13,6 +13,8 @@
 
 import { readBrowserAuth, storeBrowserLogin } from '../../../shared/src/browser-maas-auth.js'
 
+import { type ClientFields, reloadFor, replaceFor } from './client-events-mt'
+
 export const SSO_PLATFORM = 'agents'
 export const SSO_API = '/app/gateway/sso'
 
@@ -45,9 +47,12 @@ export function ssoLoginUrl(apiBase: string, prompt?: string): string {
   return `${page}?${query}`
 }
 
-/** Leaves for the gateway's login page. The returned promise never settles: nothing should render meanwhile. */
-export function toSsoLogin(apiBase: string, prompt?: string): Promise<never> {
-  window.location.replace(ssoLoginUrl(apiBase, prompt))
+/**
+ * Leaves for the gateway's login page. The returned promise never settles: nothing should render meanwhile.
+ * `reason` goes to the entry's log first (client-events-mt), so a page that "left by itself" can be explained.
+ */
+export function toSsoLogin(apiBase: string, prompt?: string, reason?: string, detail?: ClientFields): Promise<never> {
+  replaceFor(reason ?? (prompt === 'select_account' ? 'switch-account' : 'signed-out'), ssoLoginUrl(apiBase, prompt), detail)
 
   return new Promise<never>(() => undefined)
 }
@@ -80,7 +85,7 @@ export async function bootSso(apiBase: string): Promise<SsoBoot> {
   }
 
   if (response.status === 401) {
-    return toSsoLogin(apiBase)
+    return toSsoLogin(apiBase, undefined, 'boot-signed-out')
   }
 
   const config = (await response.json().catch(() => null)) as null | { sso?: unknown }
@@ -98,17 +103,22 @@ export async function bootSso(apiBase: string): Promise<SsoBoot> {
   }
 
   if (account === null) {
-    return toSsoLogin(apiBase)
+    return toSsoLogin(apiBase, undefined, 'boot-no-account')
   }
 
   if (account) {
-    watchSsoAccount(account.sid)
+    watchSsoAccount(account)
   }
 
   return { account: account ?? null, mode: 'sso' }
 }
 
-function watchSsoAccount(sid: string): void {
+/** Who an account is in the entry's log: type and the head of the session id, never the whole id. */
+function sessionTag(account: SsoAccount): string {
+  return `${account.accountType}/${account.sid.slice(0, 6)}`
+}
+
+function watchSsoAccount(account: SsoAccount): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') {
       return
@@ -116,8 +126,10 @@ function watchSsoAccount(sid: string): void {
 
     void ssoMe().then(
       now => {
-        if (!now || now.sid !== sid) {
-          window.location.reload()
+        if (!now) {
+          reloadFor('signed-out-elsewhere', { from: sessionTag(account) })
+        } else if (now.sid !== account.sid) {
+          reloadFor('sid-changed', { from: sessionTag(account), to: sessionTag(now) })
         }
       },
       () => undefined // the gateway is unreachable for a moment: keep the page
@@ -166,7 +178,7 @@ export function installSsoAuthErrorHandler(apiBase: string): void {
       const body = (await response.clone().json().catch(() => null)) as null | { error?: unknown }
 
       if (body?.error === 'ACCOUNT_NOT_ALLOWED') {
-        void toSsoLogin(apiBase, 'select_account')
+        void toSsoLogin(apiBase, 'select_account', 'not-allowed', { path: path.slice(prefix.length, prefix.length + 60) })
       }
 
       return response
@@ -175,7 +187,7 @@ export function installSsoAuthErrorHandler(apiBase: string): void {
     checking ??= ssoMe()
       .then(now => {
         if (now === null) {
-          void toSsoLogin(apiBase)
+          void toSsoLogin(apiBase, undefined, 'signed-out', { path: path.slice(prefix.length, prefix.length + 60) })
         }
       })
       .catch(() => undefined)
@@ -246,7 +258,7 @@ export function renderSsoBlocked(
       .catch(() => false)
       .then(allowed => {
         if (allowed) {
-          window.location.reload()
+          reloadFor('access-recheck')
 
           return
         }

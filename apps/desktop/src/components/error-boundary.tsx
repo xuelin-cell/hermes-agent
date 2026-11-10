@@ -3,6 +3,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { ErrorState } from '@/components/ui/error-state'
 import { useI18n } from '@/i18n'
+import { reloadFor } from '@/lib/client-events-mt'
 import { requestSendDiagnostics } from '@/store/send-diagnostics'
 
 export interface ErrorBoundaryFallbackProps {
@@ -170,7 +171,7 @@ function RootErrorFallback({ error, reset }: ErrorBoundaryFallbackProps) {
         <Button className="font-semibold" onClick={reset} size="lg">
           {t.common.retry}
         </Button>
-        <Button onClick={() => window.location.reload()} variant="text">
+        <Button onClick={() => reloadFor('error-boundary', { error: error.name })} variant="text">
           {t.errors.reloadWindow}
         </Button>
         <Button onClick={() => void window.hermesDesktop?.revealLogs()?.catch(() => undefined)} variant="text">
