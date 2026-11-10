@@ -1,8 +1,8 @@
 # 云端实例保留的 UniWork 预制技能（skills/uniwork/ 下的目录名），一行一个。
-# 对齐 UniClaw 生产：配置仓库 uni-ai/uniclawwork-local-config 的 main 分支 skills/public（2026-10-29 起是这 4 个）。
+# 参照 UniClaw 生产：配置仓库 uni-ai/uniclawwork-local-config 的 main 分支 skills/public（2026-10-29 起 4 个）。
+# 2026-11-10 产品决定云端再去掉 video-source-search（配置仓库当时仍保留），只留下面 3 个。
 # 办公、设计类能力改由同一配置仓库的套件提供，所以只有镜像带了套件时才按这里收窄；
 # 不带套件（企业版 MT_CLIENT_FEATURES 关了 kits）保留全部预制技能。见 seed/prune_bundled_skills.py。
 dws
 lark-unified
 video-frames
-video-source-search
