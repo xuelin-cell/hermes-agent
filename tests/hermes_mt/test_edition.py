@@ -265,3 +265,10 @@ def test_needs_kits_follows_the_client_features(tmp_path: Path, env: str, needs:
     out = subprocess.run(["bash", "-c", f'ENV_FILE="$1"\n{helpers}\nif needs_kits; then printf yes; else printf no; fi', "bash", str(env_file)],
                          capture_output=True, text=True, check=True)
     assert out.stdout == ("yes" if needs else "no")
+
+
+def test_usage_route_is_registered_like_the_other_enterprise_routes() -> None:
+    """左下角的企业用量和个人用量（平台 39 号第 1 节）：和 select-tenant、enterprise 一样两边都注册，个人版回 404
+    （test_enterprise_entry 里验），企业版的路由仍然是个人版的子集。"""
+    for edition in (_routes(), _routes(uniwork_server=PLATFORM, client_features="none")):
+        assert "/agents/api/__entry/usage" in edition

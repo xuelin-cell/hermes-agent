@@ -282,6 +282,10 @@ class Uniwork:
     async def policy(self, token: str) -> dict:
         return await self._call("GET", "/api/client/policy", token=token)
 
+    async def usage(self, token: str) -> dict:
+        """成员的额度：企业 → 部门 → 个人各级的上限和本周期已用（平台 39 号第 1 节）。没席位、已停用回 401 / 403。"""
+        return await self._call("GET", "/api/client/usage", token=token)
+
     async def events(self, token: str, since: str, wait_s: float) -> dict:
         """长轮询：策略版本和 ``since`` 不同就马上回 ``{"changed": true, "revision"}``，否则等到 ``wait_s`` 秒回 changed=false。"""
         query = urlencode({"since": since, "wait": int(wait_s)})

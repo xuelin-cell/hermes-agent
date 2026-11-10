@@ -22,6 +22,7 @@ from .account_routes import AccountRoutes
 from .plan_routes import PlanRoutes
 from .welcome_routes import WelcomeRoutes
 from .timing_routes import TimingRoutes
+from .usage_routes import UsageRoutes
 from .skill_routes import SkillRoutes, MUTATIONS as SKILL_MUTATIONS
 from .crypto import CredentialCipher, CredentialError
 from .connector_oauth import ConnectorAccessLogger
@@ -176,6 +177,7 @@ class Entry:
         self.plan_routes = PlanRoutes(self)
         self.welcome_routes = WelcomeRoutes(self)
         self.timing_routes = TimingRoutes(self)
+        self.usage_routes = UsageRoutes(self)
         self.skill_routes = SkillRoutes(self)
         self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
@@ -1376,6 +1378,7 @@ def build_app(settings: Settings = SETTINGS) -> web.Application:
     # 企业模式（MT_UNIWORK_SERVER）才有用，个人模式回 404
     app.router.add_post(api("/__entry/select-tenant"), entry.select_tenant)
     app.router.add_get(api("/__entry/enterprise"), entry.enterprise)
+    app.router.add_get(api("/__entry/usage"), entry.usage_routes.handle)  # 左下角的企业用量和个人用量
     app.router.add_post(api("/__entry/logout"), entry.logout)
     app.router.add_get(path("/logout"), entry.logout_page)
     app.router.add_get(api("/ws"), entry.ws)

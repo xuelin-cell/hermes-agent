@@ -18,6 +18,7 @@ import { notify } from '@/store/notifications'
 
 import type { LoginAccount } from '../../../../electron/login/contract'
 import type { PlanUsage } from '../../../../electron/uniwork-usage/contract'
+import { EnterpriseUsageDetails } from '../enterprise-usage-mt'
 
 import {
   formatPlanExpiryDate,
@@ -367,6 +368,8 @@ export function PlanUsagePanel({ account, trigger, onLogout }: PlanUsagePanelPro
         <section aria-label={c.title}>
           {trigger && (
             <>
+              {/* desktop-mt: 企业版的企业用量和个人用量放在卡片顶部（../enterprise-usage-mt.tsx），别的版本不显示 */}
+              <EnterpriseUsageDetails />
               <div className="account-card-row account-card-plan" hidden={isPlanUsageHidden()}>
                 <AccountIcon src={planIcon} />
                 <span className="account-card-plan-name">

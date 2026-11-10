@@ -28,6 +28,17 @@ class FakePlatform:
         # 统一登录（/api/internal/sso/device-token）：云端入口带的密钥；平台连不上时的吊销（测试里可以打开）
         self.internal_token = "cloud-internal-test"
         self.logout_down = False
+        # 额度（/api/client/usage，平台 39 号第 1 节的真实形状）；usage_status 不为 0 时直接回这个状态码
+        self.usage_body: dict = {
+            "cycleStart": "2026-11-03", "cycleEnd": "", "endsAt": "2027-11-03", "unit": "积分", "tokensPerCredit": 1000,
+            "levels": [
+                {"level": "enterprise", "label": "企业订阅积分", "limit": 60000, "used": 18616, "remaining": 41384,
+                 "percent": 31.0},
+                {"level": "member", "label": "个人额度", "limit": 0, "used": 17, "remaining": None, "percent": None},
+            ],
+            "binding": "enterprise", "exceeded": False,
+        }
+        self.usage_status = 0
         self.server: TestServer | None = None
 
     @property
@@ -40,6 +51,7 @@ class FakePlatform:
         app.router.add_post("/api/client/sms-login", self.sms_login)
         app.router.add_post("/api/client/select-tenant", self.select_tenant)
         app.router.add_get("/api/client/policy", self.policy)
+        app.router.add_get("/api/client/usage", self.usage)
         app.router.add_post("/api/client/logout", self.logout)
         app.router.add_post("/api/internal/sso/device-token", self.device_token)
         self.server = TestServer(app)
@@ -171,6 +183,13 @@ class FakePlatform:
             return web.json_response(policy)
         phone, code, _ = self._token(request)
         return web.json_response(self.build_policy(phone, code))
+
+    async def usage(self, request: web.Request) -> web.Response:
+        self._token(request)
+        self.requests.append(("usage", {}))
+        if self.usage_status:
+            return web.json_response({"detail": "额度不可用"}, status=self.usage_status)
+        return web.json_response(self.usage_body)
 
     @staticmethod
     def member_id(phone: str) -> str:

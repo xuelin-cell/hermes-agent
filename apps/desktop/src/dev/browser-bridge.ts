@@ -18,6 +18,7 @@ import {
   type PdfDocumentSource
 } from '@/lib/browser-shell'
 import { $enterpriseFeatures, $enterpriseShell, noteEntryAccount } from '@/lib/enterprise-mt'
+import type { EnterpriseUsage } from '@/lib/enterprise-usage-mt'
 import {
   bootSso,
   installSsoAuthErrorHandler,
@@ -1513,7 +1514,20 @@ export function installBrowserDevelopmentBridge(): boolean {
     return (await response.json()) as WelcomePayload
   }
 
+  // The enterprise and personal quota under the account name (lib/enterprise-usage-mt.ts): the entry reads it from
+  // the platform with the member's device token, which the page never holds (deploy/hermes-mt/entry/entry/usage_routes.py).
+  const enterpriseUsage = async (): Promise<EnterpriseUsage> => {
+    const response = await fetch(`${browserApiBase()}__entry/usage`, { cache: 'no-store', credentials: 'same-origin' })
+
+    if (!response.ok) {
+      throw new Error(`usage: HTTP ${response.status}`)
+    }
+
+    return (await response.json()) as EnterpriseUsage
+  }
+
   const enterpriseCapabilities = (features: ReadonlySet<string>) => ({
+    getEnterpriseUsage: enterpriseUsage,
     getWelcomeCatalog: enterpriseWelcome,
     ...(features.has('kits')
       ? {

@@ -7,6 +7,7 @@ import { useI18n } from '@/i18n'
 import { signOutDescription } from '@/lib/browser-shell'
 import { notify } from '@/store/notifications'
 
+import { EnterpriseUsageSummary } from './enterprise-usage-mt'
 import { PlanUsagePanel } from './plan-usage/panel'
 
 import type { LoginAccount } from '../../../electron/login/contract'
@@ -70,7 +71,11 @@ function AccountLogout({ account }: { account: LoginAccount }) {
             <span data-slot="sidebar-account-avatar" aria-hidden="true">
               <Codicon name="account" size="1rem" />
             </span>
-            <span className="min-w-0 flex-1 truncate text-left">{account.maskedPhone}</span>
+            <span className="min-w-0 flex-1 text-left">
+              <span className="block truncate">{account.maskedPhone}</span>
+              {/* desktop-mt: 企业版的额度常驻在账号名下面（enterprise-usage-mt.tsx），别的版本不显示 */}
+              <EnterpriseUsageSummary />
+            </span>
             {expired && <span className="text-xs text-muted-foreground">{copy.expiredLabel}</span>}
             <Codicon name="chevron-up" size="0.875rem" />
           </Button>

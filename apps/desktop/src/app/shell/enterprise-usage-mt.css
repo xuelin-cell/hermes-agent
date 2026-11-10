@@ -1,0 +1,93 @@
+/* desktop-mt: 企业版的额度（enterprise-usage-mt.tsx）。颜色沿用主题：正常主色，到 80% 黄，用完红。 */
+
+.enterprise-usage-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.enterprise-usage-summary .enterprise-usage-bar {
+  flex: 0 0 48px;
+  height: 4px;
+}
+
+.enterprise-usage-summary[data-tone='over'] .enterprise-usage-caption {
+  color: var(--dt-destructive);
+}
+
+.enterprise-usage-caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.enterprise-usage-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dt-secondary);
+}
+
+.enterprise-usage-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--theme-primary);
+}
+
+[data-tone='warn'] > .enterprise-usage-bar > span,
+[data-tone='warn'] .enterprise-usage-bar > span {
+  background: var(--ui-yellow);
+}
+
+[data-tone='over'] > .enterprise-usage-bar > span,
+[data-tone='over'] .enterprise-usage-bar > span {
+  background: var(--dt-destructive);
+}
+
+.enterprise-usage-details {
+  padding: 4px 8px 8px;
+}
+
+.enterprise-usage-level + .enterprise-usage-level {
+  margin-top: 12px;
+}
+
+.enterprise-usage-level-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.enterprise-usage-level-value {
+  color: var(--ui-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.enterprise-usage-level[data-tone='over'] .enterprise-usage-level-value {
+  color: var(--dt-destructive);
+}
+
+.enterprise-usage-foot {
+  margin-top: 12px;
+  color: var(--ui-text-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.enterprise-usage-warning {
+  margin-top: 6px;
+  color: var(--dt-destructive);
+  font-size: 12px;
+  line-height: 18px;
+}

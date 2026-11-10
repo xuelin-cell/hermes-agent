@@ -39,6 +39,7 @@ import type { PlanSubscriptionResult, PlanUsageResult } from '../electron/uniwor
 import type { WelcomeLocale, WelcomePayload } from '../electron/uniwork-welcome/catalog'
 import type { GrowRequest } from '../electron/window-growth'
 
+import type { EnterpriseUsage } from './lib/enterprise-usage-mt'
 import type { TimingRecord } from './lib/timing-mt'
 import type { WakeIndicatorState } from './lib/wake-indicator'
 import type {
@@ -90,6 +91,8 @@ declare global {
       getWelcomeCatalog?: (locale: WelcomeLocale) => Promise<WelcomePayload>
       /** desktop-mt: 云版的耗时埋点交给入口记（lib/timing-mt.ts）；桌面版没有。 */
       reportTiming?: (record: TimingRecord) => void
+      /** desktop-mt: 企业版的企业用量和个人用量（lib/enterprise-usage-mt.ts）；只有云版企业版有。 */
+      getEnterpriseUsage?: () => Promise<EnterpriseUsage>
       interruptedTurns?: {
         list: () => Promise<{ detectedAt: number; prompt: string; sessionId: string }[]>
         dismiss: (sessionId: string) => Promise<void>

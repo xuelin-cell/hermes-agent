@@ -1130,6 +1130,19 @@ describe('the two cloud entries (desktop-mt)', () => {
     expect(calls).toContain('/api/__entry/welcome/zh-CN')
   })
 
+  it('reads the enterprise quota through the enterprise entry; the personal edition keeps its plan usage', async () => {
+    const quota = { available: true, binding: 'enterprise', levels: [] }
+    const calls = await installFor({ enterprise: { status: 'active' }, user_id: 'ent:t:u' }, 200, url =>
+      url.endsWith('/__entry/usage') ? jsonResponse(quota) : undefined
+    )
+
+    expect(await window.hermesDesktop.getEnterpriseUsage?.()).toEqual(quota)
+    expect(calls).toContain('/api/__entry/usage')
+
+    await installFor({ user_id: 'u1' })
+    expect(window.hermesDesktop.getEnterpriseUsage).toBeUndefined()
+  })
+
   it('sends the timings to whichever entry serves the page, enterprise or personal', async () => {
     for (const account of [{ enterprise: { status: 'active' }, user_id: 'ent:t:u' }, { user_id: 'u1' }]) {
       const calls = await installFor(account)

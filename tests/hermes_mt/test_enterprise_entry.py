@@ -386,3 +386,62 @@ async def test_enterprise_mode_gates_sessions_without_a_binding(postgres_databas
     finally:
         for client in h.clients:
             await client.close()
+
+
+# ---- 左下角的额度（/__entry/usage，平台 39 号第 1 节） ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_usage_is_read_with_the_members_device_token_and_shaped_for_the_page(harness: Harness) -> None:
+    harness.platform.members[(PHONE, "T1")] = "active"
+    browser = await harness.client()
+    await _login(browser)
+    token = next(t for t, (p, c, d) in harness.platform.tokens.items() if p == PHONE)
+    harness.platform.usage_body = {**harness.platform.usage_body, "internal": "不往浏览器送"}
+
+    response = await browser.get("/agents/api/__entry/usage")
+    body = await response.json()
+    assert response.status == 200 and response.headers["Cache-Control"] == "no-store"
+    assert body == {
+        "available": True, "binding": "enterprise", "exceeded": False,
+        "cycleStart": "2026-11-03", "cycleEnd": "", "endsAt": "2027-11-03", "unit": "积分",
+        "levels": [
+            {"level": "enterprise", "label": "企业订阅积分", "limit": 60000, "used": 18616, "remaining": 41384, "percent": 31.0},
+            {"level": "member", "label": "个人额度", "limit": 0, "used": 17, "remaining": None, "percent": None},
+        ],
+    }
+    assert token not in await response.text()
+    # 页面每轮对话后、每分钟都会来取：15 秒内用上一份，不再问平台
+    asked = sum(1 for name, _ in harness.platform.requests if name == "usage")
+    await browser.get("/agents/api/__entry/usage")
+    assert sum(1 for name, _ in harness.platform.requests if name == "usage") == asked == 1
+
+
+@pytest.mark.asyncio
+async def test_usage_is_hidden_without_a_seat_and_says_why_when_the_platform_is_down(harness: Harness) -> None:
+    harness.platform.members[(PHONE, "T1")] = "active"
+    browser = await harness.client()
+    await _login(browser)
+    user_id = (await (await browser.get("/agents/api/__entry/me")).json())["user_id"]
+
+    harness.platform.usage_status = 403  # 没席位、已停用、企业停用：不显示
+    assert await (await browser.get("/agents/api/__entry/usage")).json() == {"available": False}
+
+    harness.entry.usage_routes.cache.pop(user_id)
+    harness.platform.usage_status = 500  # 平台出了问题：不显示额度，但说一句
+    assert await (await browser.get("/agents/api/__entry/usage")).json() == {
+        "available": False, "error": "额度暂时读不到，稍后再试。"}
+
+    other = await harness.client()
+    assert (await other.get("/agents/api/__entry/usage")).status == 401  # 没登录
+
+
+@pytest.mark.asyncio
+async def test_personal_entry_has_no_enterprise_usage(postgres_database_url: str) -> None:
+    h = await _harness(postgres_database_url, None)  # 没配平台 = 个人版：套餐用量走 plan 那组接口
+    try:
+        browser = await h.client()
+        assert (await browser.get("/agents/api/__entry/usage")).status == 404
+    finally:
+        for client in h.clients:
+            await client.close()
