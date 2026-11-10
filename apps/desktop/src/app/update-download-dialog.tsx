@@ -72,6 +72,19 @@ export function UpdateDownloadDialog(): ReactElement | null {
     }
   }
 
+  // A package that is already verified on disk is a one-shot decision. Both of
+  // the reflexive dismissals — clicking the scrim and pressing Esc — read as
+  // "I cancelled the update", but neither actually discards the package or
+  // stops anything. Only the X (or the explicit "Later" action) may close it,
+  // so the choice stays deliberate. Failure keeps the default behaviour: there
+  // the scrim means "dismiss this error", which is exactly what the user wants.
+  const blockReflexiveDismissal = succeeded
+    ? {
+        onEscapeKeyDown: (event: KeyboardEvent): void => event.preventDefault(),
+        onPointerDownOutside: (event: Event): void => event.preventDefault()
+      }
+    : {}
+
   return (
     <Dialog
       onOpenChange={next => {
@@ -87,6 +100,7 @@ export function UpdateDownloadDialog(): ReactElement | null {
         className="max-w-lg"
         onOpenAutoFocus={preventCloseButtonAutoFocus}
         showCloseButton={!retrying}
+        {...blockReflexiveDismissal}
       >
         <div className="grid gap-5 p-6">
           <DialogTitle className="text-center text-sm font-medium text-muted-foreground">
@@ -133,17 +147,24 @@ export function UpdateDownloadDialog(): ReactElement | null {
                 {u.tryAgain}
               </Button>
             ) : retrying ? null : (
-              <Button
-                className="min-w-20"
-                onClick={() => {
-                  dismissUpdateReady()
-                  startActiveUpdate('client')
-                }}
-                size="sm"
-                type="button"
-              >
-                {u.restartToUpdate}
-              </Button>
+              <>
+                {/* The only other way out once the scrim and Esc are inert, and
+                    the one a keyboard user reaches without hunting for the X. */}
+                <Button className="font-medium" onClick={handleClose} size="sm" type="button" variant="text">
+                  {u.maybeLater}
+                </Button>
+                <Button
+                  className="min-w-20"
+                  onClick={() => {
+                    dismissUpdateReady()
+                    startActiveUpdate('client')
+                  }}
+                  size="sm"
+                  type="button"
+                >
+                  {u.restartToUpdate}
+                </Button>
+              </>
             )}
           </div>
         </div>

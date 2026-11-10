@@ -4604,6 +4604,7 @@ export const zh = defineLocale({
       error: '更新已暂停'
     },
     startingUpdate: '正在开始更新…',
+    preparingInstall: '正在准备安装…',
     checking: '正在检查更新…',
     checkFailedTitle: '无法检查更新',
     tryAgain: '重试',

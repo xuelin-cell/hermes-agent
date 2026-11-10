@@ -3916,6 +3916,9 @@ export interface Translations {
     stages: Record<string, string>
     /** The apply-start status line, shown until the first progress event lands. */
     startingUpdate: string
+    /** Shown when apply begins with the package already downloaded: no bytes
+     *  move, so the progress surface must not claim a download. */
+    preparingInstall: string
     checking: string
     checkFailedTitle: string
     tryAgain: string

@@ -4873,6 +4873,7 @@ export const en: Translations = {
       error: 'Update paused'
     },
     startingUpdate: 'Starting update…',
+    preparingInstall: 'Preparing the install…',
     checking: 'Looking for updates…',
     checkFailedTitle: 'Couldn’t check for updates',
     tryAgain: 'Try again',

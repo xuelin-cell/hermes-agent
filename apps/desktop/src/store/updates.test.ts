@@ -1062,12 +1062,15 @@ describe('applyUpdates terminal state', () => {
 
   // Status copy comes from the catalog: a literal here would surface as English
   // in a Traditional Chinese session (zh-hant only overrides the keys it lists).
+  // The apply leg is also not a download: a prefetched package must never make
+  // the progress surface claim bytes are moving (stage 'update', not 'fetch').
   it('starts the apply with the catalog copy', async () => {
     applyMock.mockResolvedValue({ ok: true, handedOff: true })
 
     const started = installClientUpdate()
 
-    expect($updateApply.get().message).toBe(translateNow('updates.startingUpdate'))
+    expect($updateApply.get().stage).toBe('update')
+    expect($updateApply.get().message).toBe(translateNow('updates.preparingInstall'))
     await started
   })
 

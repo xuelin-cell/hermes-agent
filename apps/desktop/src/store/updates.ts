@@ -882,7 +882,12 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
 
   dismissNotification(UPDATE_TOAST_ID)
   $updateDownloadFailure.set(null)
-  $updateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: translateNow('updates.startingUpdate') })
+  // A package already on disk is not a download: start on the install leg so
+  // the progress surface never claims bytes are moving over the network. A
+  // real transfer (cache miss, or an install the user started before the
+  // ambient prefetch finished) flips this to 'fetch' as soon as the first
+  // download-progress event lands, which is also when Cancel becomes real.
+  $updateApply.set({ ...IDLE, applying: true, stage: 'update', message: translateNow('updates.preparingInstall') })
 
   try {
     const result = await bridge.apply(opts)
