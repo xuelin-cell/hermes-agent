@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from contextlib import contextmanager, nullcontext
 from contextvars import copy_context
-from typing import Dict, Iterator, Optional, Set
+from typing import Any, Callable, Dict, Iterator, Optional, Set
 
 from hermes_constants import hermes_home_key
 
@@ -24,6 +25,59 @@ _mcp_discovery_deferred: Optional[threading.Timer] = None
 # in this module (inline, background, deferred), so a ``-t terminal``
 # oneshot never cold-starts MCP subprocesses it cannot use.
 _mcp_server_filter: Optional[list[str]] = None
+
+# The discovery's heavy phase (MCP SDK import, JSON-RPC schema parsing, tool
+# registration) is CPU/GIL-bound. Run on top of a client's first request burst
+# it starves the event loop that has to answer those requests, so the whole
+# boot window degrades into client timeouts. The gate holds the heavy phase
+# until the server has a quiet gap in its request traffic; the wait is bounded,
+# so a server that never goes quiet still discovers (just later).
+_IDLE_GATE_QUIET_S = 0.2
+_IDLE_GATE_MAX_WAIT_S = 5.0
+_idle_gate: Optional[Callable[[], bool]] = None
+
+
+def set_mcp_discovery_idle_gate(check: Optional[Callable[[], bool]]) -> None:
+    """Register the "is the server busy serving requests right now" probe.
+
+    ``None`` disables the gate (the discovery starts immediately).
+    """
+    global _idle_gate
+    _idle_gate = check
+
+
+def _wait_for_quiet_window() -> None:
+    """Block until the server is idle for a short quiet gap (bounded)."""
+    check = _idle_gate
+    if check is None:
+        return
+    deadline = time.monotonic() + _IDLE_GATE_MAX_WAIT_S
+    quiet_since: Optional[float] = None
+    while True:
+        try:
+            busy = check()
+        except Exception:
+            return
+        now = time.monotonic()
+        if busy:
+            quiet_since = None
+        elif quiet_since is None:
+            quiet_since = now
+        elif now - quiet_since >= _IDLE_GATE_QUIET_S:
+            return
+        if now >= deadline:
+            return
+        time.sleep(0.05)
+
+
+def _startup_mark(stage: str, **fields: Any) -> None:
+    """Record an MCP discovery stage on the backend's startup timeline."""
+    try:
+        from hermes_cli.startup_timing import mark
+
+        mark(stage, **fields)
+    except Exception:
+        pass
 
 
 def set_mcp_server_filter(toolsets: object) -> Optional[list[str]]:
@@ -125,6 +179,7 @@ def start_background_mcp_discovery(*, logger, thread_name: str) -> None:
         _mcp_discovery_started.add(home_key)
         if not _has_configured_mcp_servers():
             return
+        _startup_mark("mcp discovery starting", home=home_key)
 
         # Bare threads start from an empty context: run discovery under a copy of the caller's, so
         # the context-local HERMES_HOME override (multi-profile dashboard/desktop backends, #67605)
@@ -134,6 +189,7 @@ def start_background_mcp_discovery(*, logger, thread_name: str) -> None:
         # The config gate above already runs on the caller's thread, so it sees the same context.
         def _discover() -> None:
             try:
+                _wait_for_quiet_window()
                 _discover_mcp_tools_without_interactive_oauth()
                 try:
                     if not _any_mcp_connected():
@@ -143,6 +199,7 @@ def start_background_mcp_discovery(*, logger, thread_name: str) -> None:
             except Exception:
                 logger.debug("Background MCP tool discovery failed", exc_info=True)
             finally:
+                _startup_mark("mcp discovery finished")
                 with _mcp_discovery_lock:
                     _mcp_discovery_thread.pop(home_key, None)
 
@@ -230,11 +287,22 @@ def defer_background_mcp_discovery(*, logger, thread_name: str, delay: float | N
         if hermes_home_key() in _mcp_discovery_started or _mcp_discovery_deferred is not None:
             return
 
+        # A bare Timer thread starts with an EMPTY context, so the profile-scoped
+        # HERMES_HOME override the arming thread carries is invisible to it: the
+        # discovery would run for the launch profile instead of the profile that
+        # armed it, and silently find nothing. Carry the arming thread's context
+        # variables into the firing thread (a Context object is single-entry, so
+        # the VALUES are copied into a fresh one on every fire).
+        arm_vars = dict(copy_context().items())
+
         def _fire() -> None:
             global _mcp_discovery_deferred
             with _mcp_discovery_lock:
                 _mcp_discovery_deferred = None
-            start_background_mcp_discovery(logger=logger, thread_name=thread_name)
+            ctx = copy_context()
+            for var, value in arm_vars.items():
+                ctx.run(var.set, value)
+            ctx.run(start_background_mcp_discovery, logger=logger, thread_name=thread_name)
 
         # ``None`` builds the Timer only as the holder of ``_fire``; it is never started and
         # ``start_deferred_mcp_discovery_now`` runs ``timer.function()`` directly.
@@ -242,6 +310,7 @@ def defer_background_mcp_discovery(*, logger, thread_name: str, delay: float | N
         timer.daemon = True
         timer.name = f"{thread_name}-deferred"
         _mcp_discovery_deferred = timer
+        _startup_mark("mcp discovery armed", delay=delay)
         if delay is not None:
             timer.start()
 

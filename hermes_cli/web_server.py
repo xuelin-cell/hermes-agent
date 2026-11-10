@@ -815,6 +815,38 @@ async def _startup_first_api_middleware(request: Request, call_next):
     return response
 
 
+# In-flight HTTP request counter. The MCP discovery's heavy phase (SDK import,
+# JSON-RPC schema parsing, tool registration) is CPU/GIL-bound; running it on
+# top of a client's first request burst starves the loop that has to answer
+# those requests, so the whole boot window degrades into client timeouts. The
+# counter lets the discovery wait for a quiet gap instead of colliding.
+_INFLIGHT_REQUESTS = 0
+
+
+@app.middleware("http")
+async def _inflight_request_middleware(request: Request, call_next):
+    """Outermost middleware (registered last): count requests in flight."""
+    global _INFLIGHT_REQUESTS
+    _INFLIGHT_REQUESTS += 1
+    try:
+        return await call_next(request)
+    finally:
+        _INFLIGHT_REQUESTS -= 1
+
+
+def server_has_inflight_requests() -> bool:
+    """Whether the server is currently serving at least one HTTP request."""
+    return _INFLIGHT_REQUESTS > 0
+
+
+try:
+    from hermes_cli.mcp_startup import set_mcp_discovery_idle_gate
+
+    set_mcp_discovery_idle_gate(server_has_inflight_requests)
+except Exception:  # pragma: no cover - the gate is an optimization, never a gate on serving
+    _log.debug("MCP discovery idle gate unavailable", exc_info=True)
+
+
 # Authenticated-route self-test: one in-process request per minute against a
 # cheap DB-touching route, catching "liveness fine but every authed request 500s".
 _DASHBOARD_SELFTEST_INTERVAL_SECONDS = 60.0
