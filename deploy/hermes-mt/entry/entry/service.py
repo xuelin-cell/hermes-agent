@@ -52,23 +52,35 @@ def _err(status: int, message: str, code: str) -> web.Response:
     return web.json_response({"error": message, "code": code}, status=status)
 
 
+def _identity(name: str, description: str) -> str:
+    """Agent 是谁：和员工实例里 Agent 的人设（seed/mtent.py 的 _identity）一字不差，两处一起改。"""
+    about = description.strip()
+    if about and about[-1] not in "。！？.!?":
+        about += "。"
+    return (f"你是「{name}」，元景数字员工平台上的企业智能体。{about}\n\n"
+            f"用户问你是谁、或者只是打招呼时，用「{name}」这个名字和你的职责介绍自己。"
+            "除非用户专门问起，不要提你底层用的智能体框架或模型厂商。")
+
+
 def persona_of(policy: dict) -> str:
-    """平台策略的 agentProfile 换成实例的 SOUL.md，后面接企业经验里 inline 的事实（和员工实例里 Agent 的人设
-    同一种写法，见 seed/mtent.py 的 _soul）；没有指令就是空串（实例用默认人设）。"""
+    """平台策略的 agentProfile 换成实例的 SOUL.md：Agent 是谁、指令，后面接企业经验里 inline 的事实（和员工实例里
+    Agent 的人设同一种写法，见 seed/mtent.py 的 _soul）。名字和指令都没有就是空串（实例用默认人设）。"""
     profile = policy.get("agentProfile") if isinstance(policy.get("agentProfile"), dict) else {}
-    instructions = str(profile.get("instructions") or "").strip()
-    if not instructions:
-        return ""
     name = str(profile.get("name") or "").strip()
-    text = f"# {name}\n\n{instructions}\n" if name else f"{instructions}\n"
+    instructions = str(profile.get("instructions") or "").strip()
+    if not name and not instructions:
+        return ""
+    parts = [f"# {name}", _identity(name, str(profile.get("description") or ""))] if name else []
+    if instructions:
+        parts.append(instructions)
     facts = [f for layer in policy.get("sharedLayers") or [] if isinstance(layer, dict)
              for f in ((layer.get("facts") or {}).get("items") or []) if isinstance(f, dict)]
     if facts:
         lines = ["## 企业事实", "以下是企业统一的口径、规则和术语，经企业审核发布。回答相关问题时必须遵守："]
         lines += [f"- **{str(f.get('title') or f.get('name') or '').strip()}**：{str(f.get('content') or '').strip()}"
                   for f in facts]
-        text += "\n" + "\n".join(lines) + "\n"
-    return text
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts) + "\n"
 
 
 def _hermes_message(body: dict) -> str:
@@ -223,18 +235,43 @@ class ServiceApi:
         })
 
     async def _prepare(self, user_id: str, tenant_id: str, key: str) -> ServiceRuntime:
+        """四步，每步的秒数记进日志和审计（service.prepare）：instance 唤醒或从归档重建、spec 人设和模型变了才
+        重新加载、resources 装技能和连接器、api 等 gateway 的 API。平台嫌准备慢时按这个查（39 号第 4 节）。"""
         assert self.e.tenants is not None
-        tenant = await self.e.tenants.ensure_running(user_id)
-        rt = (await self.e.store.find_service_runtimes(key, tenant_id))[0]
-        # 人设或模型变了就重新加载；有运行在跑就先不动，等它跑完下一次 PUT 再说
-        if not rt.current_run_id and await self.e.tenants.apply_service_spec(user_id, rt.spec_sha256):
-            tenant = await self.e.tenants.ensure_running(user_id)  # Docker 路径重启过容器，地址可能变了
-        if self.e.ent is not None and not rt.current_run_id:
-            # 技能、连接器装好了再回 ready：平台紧接着就发起运行（15 的验收 2：调试技能，脚本要真的执行）
-            await self.e.ent.apply_now(user_id, tenant)
-            tenant = await self.e.tenants.ensure_running(user_id)  # 装完可能重启过（Docker 路径换了容器地址）
-        # 实例起来了不等于 gateway 的 API 服务起来了（它比网页后端晚几秒）：等到能用再回 ready
-        await self._wait_api(tenant)
+        steps: dict[str, float] = {}
+        began = mark = time.monotonic()
+
+        def lap(step: str) -> None:
+            nonlocal mark
+            now = time.monotonic()
+            steps[step] = round(now - mark, 1)
+            mark = now
+
+        ok = False
+        try:
+            tenant = await self.e.tenants.ensure_running(user_id)
+            lap("instance")
+            rt = (await self.e.store.find_service_runtimes(key, tenant_id))[0]
+            # 人设或模型变了就重新加载；有运行在跑就先不动，等它跑完下一次 PUT 再说
+            if not rt.current_run_id and await self.e.tenants.apply_service_spec(user_id, rt.spec_sha256):
+                tenant = await self.e.tenants.ensure_running(user_id)  # Docker 路径重启过容器，地址可能变了
+            lap("spec")
+            if self.e.ent is not None and not rt.current_run_id:
+                # 技能、连接器装好了再回 ready：平台紧接着就发起运行（15 的验收 2：调试技能，脚本要真的执行）
+                await self.e.ent.apply_now(user_id, tenant)
+                tenant = await self.e.tenants.ensure_running(user_id)  # 装完可能重启过（Docker 路径换了容器地址）
+            lap("resources")
+            # 实例起来了不等于 gateway 的 API 服务起来了（它比网页后端晚几秒）：等到能用再回 ready
+            await self._wait_api(tenant)
+            lap("api")
+            ok = True
+        finally:
+            seconds = round(time.monotonic() - began, 1)
+            log.info("service %s: 准备运行环境%s，共 %.1f 秒 %s", key, "" if ok else "失败", seconds, steps)
+            try:
+                await self.e.store.write_audit(user_id, "service.prepare", {"ok": ok, "seconds": seconds, "steps": steps})
+            except Exception as exc:  # noqa: BLE001 —— 耗时只是记录，不影响准备的结果
+                log.warning("service %s: 准备耗时没记进审计: %s", key, type(exc).__name__)
         return (await self.e.store.find_service_runtimes(key, tenant_id))[0]
 
     async def _wait_api(self, tenant: Tenant, timeout_s: float = API_READY_TIMEOUT_S) -> None:

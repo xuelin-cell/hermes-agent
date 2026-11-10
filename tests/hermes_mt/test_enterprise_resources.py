@@ -189,9 +189,10 @@ def test_agent_becomes_a_managed_profile_with_its_own_resources(home: Path) -> N
     assert (org / "tid-1" / "enterprise" / "sales-margin" / "scripts" / "margin.py").is_file()
     assert (org / "tid-1" / "plugin-uniwork-report-reviewer" / "report-review" / "SKILL.md").is_file()
     assert (org / "tid-1" / "experience" / "monthly-analysis" / "SKILL.md").is_file()
-    # 人设 = 角色与指令 + 企业事实
+    # 人设 = Agent 是谁 + 角色与指令 + 企业事实。只有角色与指令时，模型会说自己运行在底层框架上（39 号第 3 节）
     soul = (profile / "SOUL.md").read_text(encoding="utf-8")
-    assert soul.startswith("# 数据分析专家（联调）\n\n每次回答第一行写「【数据分析专家·联调】」。")
+    assert soul.startswith("# 数据分析专家（联调）\n\n你是「数据分析专家（联调）」，元景数字员工平台上的企业智能体。联调用。\n\n")
+    assert "不要提你底层用的智能体框架或模型厂商。\n\n每次回答第一行写「【数据分析专家·联调】」。" in soul
     assert "## 企业事实" in soul and "GM-26" in soul
     meta = yaml.safe_load((profile / "profile.yaml").read_text(encoding="utf-8"))
     assert meta["display_name"] == "数据分析专家（联调）" and meta["ui_meta"]["hermes-bots"]["title"] == "数据分析专家（联调）"

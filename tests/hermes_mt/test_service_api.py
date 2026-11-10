@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
 import aiohttp
 import pytest
@@ -22,6 +24,11 @@ from entry.enterprise import EnterpriseSync
 from entry.tenants import Tenant, TenantManager
 from entry.uniwork import Uniwork
 from uniwork_fake import FakePlatform
+
+SEED_DIR = Path(__file__).resolve().parents[2] / "deploy" / "hermes-mt" / "seed"
+if str(SEED_DIR) not in sys.path:
+    sys.path.insert(0, str(SEED_DIR))
+import mtent  # noqa: E402
 
 SECRET = "svc-secret-for-tests-0123456789"
 BASE = "/hermes/__entry/service/v1/runtimes"
@@ -342,16 +349,68 @@ async def test_delete_removes_runtime_and_is_idempotent(harness: Harness) -> Non
     assert second.status == 200 and (await second.json())["deleted"] is False
 
 
+IDENTITY_A = ("你是「A」，元景数字员工平台上的企业智能体。\n\n"
+              "用户问你是谁、或者只是打招呼时，用「A」这个名字和你的职责介绍自己。"
+              "除非用户专门问起，不要提你底层用的智能体框架或模型厂商。")
+
+
 def test_persona_comes_from_agent_profile() -> None:
-    assert service.persona_of({"agentProfile": {"name": "A", "instructions": "做事"}}) == "# A\n\n做事\n"
+    assert service.persona_of({"agentProfile": {"name": "A", "instructions": "做事"}}) == f"# A\n\n{IDENTITY_A}\n\n做事\n"
     # 企业经验里 inline 的事实接在后面，和员工实例里 Agent 的人设同一种写法
     layered = {"agentProfile": {"name": "A", "instructions": "做事"},
                "sharedLayers": [{"facts": {"inline": True, "items": [{"title": "口径", "content": "保留一位小数"}]}}]}
-    assert service.persona_of(layered) == ("# A\n\n做事\n\n## 企业事实\n"
+    assert service.persona_of(layered) == (f"# A\n\n{IDENTITY_A}\n\n做事\n\n## 企业事实\n"
                                            "以下是企业统一的口径、规则和术语，经企业审核发布。回答相关问题时必须遵守：\n"
                                            "- **口径**：保留一位小数\n")
     assert service.persona_of({"agentProfile": {"instructions": " "}}) == ""
     assert service.persona_of({}) == ""
+
+
+def test_persona_says_who_the_agent_is_even_without_instructions() -> None:
+    """只有角色与指令时，模型不知道自己是谁，会说自己运行在底层框架上（39 号第 3 节）；没写指令也要有名字和职责。"""
+    persona = service.persona_of({"agentProfile": {"name": "可爱", "description": "夸夸，疯狂夸夸"}})
+    assert persona.startswith("# 可爱\n\n你是「可爱」，元景数字员工平台上的企业智能体。夸夸，疯狂夸夸。\n\n")
+    assert "不要提你底层用的智能体框架或模型厂商" in persona and "Hermes" not in persona
+    # 没名字、只有指令：照旧只写指令
+    assert service.persona_of({"agentProfile": {"instructions": "做事"}}) == "做事\n"
+
+
+def test_runtime_persona_matches_the_agent_persona_in_employee_instances() -> None:
+    """平台运行环境里的人设，和员工实例里同一个 Agent 的人设一字不差：入口和转发器各写一份，靠这条拦住走样。"""
+    agent = {"name": "合同审查助手", "description": "审合同", "instructions": "你是合同审查助手。"}
+    layers = [{"facts": {"inline": True, "items": [{"title": "口径", "content": "保留一位小数"}]}}]
+    assert service.persona_of({"agentProfile": agent, "sharedLayers": layers}) == mtent._soul(agent, layers)
+    assert service.persona_of({"agentProfile": {**agent, "instructions": ""}}) == mtent._soul({**agent, "instructions": ""}, [])
+
+
+async def _prepare_audits(harness: Harness, user_id: str) -> list[dict]:
+    async with harness.entry.database.acquire() as connection:
+        rows = await connection.fetch(
+            "SELECT details FROM audit_events WHERE user_id = $1 AND event_type = 'service.prepare' ORDER BY event_id",
+            user_id)
+    return [json.loads(row["details"]) if isinstance(row["details"], str) else dict(row["details"]) for row in rows]
+
+
+@pytest.mark.asyncio
+async def test_prepare_records_how_long_each_step_took(harness: Harness) -> None:
+    """准备运行环境的四步各花了多久，记进审计 service.prepare（39 号第 4 节：平台嫌准备慢时按这个查）。"""
+    status, _ = await harness.put("agent-a1", harness.platform.issue_runtime_token(PROFILE))
+    assert status == 200
+    (audit,) = await _prepare_audits(harness, "svc:tid-1:agent-a1")
+    assert audit["ok"] is True and audit["seconds"] >= 0
+    assert set(audit["steps"]) == {"instance", "spec", "resources", "api"}  # jsonb 不保留键的顺序
+
+
+@pytest.mark.asyncio
+async def test_failed_prepare_still_records_the_steps_it_got_through(harness: Harness) -> None:
+    async def broken(user_id: str, *, touch: bool = True) -> Tenant:
+        raise RuntimeError("实例起不来")
+
+    harness.tenants.ensure_running = broken  # type: ignore[method-assign]
+    status, body = await harness.put("agent-a1", harness.platform.issue_runtime_token(PROFILE))
+    assert status == 503 and body["code"] == "runtime_start_failed"
+    (audit,) = await _prepare_audits(harness, "svc:tid-1:agent-a1")
+    assert audit == {"ok": False, "seconds": audit["seconds"], "steps": {}}
 
 
 @pytest.mark.asyncio

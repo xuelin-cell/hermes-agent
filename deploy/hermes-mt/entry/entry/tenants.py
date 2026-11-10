@@ -1063,6 +1063,11 @@ class TenantManager:
         })
         log.info("tenant %s: 实例 %s 引导完成，恢复自 %s / %s", slug, sandbox_id[:12],
                  (report.get("restored_from") or "-")[:12], report.get("archive") or "-")
+        if getattr(context, "service", False):
+            # 平台的运行环境：引导时转发器先恢复归档、再按这份规格落人设和模型，然后才起 hermes，所以这份规格已经
+            # 生效。不记下来，准备运行环境时会拿上一台实例记的规格来比，再重启一遍 hermes 和 gateway（11-10 真机
+            # 重建一次多花 38 秒，见 docs/企业版对接/1110/39 第 4 节）。
+            await self.store.set_service_spec(user_id, self.service_digest(context))
 
     async def _adopt_bootstrapped(self, user_id: str, slug: str, sandbox_id: str, st: dict | None = None) -> None:
         """实例早已引导完成，库里记的数据主人却还不是它：上一次引导其实做成了、回包没回来（被代理挡回、

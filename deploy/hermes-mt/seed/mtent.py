@@ -598,10 +598,22 @@ def _agent_config(spec: dict, agent: dict, mcp: dict) -> str:
     return text
 
 
+def _identity(name: str, description: str) -> str:
+    """Agent 是谁：和默认机器人的人设（entry/default_soul.md）同一个口径。只有角色与指令时，模型不知道自己是谁，
+    会说自己运行在底层框架上。入口给平台运行环境写的人设（entry/service.py 的 persona_of）用同样的话，两处一起改。"""
+    about = description.strip()
+    if about and about[-1] not in "。！？.!?":
+        about += "。"
+    return (f"你是「{name}」，元景数字员工平台上的企业智能体。{about}\n\n"
+            f"用户问你是谁、或者只是打招呼时，用「{name}」这个名字和你的职责介绍自己。"
+            "除非用户专门问起，不要提你底层用的智能体框架或模型厂商。")
+
+
 def _soul(agent: dict, layers: list[dict]) -> str:
-    """托管 profile 的人设：Agent 的角色与指令，加上企业经验里 inline 的事实（回答时必须遵守）。"""
+    """托管 profile 的人设：Agent 是谁、它的角色与指令，加上企业经验里 inline 的事实（回答时必须遵守）。"""
     name = str(agent.get("name") or agent.get("id") or "").strip()
-    parts = [f"# {name}", str(agent.get("instructions") or "").strip()]
+    parts = [f"# {name}", _identity(name, str(agent.get("description") or "")) if name else "",
+             str(agent.get("instructions") or "").strip()]
     facts = [f for layer in layers for f in ((layer.get("facts") or {}).get("items") or []) if isinstance(f, dict)]
     if facts:
         lines = ["## 企业事实", "以下是企业统一的口径、规则和术语，经企业审核发布。回答相关问题时必须遵守："]

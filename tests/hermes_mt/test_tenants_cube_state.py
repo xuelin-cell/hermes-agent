@@ -33,6 +33,12 @@ class FakeStore:
     api_key: str = "k"                             # 现在的模型 key（企业模式每次登录都换）
     settings: dict = field(default_factory=dict)   # 入口库里的用户设置（技能开关）
     archived_before_pause: bool = False            # paused_after_archive 的回答
+    context: TenantContext | None = None           # 不给就是普通成员的那份（get_tenant_context）
+    spec_sha256: str = ""                          # 平台运行环境记下的「已生效的规格」
+
+    async def set_service_spec(self, user_id, digest):
+        self.calls.append(("set_service_spec", digest))
+        self.spec_sha256 = digest
 
     async def paused_after_archive(self, user_id):
         return self.archived_before_pause
@@ -53,6 +59,8 @@ class FakeStore:
         return "tok"
 
     async def get_tenant_context(self, user_id):
+        if self.context is not None:
+            return self.context
         return TenantContext(api_key=self.api_key, container_token="tok", endpoint=("http://plan/v1", "m1"),
                              catalog=[("m1", ""), ("m2", "")])
 
@@ -192,8 +200,8 @@ class FakeCube:
     async def wait_forwarder(self, sandbox_id, port, timeout_s=120):
         self.calls.append(("wait_forwarder", sandbox_id))
 
-    async def bootstrap(self, sandbox_id, port, *, token, files, ready_timeout_s=240, state=None):
-        self.calls.append(("bootstrap", sandbox_id, state))
+    async def bootstrap(self, sandbox_id, port, *, token, files, ready_timeout_s=240, state=None, **extra):
+        self.calls.append(("bootstrap", sandbox_id, state))  # extra：平台运行环境的 api_server 等，这里不看
         self.seeds[sandbox_id] = files
         if self.boot_failures:
             raise self.boot_failures.pop(0)
@@ -298,6 +306,43 @@ async def test_gone_instance_is_recreated_restoring_from_previous_owner(monkeypa
     assert ("deleted", "sbOld", "gone") in store.calls
     boot = next(c for c in cube.calls if c[0] == "bootstrap")
     assert boot[2]["restore_from"] == "sbOld" and boot[2]["epoch"] == 5 and boot[2]["owner"] == "sb1"
+
+
+def _service_context(persona: str = "# A\n\n做事\n") -> TenantContext:
+    return TenantContext(api_key="k", container_token="tok", endpoint=("http://plan/v1", "m1"),
+                         catalog=[("m1", "")], service=True, persona=persona)
+
+
+@pytest.mark.asyncio
+async def test_rebuilt_service_runtime_is_not_reloaded_right_after_bootstrap(monkeypatch) -> None:
+    """平台的运行环境重建后，引导已按当前的规格写好人设和模型：记成已生效，准备时不再重启一遍
+    （11-10 真机重建一次多花 38 秒，docs/企业版对接/1110/39 第 4 节）。"""
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store = FakeStore(runtime=Runtime("stopped", "sbOld", "tpl-new", 4, "sbOld", "old.tar.gz", ""),
+                      context=_service_context(), spec_sha256="上一台实例记的规格")
+    cube = FakeCube()  # sbOld 已经不在平台上：从归档重建
+    manager = _manager(store, cube)
+    await manager.ensure_running("svc:t:agent-a")
+    assert store.spec_sha256 == manager.service_digest(store.context)
+    assert await manager.apply_service_spec("svc:t:agent-a", store.spec_sha256) is False
+    assert not any(c[0] == "reload" for c in cube.calls)
+    # 引导之后平台又改了人设：照常重新加载
+    store.context = _service_context("# A\n\n改了\n")
+    assert await manager.apply_service_spec("svc:t:agent-a", store.spec_sha256) is True
+    assert any(c[0] == "reload" for c in cube.calls)
+
+
+@pytest.mark.asyncio
+async def test_member_and_already_bootstrapped_instances_leave_the_service_spec_alone(monkeypatch) -> None:
+    monkeypatch.setattr(TenantManager, "_sync_api_key", _no_key_sync)
+    store, cube = FakeStore(), FakeCube()
+    await _manager(store, cube).ensure_running("u")
+    assert not any(c[0] == "set_service_spec" for c in store.calls)
+    # 引导回「早已引导过」：那次落的不一定是现在的规格，不记
+    store, cube = FakeStore(context=_service_context()), FakeCube()
+    cube.already.add("sb1")
+    await _manager(store, cube).ensure_running("svc:t:agent-a")
+    assert not any(c[0] == "set_service_spec" for c in store.calls)
 
 
 @pytest.mark.asyncio
