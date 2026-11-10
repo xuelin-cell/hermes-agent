@@ -47,6 +47,8 @@ vi.mock('@/plugins/uniwork-kits/experts-store', () => ({
 }))
 vi.mock('@/plugins/uniwork-kits/expert-face', () => ({ ExpertFace: () => null }))
 vi.mock('@/plugins/uniwork-kits/summon', () => ({ summonExpert: summon }))
+vi.mock('../plugins/plugins-tab', () => ({ PluginsTab: () => <div>Existing plugins</div> }))
+
 vi.mock('./skills-hub', () => ({ SkillsHub: () => <div>Skill catalog</div> }))
 
 function row(name: string, kind: string): KitRow {
@@ -154,4 +156,22 @@ describe('Extensions expert and kit shelves', () => {
     expect(screen.getByRole('button', { name: 'Connectors' })).toBeTruthy()
     client.clear()
   })
+})
+
+// 办公/学习共用 work 分类；代码场景也沿用相同页签，旧插件链接不恢复额外入口。
+it('keeps the same three tabs across work, study and code, including old plugin links', async () => {
+  const client = await mount('/capabilities?tab=plugins')
+
+  for (const scene of ['work', 'codex'] as const) {
+    act(() => $selectedWorkspaceMode.set(scene))
+    expect(await screen.findByText('Skill catalog')).toBeTruthy()
+    expect(screen.queryByText('Existing plugins')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Plugins' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Experts' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Connectors' })).toBeTruthy()
+  }
+
+  fireEvent.click(screen.getByRole('button', { name: 'Experts' }))
+  expect(await screen.findByText('Writer expert')).toBeTruthy()
+  client.clear()
 })

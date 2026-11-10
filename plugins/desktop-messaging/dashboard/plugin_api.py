@@ -32,19 +32,28 @@ POLICIES = {
 }
 _locks: dict[str, asyncio.Lock] = {}
 _gateway_lock = asyncio.Lock()
+DESKTOP_PLATFORMS = {"weixin", "dingtalk", "feishu", "wecom", "uniagentgate"}
+# 可在页面手动绑定、解绑的渠道；5G 消息随账号登录维护，不在其中。
+BINDABLE_PLATFORMS = DESKTOP_PLATFORMS - {"uniagentgate"}
 
 
 @router.get("/platforms")
 def platform_status(profile: str | None = None) -> dict:
-    """钉钉配置按账号文件判断，连接状态仍复用原版进程存活与多 Profile 投影。"""
+    """可手动绑定的渠道按账号文件判断是否绑定，连接状态仍复用原版进程存活与多 Profile 投影。
+
+    主助手走原版判断时，凭据取自进程环境和启动时冻结的凭据快照。解绑只能删除账号文件，
+    后端一旦开始服务专家助手，快照里的旧凭据就再也删不掉，状态会一直报“已配置”，
+    解绑确认随之超时。按账号文件判断与保存、解绑、启动恢复读的是同一份事实。
+    """
     from hermes_cli.web_routers.messaging import _platform_payloads
     from hermes_constants import get_hermes_home
 
     with _config_profile_scope(profile) as scoped:
-        entries = _messaging_platform_catalog()
-        # 当前后端的插件注册失败不等于网关进程未连接；其它平台保持原版判断。
-        rows = _platform_payloads(scoped, [entry for entry in entries if entry["id"] != "dingtalk"])
-        rows += _platform_payloads(get_hermes_home(), [entry for entry in entries if entry["id"] == "dingtalk"])
+        # 先筛选再计算，避免为桌面未提供的平台重复读取配置和核对网关。
+        entries = [entry for entry in _messaging_platform_catalog() if entry["id"] in DESKTOP_PLATFORMS]
+        # 当前后端的插件注册失败不等于网关进程未连接；5G 消息保持原版判断。
+        rows = _platform_payloads(scoped, [entry for entry in entries if entry["id"] not in BINDABLE_PLATFORMS])
+        rows += _platform_payloads(get_hermes_home(), [entry for entry in entries if entry["id"] in BINDABLE_PLATFORMS])
         by_id = {row["id"]: row for row in rows}
         return {"platforms": [by_id[entry["id"]] for entry in entries]}
 
@@ -154,7 +163,12 @@ async def save_platform(platform: Literal["dingtalk", "feishu", "wecom"], body: 
                     if env.get(key):
                         remove_env_value(key)
                         changed = True
-            if enabled != body.enabled:
+                # 删除被拒绝（如受管安装）时凭据还在文件里，不能报解绑成功，也不改启用状态。
+                if any(load_env().get(key) for key in keys):
+                    raise HTTPException(500, detail="unbind_incomplete")
+            # 解绑删过凭据就写下明确停用：后端服务专家助手后，进程里的旧凭据删不掉，
+            # 没有这一条，重启的网关会凭旧凭据把渠道重新连上。
+            if enabled != body.enabled or (changed and not body.enabled):
                 # 与扫码线程共用 config.yaml 锁，避免整文件回写互相覆盖。
                 with presentation.config_lock():
                     _write_platform_enabled(platform, body.enabled)

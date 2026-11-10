@@ -1,10 +1,11 @@
 import { atom, computed } from 'nanostores'
 
 import { $resolvedWelcomeCatalog } from '@/app/chat/composer/work-templates/catalog-store'
-import { $interfaceMode, setInterfaceMode } from '@/store/interface-mode'
-import { $selectedWorkspaceMode } from './workspace-scope'
+import { $interfaceMode } from '@/store/interface-mode'
 
 import type { WelcomeLocale, WelcomeModule } from '../../electron/uniwork-welcome/catalog'
+
+import { $selectedWorkspaceMode } from './workspace-scope'
 
 const $selectedKeys = atom<Partial<Record<WelcomeLocale, string>>>({})
 
@@ -17,17 +18,20 @@ export const $codeWorkspace = computed(
 )
 
 function selectedModule(locale: WelcomeLocale) {
-  return computed([$resolvedWelcomeCatalog[locale], $interfaceMode, $selectedKeys], (catalog, mode, keys) => {
-    const modules = catalog.modules
-    const workspace = mode === 'advanced' ? 'codex' : 'work'
+  return computed(
+    [$resolvedWelcomeCatalog[locale], $interfaceMode, $selectedKeys, $selectedWorkspaceMode],
+    (catalog, mode, keys, selectedWorkspace) => {
+      const modules = catalog.modules
+      const workspace = selectedWorkspace ?? (mode === 'advanced' ? 'codex' : 'work')
 
-    return (
-      modules.find(module => module.id === keys[locale]) ??
-      modules.find(module => module.workspace === workspace) ??
-      modules[0] ??
-      null
-    )
-  })
+      return (
+        modules.find(module => module.id === keys[locale]) ??
+        modules.find(module => module.workspace === workspace) ??
+        modules[0] ??
+        null
+      )
+    }
+  )
 }
 
 export const $selectedWelcomeModules = {
@@ -35,14 +39,8 @@ export const $selectedWelcomeModules = {
   en: selectedModule('en')
 }
 
+/** 场景只选择模板和目录规则，不覆盖用户的界面与布局偏好。 */
 export function selectWorkspaceModule(locale: WelcomeLocale, module: WelcomeModule) {
-  const mode = module.workspace === 'codex' ? 'advanced' : 'simple'
-
-  // Capture the outgoing layout before its preview panes are swapped out.
-  if ($interfaceMode.get() !== mode) {
-    setInterfaceMode(mode)
-  }
-
   $selectedWorkspaceMode.set(module.workspace)
 
   if ($selectedKeys.get()[locale] !== module.id) {

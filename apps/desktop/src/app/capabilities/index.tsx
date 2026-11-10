@@ -13,7 +13,6 @@ import { useStoreSelector } from '@/lib/use-session-slice'
 import { $developerMode } from '@/store/developer-mode'
 import { $gateway } from '@/store/gateway'
 import { OFFICIAL_SKILLS_KEY } from '@/store/hub-actions'
-import { $codeWorkspace } from '@/store/workspace-category'
 
 import { useRefreshHotkey } from '../hooks/use-refresh-hotkey'
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
@@ -76,7 +75,6 @@ export function CapabilitiesView({
   const extensionsCopy = useSkillsCopy()
   const navigate = useNavigate()
   const developerMode = useStore($developerMode)
-  const codeWorkspace = useStore($codeWorkspace)
   const routes = useContributions(ROUTES_AREA)
   const expertsRoute = embedded ? undefined : contributedRoutes(routes).find(route => route.path === '/kits')
   // Both hooks run unconditionally (rules of hooks); embedded picks the local
@@ -222,16 +220,15 @@ export function CapabilitiesView({
     )
   } satisfies Record<CapabilityMode, () => React.ReactNode>
 
-  // 普通用户的扩展页按工作区显示标题；开发者模式和嵌入视图保持原样。
+  // 各工作场景共用能力入口；开发者模式和嵌入视图保持原样。
   if (!developerMode && !embedded) {
     return (
       <CapabilitiesPage
         {...props}
         connectors={searchContainer => tabContent.connectors(searchContainer)}
         experts={expertsRoute ? tabContent.experts() : undefined}
-        mode={mode === 'experts' || mode === 'connectors' || (codeWorkspace && mode === 'plugins') ? mode : 'skills'}
+        mode={mode === 'experts' || mode === 'connectors' ? mode : 'skills'}
         onModeChange={setMode}
-        plugins={mode === 'plugins' ? tabContent.plugins() : null}
         scopeSelector={mode === 'experts' ? undefined : <CapabilityScopeSelector scope={scope} />}
         skills={{
           hiddenKitSkills,

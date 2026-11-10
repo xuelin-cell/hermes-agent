@@ -123,6 +123,99 @@ def test_credentials_validate_before_writes_and_unchanged_save_skips_probe(platf
         assert id_key not in load_env() and secret_key not in load_env()
 
 
+def _start_backend_with(monkeypatch, values):
+    """模拟后端带着这些凭据启动、随后开始服务专家助手：进程环境此时被冻结为启动快照。"""
+    from tui_gateway.launch_profile_policy import activate_multi_profile_hosting
+
+    for key, value in values.items():
+        monkeypatch.setenv(key, value)
+        save_env_value(key, value)
+    activate_multi_profile_hosting()
+
+
+def _gateway_would_start(platform):
+    """按网关进程的读法（进程里的凭据加账号配置）判断它重启后会不会启动这个渠道。"""
+    from gateway.config import Platform, load_gateway_config
+    from hermes_cli.web_server_profiles import _config_profile_scope
+
+    with _config_profile_scope("default"):
+        return Platform(platform) in load_gateway_config().get_connected_platforms()
+
+
+def _desktop_row(monkeypatch, platform):
+    """读取主助手在桌面状态接口中的一行；网关按未运行处理，不探测真实进程。"""
+    from hermes_cli.web_routers import messaging
+
+    monkeypatch.setattr(messaging, "read_runtime_status", lambda **_: None)
+    monkeypatch.setattr(messaging, "multiplexer_liveness_for_profile", lambda *a: None)
+    return next(row for row in api.platform_status("default")["platforms"] if row["id"] == platform)
+
+
+@pytest.mark.parametrize("platform", ["dingtalk", "feishu", "wecom"])
+def test_unbind_reads_unbound_despite_credentials_frozen_at_backend_start(platform, monkeypatch):
+    """解绑只能删账号文件，删不掉启动快照；状态必须按文件报未绑定，重复解绑也不报错。"""
+    id_key, secret_key = api.KEYS[platform]
+    _start_backend_with(monkeypatch, {id_key: "old-id", secret_key: "old-secret"})
+    app = FastAPI()
+    app.include_router(api.router)
+    with TestClient(app) as client:
+        assert _desktop_row(monkeypatch, platform)["configured"] is True
+        assert _gateway_would_start(platform)
+        assert client.put(f"/platforms/{platform}?profile=default", json={"enabled": False}).json()["changed"] is True
+        row = _desktop_row(monkeypatch, platform)
+        again = client.put(f"/platforms/{platform}?profile=default", json={"enabled": False})
+        restored = client.post("/prepare").json()
+    assert (row["configured"], row["enabled"]) == (False, False)
+    assert not any(field["is_set"] for field in row["env_vars"] if field["required"])
+    assert again.json() == {"ok": True, "changed": False}
+    assert id_key not in load_env() and secret_key not in load_env()
+    # 重启后不复活：启动恢复不再把它算作已配置；进程里删不掉的旧凭据也不能让网关再启动它。
+    assert restored["configured"] is False
+    assert not _gateway_would_start(platform)
+
+
+@pytest.mark.parametrize("platform", ["dingtalk", "feishu", "wecom"])
+def test_unbind_of_half_removed_credentials_still_disables_explicitly(platform, monkeypatch):
+    """上次清理只做了一半、账号文件里剩一个凭据：再次解绑仍要写下明确停用，否则重启的网关会凭进程里的旧凭据复活。"""
+    from hermes_cli.config import remove_env_value
+
+    id_key, secret_key = api.KEYS[platform]
+    _start_backend_with(monkeypatch, {id_key: "old-id", secret_key: "old-secret"})
+    remove_env_value(secret_key)
+    app = FastAPI()
+    app.include_router(api.router)
+    with TestClient(app) as client:
+        assert client.put(f"/platforms/{platform}?profile=default", json={"enabled": False}).json()["changed"] is True
+    assert id_key not in load_env()
+    assert not _gateway_would_start(platform)
+
+
+@pytest.mark.parametrize("platform", ["dingtalk", "feishu", "wecom"])
+def test_disabled_platform_with_complete_credentials_stays_configured(platform, monkeypatch):
+    """凭据完整、只是停用，不等于未绑定：仍报已配置，页面据此保留解绑入口。"""
+    id_key, secret_key = api.KEYS[platform]
+    save_env_value(id_key, "kept-id")
+    save_env_value(secret_key, "kept-secret")
+    api._write_platform_enabled(platform, False)
+    row = _desktop_row(monkeypatch, platform)
+    assert (row["configured"], row["enabled"], row["state"]) == (True, False, "disabled")
+
+
+@pytest.mark.parametrize("platform", ["dingtalk", "feishu", "wecom"])
+def test_unbind_refused_credential_removal_is_not_reported_as_success(platform, monkeypatch):
+    """凭据删除被拒绝（如受管安装）时解绑报失败，渠道保持原来的已绑定状态，可再次解绑。"""
+    id_key, secret_key = api.KEYS[platform]
+    save_env_value(id_key, "kept-id")
+    save_env_value(secret_key, "kept-secret")
+    monkeypatch.setattr(api, "remove_env_value", lambda key: False)
+    app = FastAPI()
+    app.include_router(api.router)
+    with TestClient(app) as client:
+        assert client.put(f"/platforms/{platform}", json={"enabled": False}).status_code == 500
+    row = _desktop_row(monkeypatch, platform)
+    assert (row["configured"], row["enabled"]) == (True, True)
+
+
 @pytest.mark.parametrize("platform,token_key", [("dingtalk", "accessToken"), ("feishu", "tenant_access_token")])
 @pytest.mark.parametrize("kind", ["ok", "reject", "timeout", "network", "malformed", "unavailable"])
 def test_fixed_http_validation_classifies_failure_and_never_returns_tokens(platform, token_key, kind, monkeypatch):
@@ -350,3 +443,24 @@ def test_native_admission_allows_first_dm_and_group_but_does_not_open_wechat(pla
             for chat_type in ["p2p", "group"]:
                 message = SimpleNamespace(chat_type=chat_type, chat_id="new-group", content='{"text":"@_all hello"}')
                 assert adapter._admit(sender, message) is None
+
+
+def test_status_computes_only_the_five_desktop_platforms(monkeypatch):
+    """在原版状态计算前过滤无关平台，五个平台未绑定时也必须参与查询。"""
+    from hermes_cli.web_routers import messaging
+
+    ids = ["telegram", "weixin", "dingtalk", "feishu", "wecom", "uniagentgate", "slack"]
+    monkeypatch.setattr(api, "_messaging_platform_catalog", lambda: [{"id": id_} for id_ in ids])
+    computed = []
+
+    def payloads(home, entries):
+        """记录实际进入状态计算的平台，保留未配置行。"""
+        computed.extend(entry["id"] for entry in entries)
+        return [{"id": entry["id"], "configured": False} for entry in entries]
+
+    monkeypatch.setattr(messaging, "_platform_payloads", payloads)
+    result = api.platform_status("default")
+    assert set(computed) == api.DESKTOP_PLATFORMS
+    assert len(computed) == 5
+    assert [row["id"] for row in result["platforms"]] == ids[1:6]
+    assert all(not row["configured"] for row in result["platforms"])

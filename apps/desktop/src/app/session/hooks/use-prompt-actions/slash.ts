@@ -274,6 +274,18 @@ export function useSlashCommand(deps: SlashCommandDeps) {
 
         let slashExecError: unknown = null
 
+        /** 把 Codex 原生命令确认的本次输入交给已有 send 分支，不另建执行流程。 */
+        function readDispatch(result: unknown): ReturnType<typeof parseCommandDispatch> {
+          const dispatch = parseCommandDispatch(result)
+          const output = result && typeof result === 'object' ? (result as SlashExecResponse).output : undefined
+
+          if (name === 'codex' && arg && (!dispatch || dispatch.type === 'plugin') && output === `/codex ${arg}`) {
+            return { type: 'send', message: output }
+          }
+
+          return dispatch
+        }
+
         const handleDispatch = async (
           dispatch: NonNullable<ReturnType<typeof parseCommandDispatch>>
         ): Promise<void> => {
@@ -388,7 +400,7 @@ export function useSlashCommand(deps: SlashCommandDeps) {
             command: command.replace(/^\/+/, '')
           })
 
-          const dispatch = parseCommandDispatch(result)
+          const dispatch = readDispatch(result)
 
           if (dispatch) {
             await handleDispatch(dispatch)
@@ -418,7 +430,7 @@ export function useSlashCommand(deps: SlashCommandDeps) {
         }
 
         try {
-          const dispatch = parseCommandDispatch(
+          const dispatch = readDispatch(
             await requestGateway<unknown>('command.dispatch', { session_id: sessionId, name, arg })
           )
 
@@ -859,7 +871,9 @@ export function useSlashCommand(deps: SlashCommandDeps) {
             }
 
             if (reasoningSlashSetsEffort(params)) {
-              renderSlashOutput('思考深度固定使用服务器默认，不支持调整。/reasoning show 或 hide 可切换是否显示思考过程。')
+              renderSlashOutput(
+                '思考深度固定使用服务器默认，不支持调整。/reasoning show 或 hide 可切换是否显示思考过程。'
+              )
 
               return
             }
