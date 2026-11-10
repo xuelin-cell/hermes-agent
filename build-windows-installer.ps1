@@ -111,6 +111,13 @@ try {
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($commit)) {
             throw 'Cannot resolve the current Git commit.'
         }
+        # The same reader desktop.py uses to pass -c.extraMetadata.version, so the
+        # output dir name and the installer version can never disagree. Not a new
+        # parser: version_at() is git show <commit>:pyproject.toml plus the X.Y.Z guard.
+        $projectVersion = (& $python -B -c 'import sys; from pathlib import Path; from scripts.releases.commit_build import version_at; print(version_at(Path(sys.argv[2]), sys.argv[1]))' $commit $sourceRoot).Trim()
+        if ($LASTEXITCODE -ne 0 -or $projectVersion -notmatch '^\d+\.\d+\.\d+$') {
+            throw 'Cannot resolve project.version for the current commit.'
+        }
         # Same admission as desktop_prepare.require_source: ignored files may stay.
         $changes = @(& git status --porcelain --untracked-files=all)
         if ($LASTEXITCODE -ne 0) {
@@ -196,7 +203,7 @@ try {
         Write-Host ("[build-timing] connectors: {0:F1}s" -f $connectorClock.Elapsed.TotalSeconds)
     }
 
-    Write-Host "Building Windows installer from $commit" -ForegroundColor Cyan
+    Write-Host "Building Windows installer $projectVersion from $commit" -ForegroundColor Cyan
     Write-Host "Persistent cache: $cacheRoot" -ForegroundColor DarkGray
     Write-Host "Installer compression: $Compression (electron-builder $builderCompression, 7z level $innerCompressionLevel)" -ForegroundColor DarkGray
     $buildStarted = Get-Date
@@ -208,10 +215,12 @@ try {
     # on the leftover file. Keying the directory on the commit means a new commit
     # never touches the old artifact at all. release-local-* is already gitignored,
     # so the dirty-tree admission above stays clean.
+    # $projectVersion is in the name only so a human can tell two installers apart;
+    # both parts come from the same commit, so one directory never holds two versions.
     # NOT named $release: PowerShell variable names are case-insensitive, so
     # $release would be the [switch]$Release parameter and assigning a string
     # to it throws (see a370eab4).
-    $outputDir = Join-Path $sourceRoot "apps\desktop\release-local-$($commit.Substring(0, 12))"
+    $outputDir = Join-Path $sourceRoot "apps\desktop\release-local-$projectVersion-$($commit.Substring(0, 12))"
     if (Test-Path -LiteralPath $outputDir) {
         try {
             Remove-Item -LiteralPath $outputDir -Recurse -Force
