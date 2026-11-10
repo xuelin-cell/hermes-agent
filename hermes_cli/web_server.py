@@ -1239,6 +1239,12 @@ def _configure_auth_gate(
         # No escape hatch serves a gated dashboard without a provider.
         from hermes_cli.dashboard_auth import list_providers
         if not list_providers():
+            # Providers are registered BY plugins, and a Desktop `serve` sweeps plugins in the
+            # background (it is the longest boot stage). A gated bind must not fail closed on a
+            # sweep that is merely still running.
+            from hermes_cli.plugins import wait_for_plugin_discovery
+            wait_for_plugin_discovery()
+        if not list_providers():
             raise SystemExit(_no_auth_provider_message(host))
         _log.info(
             "Dashboard binding to %s with auth gate enabled. Providers: %s",
