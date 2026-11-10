@@ -226,3 +226,19 @@ it('已有展示缓存中的分享链接立即隐藏，文件和会话计数同�
     data.groups = previous
   }
 })
+
+
+it('本地产物加入会话按钮悬停显示操作提示', async () => {
+  $connection.set({ mode: 'local', profile: 'default' } as never)
+  $apiRequestScope.set({ connectionId: 'local', profile: 'default' })
+  render(
+    <I18nProvider configClient={null} initialLocale="zh">
+      <MemoryRouter>
+        <LocalArtifactLibrary />
+      </MemoryRouter>
+    </I18nProvider>
+  )
+  const button = screen.getByRole('button', { name: '添加到会话 · report.md' })
+  fireEvent.pointerMove(button, { pointerType: 'mouse' })
+  expect(await screen.findByRole('tooltip')).toHaveProperty('textContent', '添加到会话')
+})

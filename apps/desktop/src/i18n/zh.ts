@@ -5,15 +5,6 @@ import { introZh } from './intro-zh'
 import { messagingConnectionCopy } from './messaging-connection'
 
 export const zh = defineLocale({
-  workspaceEditor: {
-    title: '编辑器',
-    capabilities: '扩展',
-    openProject: '请先打开项目中的会话，再浏览和编辑文件。',
-    selectFile: '选择一个文件开始编辑。',
-    unsupported: '无法编辑二进制、截断或过大的文件。',
-    refresh: '刷新',
-    save: '保存'
-  },
   conversationShare: {
     sessionShare: '分享会话',
     responseShare: '分享回复',
@@ -141,7 +132,7 @@ export const zh = defineLocale({
     officePreviewFailed: 'Office 文件转换失败，请下载原文件查看。',
     artifactSensitive: '该文件属于敏感配置或凭据，不能上传云盘。',
     uploadArtifact: '上传到云盘',
-    uploadToLibrary: '上传到资料库',
+    uploadToLibrary: '上传到云盘',
     uploadHere: '上传到此文件夹',
     chooseUploadFolder: '选择个人云盘中的保存位置',
     artifactRemote: '暂时只能上传当前桌面账号的本机产物，远程文件和网络链接不支持直接上传。',
@@ -4291,6 +4282,7 @@ export const zh = defineLocale({
       '/context': '显示详细的上下文窗口，包括用量、分类明细、压缩统计与吞吐量',
       '/whoami': '显示你的斜线命令访问权限（admin / user）',
       '/profile': '切换活跃的 UniWork 配置档案',
+      '/codex': '使用当前会话所选模型执行编码任务',
       '/codex-runtime': '切换 OpenAI/Codex 模型使用的 Codex app-server runtime',
       '/personality': '设置预定义人格',
       '/battery': '切换状态栏中的彩色电池指示器',

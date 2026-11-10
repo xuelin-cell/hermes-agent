@@ -152,7 +152,6 @@ import { $archivedSessions } from '@/store/sidebar-archive'
 import { restoreSessionTodosFromSnapshot } from '@/store/todos'
 import { dropTranscriptTail, dropTranscriptTailEverywhere, saveTranscriptTail } from '@/store/transcript-tail-cache'
 import { isWatchWindow } from '@/store/windows'
-import { $codeWorkspace } from '@/store/workspace-category'
 import { currentWorkspaceCategory, rememberSessionWorkspace } from '@/store/workspace-sessions'
 import type {
   SessionCreateResponse,
@@ -350,7 +349,6 @@ async function desktopSessionCreateParams(
   const isManualSelection = getCurrentModelSource() === 'manual'
 
   const selection = {
-    codeMode: $codeWorkspace.get(),
     effort: $currentReasoningEffort.get().trim(),
     fast: $currentFastMode.get(),
     model: isManualSelection ? $currentModel.get().trim() : '',
@@ -372,7 +370,6 @@ async function desktopSessionCreateParams(
   }
 
   return {
-    ...(selection.codeMode ? { code_mode: true } : {}),
     cols: 96,
     source: 'desktop',
     ...(cwd && { cwd }),
@@ -2660,7 +2657,16 @@ export function useSessionActions({
               : branchMessages.length
                 ? requestBranchGateway<SessionCreateResponse>('session.create', {
                     ...createParams,
-                    messages: branchMessages.map(({ content, role }) => ({ content, role }))
+                    messages: branchMessages.map(({ content, role, source }) => ({
+                      content,
+                      role,
+                      timestamp: source.timestamp,
+                      display_metadata: {
+                        turn_token_usage: source.turnTokenUsage,
+                        turn_model: source.turnModel,
+                        turn_completed_at: source.turnCompletedAt
+                      }
+                    }))
                   })
                 : requestBranchGateway<SessionCreateResponse>('session.branch_stored', createParams).catch(
                     async err => {
@@ -2676,7 +2682,12 @@ export function useSessionActions({
 
                       return requestBranchGateway<SessionCreateResponse>('session.create', {
                         ...createParams,
-                        messages: messages.map(({ content, role }) => ({ content, role }))
+                        messages: messages.map(({ content, role, timestamp, display_metadata }) => ({
+                          content,
+                          role,
+                          timestamp,
+                          display_metadata
+                        }))
                       })
                     }
                   )

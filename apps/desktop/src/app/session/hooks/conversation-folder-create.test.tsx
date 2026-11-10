@@ -1,8 +1,8 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { $selectedWorkspaceMode } from '@/store/workspace-category'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import { setInterfaceMode } from '@/store/interface-mode'
 import { $activeGatewayProfile, $newChatConnectionId, $newChatProfile, $newChatRoute } from '@/store/profile'
 import { $projectScope, ALL_PROJECTS } from '@/store/project-scope'
 import {
@@ -14,6 +14,7 @@ import {
   setNewChatWorkspaceTarget,
   setSessions
 } from '@/store/session'
+import { $selectedWorkspaceMode } from '@/store/workspace-category'
 
 import { useSessionActions } from './use-session-actions'
 
@@ -118,6 +119,7 @@ beforeEach(() => {
 
 afterEach(() => {
   $selectedWorkspaceMode.set(null)
+  setInterfaceMode('advanced')
   cleanup()
   setConnection(null)
   setNewChatWorkspaceTarget(undefined)
@@ -136,6 +138,7 @@ describe('未选目录的新对话使用专属文件夹', () => {
 
     expect(requestGateway).toHaveBeenCalledWith('config.get', { key: 'project', profile: 'default' })
     expect(bridge.createConversationFolder).toHaveBeenCalledWith(WORKSPACE)
+    expect(createParams(requestGateway)).not.toHaveProperty('code_mode')
     expect(createParams(requestGateway)).toMatchObject({ cwd: FOLDER, cwd_explicit: true })
   })
 
@@ -179,7 +182,8 @@ describe('未选目录的新对话使用专属文件夹', () => {
     expect(createParams(requestGateway)).toMatchObject({ cwd: WORKSPACE, cwd_explicit: true })
   })
 
-  it('当前目录不是默认工作区（例如项目目录）时不建', async () => {
+  it.each(['simple', 'advanced'] as const)('代码场景保留目录并沿Hermes新建，不依赖 %s 布局', async mode => {
+    setInterfaceMode(mode)
     $selectedWorkspaceMode.set('codex')
     setCurrentCwdTransient('D:\\repo')
     const { result, requestGateway } = mountActions()
@@ -188,6 +192,11 @@ describe('未选目录的新对话使用专属文件夹', () => {
 
     expect(bridge.createConversationFolder).not.toHaveBeenCalled()
     expect(createParams(requestGateway)).toMatchObject({ cwd: 'D:\\repo', cwd_explicit: false })
+    expect(createParams(requestGateway)).not.toHaveProperty('code_mode')
+
+    await act(() => result.current.openNewSessionTile('right', { cwd: 'D:\\repo' }))
+    expect(createParams(requestGateway)).not.toHaveProperty('code_mode')
+    expect(createParams(requestGateway)).toMatchObject({ cwd: 'D:\\repo' })
   })
 
   it('主进程拒绝（专家自带目录）时保持原参数', async () => {

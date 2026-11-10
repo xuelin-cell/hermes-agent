@@ -136,11 +136,6 @@ import { $archivedSessions, loadArchivedSessions } from '@/store/sidebar-archive
 import { applySidebarNavPrefs, SIDEBAR_NAV_PREFS_AREA } from '@/store/sidebar-nav'
 import { $sidebarSessionRankIds } from '@/store/sidebar-sort'
 import { $selectedWorkspaceMode } from '@/store/workspace-category'
-import {
-  $workspaceSessionCategories,
-  projectBelongsToWorkspace,
-  sessionWorkspaceCategory
-} from '@/store/workspace-sessions'
 import { $workspaceSidebarGrouping as $sidebarGrouping } from '@/store/workspace-sidebar'
 
 import {
@@ -148,7 +143,6 @@ import {
   ARTIFACTS_ROUTE,
   CAPABILITIES_ROUTE,
   CRON_ROUTE,
-  EDITOR_ROUTE,
   MESSAGING_ROUTE,
   SIDEBAR_NAV_AREA,
   type SidebarNavContribution
@@ -444,15 +438,9 @@ export function ChatSidebar({
   const skillsCopy = useSkillsCopy()
   const workspaceMode = useStore($selectedWorkspaceMode)
 
-  const capabilitiesLabel = (
-    workspaceMode === 'codex'
-      ? [t.skills.tabSkills, t.skills.tabPlugins, t.connectorsPage.title]
-      : [skillsCopy('experts'), t.skills.tabSkills, t.connectorsPage.title]
-  ).join(' · ')
+  const capabilitiesLabel = [skillsCopy('experts'), t.skills.tabSkills, t.connectorsPage.title].join(' · ')
 
   const interfaceMode = useStore($interfaceMode)
-  const activeWorkspaceCategory = workspaceMode ?? (interfaceMode === 'advanced' ? 'codex' : 'work')
-  const workspaceCategories = useStore($workspaceSessionCategories)
   const showsAdvancedChrome = useStore($showsAdvancedChrome)
   const developerMode = useStore($developerMode)
 
@@ -463,26 +451,13 @@ export function ChatSidebar({
   const navPrefs = useContributions(SIDEBAR_NAV_PREFS_AREA)
 
   const navItems = useMemo(() => {
-    if (workspaceMode === 'codex') {
-      return [
-        SIDEBAR_NAV[0],
-        {
-          id: 'workspace-editor',
-          label: t.workspaceEditor.title,
-          route: EDITOR_ROUTE,
-          icon: (props: { className?: string }) => <Codicon name="file-code" {...props} />
-        },
-        { ...SIDEBAR_NAV[1], label: capabilitiesLabel }
-      ]
-    }
-
     return applySidebarNavPrefs(
       [...SIDEBAR_NAV, ...contributedNav]
         .map(item => (item.id === 'capabilities' ? { ...item, label: capabilitiesLabel } : item))
-        .filter(workspaceMode === 'work' ? () => true : shownInMode(interfaceMode)),
+        .filter(workspaceMode ? () => true : shownInMode(interfaceMode)),
       navPrefs
     )
-  }, [capabilitiesLabel, contributedNav, interfaceMode, navPrefs, workspaceMode, t.workspaceEditor])
+  }, [capabilitiesLabel, contributedNav, interfaceMode, navPrefs, workspaceMode])
 
   const panesFlipped = useStore($panesFlipped)
   const grouping = useStore($sidebarGrouping)
@@ -622,22 +597,8 @@ export function ChatSidebar({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // 聊天历史跨当前账号的全部档案；当前执行档案只约束消息平台、Cron 和原有项目上下文。
-  // 工作模式、归档和其他用户筛选仍在原位置应用，不切换全局 Profile 范围。
-  // Archived rows are excluded from the sessions query, so Archived is a view of
-  // its own set rather than a filter over this one — a flat list of archived
-  // rows, no project tree, no date or status dividers.
-  const matchesWorkspace = useCallback(
-    (session: SessionInfo) =>
-      workspaceMode === null || sessionWorkspaceCategory(session, activeConnectionId || undefined) === workspaceMode,
-    [workspaceMode, interfaceMode, activeConnectionId, workspaceCategories]
-  )
-
-  const scopedSessions = useMemo(() => {
-    const pool = showArchived ? archivedSessions : sessions
-
-    return pool.filter(matchesWorkspace)
-  }, [sessions, archivedSessions, showArchived, matchesWorkspace])
+  // 三个任务场景共用全部会话历史；归档仍由现有独立入口切换。
+  const scopedSessions = showArchived ? archivedSessions : sessions
 
   // One predicate for the status/project filters, so the flat list and the
   // project lanes narrow by the same rule. A project lane holds rows the loaded
@@ -646,10 +607,6 @@ export function ChatSidebar({
   // (same rule as the overview overlay), so filtering to Home keeps Home's rows.
   const sessionMatchesFilters = useCallback(
     (session: SessionInfo) => {
-      if (!matchesWorkspace(session)) {
-        return false
-      }
-
       if (statusFilter.length && !statusFilter.includes(sessionStatusBucket(dotStates[session.id]))) {
         return false
       }
@@ -682,8 +639,7 @@ export function ChatSidebar({
       pullRequests,
       projects,
       projectOwners,
-      dotStates,
-      matchesWorkspace
+      dotStates
     ]
   )
 
@@ -708,13 +664,13 @@ export function ChatSidebar({
   )
 
   const visibleCronSessions = useMemo(
-    () => filterSessionsByProfileScope(cronSessions, profileScope).filter(matchesWorkspace),
-    [cronSessions, profileScope, matchesWorkspace]
+    () => filterSessionsByProfileScope(cronSessions, profileScope),
+    [cronSessions, profileScope]
   )
 
   const visibleMessagingSessions = useMemo(
-    () => filterSessionsByProfileScope(messagingSessions, profileScope).filter(matchesWorkspace),
-    [messagingSessions, profileScope, matchesWorkspace]
+    () => filterSessionsByProfileScope(messagingSessions, profileScope),
+    [messagingSessions, profileScope]
   )
 
   // Index sessions by every id a pin might be stored under — recents, cron,
@@ -770,14 +726,10 @@ export function ChatSidebar({
     [pinnedIdentitySet]
   )
 
-  // Code projects keep pinned conversations in their owning project. Other
-  // views show pins in a separate section. All views share the same filters.
+  // 各业务模块共用置顶分区，项目列表也排除置顶会话，避免重复。
   const isHiddenFromProjects = useCallback(
-    (session: SessionInfo) =>
-      !matchesWorkspace(session) ||
-      (workspaceMode !== 'codex' && isPinnedSession(session)) ||
-      (filtersNarrow && !sessionMatchesFilters(session)),
-    [workspaceMode, isPinnedSession, filtersNarrow, sessionMatchesFilters, matchesWorkspace]
+    (session: SessionInfo) => isPinnedSession(session) || (filtersNarrow && !sessionMatchesFilters(session)),
+    [isPinnedSession, filtersNarrow, sessionMatchesFilters]
   )
 
   // Full-text search across *all* sessions (not just the loaded page) so 699
@@ -817,11 +769,8 @@ export function ChatSidebar({
   }, [trimmedQuery])
 
   const searchResults = useMemo(
-    () =>
-      mergeSearchResults(sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending).filter(
-        matchesWorkspace
-      ),
-    [sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending, matchesWorkspace]
+    () => mergeSearchResults(sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending),
+    [sortedSessions, trimmedQuery, serverMatches, sessionByAnyId, searchPending]
   )
 
   const unpinnedAgentSessions = useMemo(
@@ -855,7 +804,7 @@ export function ChatSidebar({
   // date group inside the section (orderRowsWithinGroups) rather than baked
   // into the list here, so a drag ranks a row among its own day's chats
   // instead of flattening the whole sidebar into an undated manual mode.
-  const agentSessions = workspaceMode === 'codex' ? sortedSessions : unpinnedAgentSessions
+  const agentSessions = unpinnedAgentSessions
 
   // Recents are local-only: messaging-platform sessions are fetched as their
   // own slice ($messagingSessions) and rendered in self-managed per-platform
@@ -1062,11 +1011,7 @@ export function ChatSidebar({
   // overview sort. Membership is the backend tree's — never re-derived here.
   const projectModel = useMemo<SidebarProjectTree[]>(() => {
     const sorted = sortProjectsForOverview(
-      filterToSessionBearingProjects(
-        filterVisibleProjects(projectTree, dismissedAutoProjects).filter(project =>
-          projectBelongsToWorkspace(project, activeWorkspaceCategory, activeConnectionId || undefined)
-        )
-      )
+      filterToSessionBearingProjects(filterVisibleProjects(projectTree, dismissedAutoProjects))
         // A filtered-out project drops its whole lane, header included — hiding
         // only its rows would leave a row of empty folders behind.
         .filter(project => !projectFilter.length || projectFilter.includes(project.id))
@@ -1093,8 +1038,6 @@ export function ChatSidebar({
   }, [
     projectTree,
     dismissedAutoProjects,
-    activeConnectionId,
-    activeWorkspaceCategory,
     orderRepos,
     activeProjectId,
     projectFilter,
@@ -1119,7 +1062,7 @@ export function ChatSidebar({
       ? agentProjectTree?.find(node => node.id === projectScope)
       : undefined
 
-  const inProject = workspaceMode !== 'codex' && Boolean(overviewEnteredProject)
+  const inProject = Boolean(overviewEnteredProject)
   const enteredProjectId = overviewEnteredProject?.id
 
   // Entering a project lazily hydrates its full lanes (repo -> lane -> sessions)
@@ -1266,13 +1209,8 @@ export function ChatSidebar({
 
   // The project overview (drill-in list) vs. the entered project's content.
   const projectOverview = useMemo(
-    () =>
-      projectsActive && !inProject
-        ? workspaceMode === 'codex'
-          ? agentProjectTree?.filter(project => !project.isNoProject)
-          : agentProjectTree
-        : undefined,
-    [projectsActive, inProject, workspaceMode, agentProjectTree]
+    () => (projectsActive && !inProject ? agentProjectTree : undefined),
+    [projectsActive, inProject, agentProjectTree]
   )
 
   // Preview rows come from the backend tree (each project carries its
@@ -1285,7 +1223,7 @@ export function ChatSidebar({
         projectOverview ?? [],
         agentSessions,
         projects,
-        showAllSessions || workspaceMode === 'codex' ? Infinity : PROJECT_PREVIEW_COUNT,
+        showAllSessions ? Infinity : PROJECT_PREVIEW_COUNT,
         {
           removed: removedSessionIds,
           // Rank before the trim, so "3 priciest in this project" isn't "3 most
@@ -1293,7 +1231,7 @@ export function ChatSidebar({
           rankIds: sortOrderIds
         }
       ),
-    [projectOverview, agentSessions, projects, removedSessionIds, sortOrderIds, showAllSessions, workspaceMode]
+    [projectOverview, agentSessions, projects, removedSessionIds, sortOrderIds, showAllSessions]
   )
 
   // A row's "Show all" hydrates raw backend lanes, which — like the drill-in —
@@ -1342,7 +1280,7 @@ export function ChatSidebar({
   const sessionsLabel =
     inProject && enteredProject
       ? enteredProject.label
-      : worktreeGroupingActive && (hasProjectRows || projectTreeLoading || workspaceMode === 'codex')
+      : worktreeGroupingActive && (hasProjectRows || projectTreeLoading)
         ? s.projects.sectionLabel
         : s.sessions
 
@@ -1835,7 +1773,7 @@ export function ChatSidebar({
               />
             )}
 
-            {!trimmedQuery && workspaceMode !== 'codex' && pinnedSessions.length > 0 && (
+            {!trimmedQuery && pinnedSessions.length > 0 && (
               <SidebarSessionsSection
                 activeSessionId={activeSidebarSessionId}
                 // Inbox style rides whichever view is active — pinned rows
@@ -1870,7 +1808,7 @@ export function ChatSidebar({
                 // Inbox style is a render variant, not a grouping — it rides
                 // whichever view is active: flat recents, project lanes, and
                 // the overview previews all render the same card.
-                card={workspaceMode === 'codex' ? false : cardRows}
+                card={cardRows}
                 collapsible={!inProject}
                 contentClassName={cn(
                   'flex min-h-0 flex-1 flex-col gap-px pb-1.75',
@@ -1919,7 +1857,7 @@ export function ChatSidebar({
                     />
                   ) : null
                 }
-                forceEmptyState={showSessionSkeletons || (workspaceMode === 'codex' && !projectOverview?.length)}
+                forceEmptyState={showSessionSkeletons}
                 // Archived is a plain list, and so is a magnitude-ranked one.
                 // Otherwise project lanes stay chronological whatever the flat
                 // list does — only the flat list can swap its dividers for

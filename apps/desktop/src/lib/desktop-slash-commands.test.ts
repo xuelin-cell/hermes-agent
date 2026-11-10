@@ -412,3 +412,26 @@ describe('registry-derived block-list (contract with hermes_cli/commands.py)', (
     }
   })
 })
+
+describe('Codex native command catalog', () => {
+  afterEach(() => rememberDesktopCommandsCatalog(undefined))
+
+  it('hides and blocks Codex even when a stale backend still advertises it', () => {
+    const catalog = filterDesktopCommandsCatalog({
+      commands: { '/codex': { argument_mode: 'text', desktop: null } },
+      categories: [{ name: 'Plugin commands', pairs: [['/codex', 'Run coding task']] }],
+      pairs: [['/codex', 'Run coding task']],
+      skills: {},
+      skill_count: 0
+    })
+
+    expect(catalog.categories?.flatMap(section => section.pairs) ?? []).toEqual([])
+    expect(catalog.pairs ?? []).toEqual([])
+    expect(isDesktopSlashSuggestion('/codex')).toBe(false)
+    expect(isDesktopSlashCommand('/codex')).toBe(false)
+    expect(catalog.skill_count).toBe(0)
+    expect(slashCompletionGroup('/codex', 'command')).toBe('Commands')
+    expect(isDesktopSlashExtensionCommand('/codex')).toBe(false)
+    expect(desktopSlashCommandArgumentMode('/codex')).toBe('text')
+  })
+})

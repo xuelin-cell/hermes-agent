@@ -147,15 +147,6 @@ export const zhHant = defineLocale({
       }
     }
   },
-  workspaceEditor: {
-    title: '編輯器',
-    capabilities: '擴充功能',
-    openProject: '請先開啟專案中的對話，再瀏覽及編輯檔案。',
-    selectFile: '選擇檔案開始編輯。',
-    unsupported: '無法編輯二進位、截斷或過大的檔案。',
-    refresh: '重新整理',
-    save: '儲存'
-  },
   conversationShare: {
     sessionShare: '分享對話',
     responseShare: '分享回覆',
@@ -283,7 +274,7 @@ export const zhHant = defineLocale({
     officePreviewFailed: 'Office 檔案轉換失敗，請下載原始檔案查看。',
     artifactSensitive: '此檔案屬於敏感設定或憑證，不能上傳雲端硬碟。',
     uploadArtifact: '上傳至雲端硬碟',
-    uploadToLibrary: '上傳至資料庫',
+    uploadToLibrary: '上傳至雲端硬碟',
     uploadHere: '上傳至此資料夾',
     chooseUploadFolder: '選擇個人雲端硬碟中的儲存位置',
     artifactRemote: '暫時只能上傳目前桌面帳號的本機產物，遠端檔案和網路連結不支援直接上傳。',
@@ -3503,6 +3494,7 @@ export const zhHant = defineLocale({
       '/context': '顯示詳細的上下文視窗，包括用量、分類明細、壓縮統計與吞吐量',
       '/whoami': '顯示你的斜線指令存取權限（admin / user）',
       '/profile': '切換作用中的 UniWork 設定檔',
+      '/codex': '使用目前對話所選模型執行編碼任務',
       '/codex-runtime': '切換 OpenAI/Codex 模型使用的 Codex app-server runtime',
       '/personality': '設定預先定義的人格',
       '/battery': '切換狀態列中的彩色電池指示器',

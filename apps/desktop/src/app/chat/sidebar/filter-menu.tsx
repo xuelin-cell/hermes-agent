@@ -204,7 +204,7 @@ export function SidebarFilterMenu({ className }: { className?: string }) {
   const foldCollapsed = foldIds.length > 0 && foldIds.every(id => nodeOpen[id] === false)
 
   const groupings = GROUPINGS.filter(option =>
-    workspaceMode === 'codex' ? option.id === 'project' : workspaceMode === 'work' ? option.id !== 'project' : true
+    workspaceMode ? option.id !== 'project' : true
   ).map(option => (option.id === 'profile' ? { ...option, label: t.sidebar.gatewayGroups.grouping } : option))
 
   const groupingLabel = groupings.find(option => option.id === grouping)?.label
