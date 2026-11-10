@@ -438,18 +438,59 @@ def _enable_plugin_platform(config: GatewayConfig, entry) -> None:
             )
 
 
+def _manifest_required_env_names(manifest) -> tuple[str, ...]:
+    """The env var names a platform manifest declares as required credentials."""
+    names: list[str] = []
+    for item in getattr(manifest, "requires_env", None) or ():
+        if isinstance(item, str):
+            name = item
+        elif isinstance(item, dict):
+            name = item.get("name") or ""
+        else:
+            name = ""
+        if name:
+            names.append(str(name))
+    return tuple(names)
+
+
+def _platform_credentials_present(manifest) -> bool:
+    """Whether the platform's declared credentials are readable in this scope.
+
+    False means the env sweep cannot enable the platform, so its adapter never has to be
+    imported — every platform SDK import costs seconds of GIL-holding work, and the sweep
+    used to import ALL of them on every gateway-config read.
+    """
+    names = _manifest_required_env_names(manifest)
+    if not names:
+        return True  # nothing declared — let the adapter decide
+    import hermes_cli.gateway as gateway_mod
+
+    return any((gateway_mod.get_env_value(name) or "").strip() for name in names)
+
+
 def _enable_plugin_platforms_from_env(config: GatewayConfig) -> None:
     """Registry-driven enable for plugin platforms (built-ins have rows in ``_ENV_STEPS``).
 
     Enabled when credentials are configured (``is_connected`` MUST gate: ``check_fn`` alone would
     enable unconfigured platforms that retry-connect forever) and deps are present (``check_fn``) or
     installable later by ``create_adapter()`` — never here: installing in this sweep boot-looped the app.
+
+    Only a platform whose manifest declares readable credentials is resolved: enumerating the
+    registry's ENTRIES materialized every deferred adapter (24 platform SDK imports, ~33 s of
+    GIL-holding work) inside the Desktop's interactive window.
     """
     try:
-        from hermes_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins, get_plugin_manager
         discover_plugins()  # idempotent
         from gateway.platform_registry import platform_registry
-        for entry in platform_registry.plugin_entries():
+        manifests = get_plugin_manager().platform_manifests()
+        for name in platform_registry.entry_names():
+            manifest = manifests.get(name)
+            if manifest is not None and not _platform_credentials_present(manifest):
+                continue
+            entry = platform_registry.get(name)
+            if entry is None or entry.source != "plugin":
+                continue
             _enable_plugin_platform(config, entry)
     except Exception as e:
         logger.debug("Plugin platform enable pass failed: %s", e)

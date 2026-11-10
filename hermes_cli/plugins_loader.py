@@ -233,6 +233,20 @@ class PluginLoaderMixin:
             return name[: -len("-platform")]
         return Path(manifest.path).name if manifest.path else name
 
+    def platform_manifests(self) -> Dict[str, PluginManifest]:
+        """platform name → manifest for plugin-owned platforms, WITHOUT importing an adapter.
+
+        The manifest declares the platform's required env vars, so a caller can tell whether an
+        adapter is worth importing before paying for the import (each one pulls a platform SDK).
+        """
+        manifests: Dict[str, PluginManifest] = {}
+        for plugin in self._plugins.values():
+            manifest = getattr(plugin, "manifest", None)
+            if manifest is None or manifest.kind != "platform":
+                continue
+            manifests[self._platform_name_from_manifest(manifest)] = manifest
+        return manifests
+
     def _register_deferred_platform(self, manifest: PluginManifest) -> None:
         """Register a lazy loader for a bundled platform: the adapter imports only when the
         ``platform_registry`` is first asked for it; a placeholder ``LoadedPlugin`` keeps it visible in

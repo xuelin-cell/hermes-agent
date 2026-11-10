@@ -1429,6 +1429,13 @@ class PluginManager(PluginLoaderMixin, PluginDispatchMixin, PluginLedgerMixin):
         if manifests:
             logger.info("Plugin discovery complete: %d found, %d enabled", len(self._plugins),
                         sum(1 for p in self._plugins.values() if p.enabled))
+            from hermes_cli.startup_timing import mark as _startup_mark
+
+            _startup_mark(
+                "plugin discovery complete",
+                found=len(self._plugins),
+                enabled=sum(1 for p in self._plugins.values() if p.enabled),
+            )
         self._refresh_plugin_compat_report(list(to_load.values()))
 
     def _refresh_plugin_compat_report(self, manifests: List[PluginManifest]) -> None:

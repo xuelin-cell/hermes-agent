@@ -345,6 +345,9 @@ class PluginManifest:
     version: str = ""
     description: str = ""
     author: str = ""
+    # Display name for the plugin (e.g. a platform card's title). Empty when the
+    # manifest omits it; the plugin's own ``register()`` label wins when present.
+    label: str = ""
     requires_env: List[Union[str, Dict[str, Any]]] = field(default_factory=list)
     provides_tools: List[str] = field(default_factory=list)
     provides_hooks: List[str] = field(default_factory=list)
@@ -502,6 +505,7 @@ def parse_manifest_file(
         return PluginManifest(
             name=name, version=str(data.get("version", "")),
             description=data.get("description", ""), author=_display_author(data.get("author", "")),
+            label=str(data.get("label", "") or ""),
             requires_env=data.get("requires_env", []),
             provides_tools=data.get("provides_tools", []),
             # ``hooks:`` is the spelling the bundled manifests carried for months; external copies of it

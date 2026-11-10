@@ -1620,6 +1620,7 @@ describe('startUpdatePoller', () => {
     }
     vi.useFakeTimers()
     stopUpdatePoller()
+    setConnection(null)
     resetUpdateApplyState()
   })
 
@@ -1629,13 +1630,20 @@ describe('startUpdatePoller', () => {
     vi.useRealTimers()
   })
 
-  it('calls checkUpdates() on startup so the version pill populates immediately', async () => {
+  // The poller mounts long before the backend answers; checking at mount put a
+  // GitHub round-trip and a background download on the same CPU/disk the
+  // backend is still booting on. The pass now waits for the published
+  // connection descriptor (main mints it after HTTP + WS readiness).
+  it('defers the startup check until the backend connection is published', async () => {
     startUpdatePoller()
 
-    // checkUpdates() is async — flush microtasks without advancing the daily interval.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(checkMock).not.toHaveBeenCalled()
+
+    setRemote(false)
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(checkMock).toHaveBeenCalled()
+    expect(checkMock).toHaveBeenCalledWith({ force: false })
     expect($updateStatus.get()?.behind).toBe(5)
   })
 
@@ -1658,6 +1666,7 @@ describe('startUpdatePoller', () => {
 
   it('polls once per day and never forces past the caches', async () => {
     startUpdatePoller()
+    setRemote(false)
     await vi.advanceTimersByTimeAsync(0)
     expect(checkMock).toHaveBeenCalledWith({ force: false })
     checkMock.mockClear()
@@ -1676,6 +1685,7 @@ describe('startUpdatePoller', () => {
 
   it('window focus only re-checks once the daily cadence has elapsed', async () => {
     startUpdatePoller()
+    setRemote(false)
     await vi.advanceTimersByTimeAsync(0)
     checkMock.mockClear()
 

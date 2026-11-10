@@ -22,6 +22,10 @@ _log = logging.getLogger("hermes_cli.web_server")
 # in env_vars from OPTIONAL_ENV_VARS via prefix matching when not specified,
 # and pulls required_env from a plugin's PlatformEntry when available.
 _PLATFORM_OVERRIDES: dict[str, dict[str, Any]] = {
+    # Plugin platforms whose setup note lives in the adapter's install_hint: the card must
+    # show it without importing the adapter, so the copy lives here (UI metadata table).
+    "a2a": {"description": "No extra packages needed (stdlib only)"},
+    "buzz": {"description": "Requires the buzz CLI binary (https://github.com/block/buzz)"},
     "telegram": {
         "name": "Telegram", "description": "Run Hermes from Telegram DMs, groups, and topics.",
         "docs_url": "https://core.telegram.org/bots/features#botfather",
@@ -226,33 +230,76 @@ _PLATFORM_ORDER: tuple[str, ...] = (
 )
 
 
+class _ManifestPlatformView:
+    """Platform metadata taken from a plugin MANIFEST — no adapter import.
+
+    The catalog only needs a platform's label and required env vars, and both are
+    declared in the manifest. Materializing the adapter to read them would import
+    every platform SDK (seconds of GIL-holding work) on a page that only lists cards.
+    """
+
+    __slots__ = ("install_hint", "label", "name", "required_env", "source")
+
+    def __init__(self, platform_id: str, manifest: Any) -> None:
+        self.name = platform_id
+        self.label = getattr(manifest, "label", "") or platform_id.replace("_", " ").title()
+        self.required_env = _manifest_env_names(getattr(manifest, "requires_env", None))
+        self.install_hint = ""
+        self.source = "plugin"
+
+
+def _manifest_env_names(items: Any) -> tuple[str, ...]:
+    """Env var names declared by a manifest's ``requires_env`` (strings or ``{name: ...}`` maps)."""
+    names: list[str] = []
+    for item in items or ():
+        if isinstance(item, str):
+            name = item
+        elif isinstance(item, dict):
+            name = item.get("name") or ""
+        else:
+            name = ""
+        if name:
+            names.append(str(name))
+    return tuple(names)
+
+
 def _messaging_platform_catalog() -> tuple[dict[str, Any], ...]:
     """Build the messaging catalog from the gateway's Platform enum + plugin registry.
 
     Built-ins come from ``gateway.config.Platform`` (LOCAL excluded); plugin platforms from
-    ``platform_registry.plugin_entries()`` so new adapters appear without a code change here.
+    the plugin registry so new adapters appear without a code change here.
     UI metadata lives in :data:`_PLATFORM_OVERRIDES`; the rest is derived from id/required_env.
     """
     from gateway.config import Platform
 
-    # Resolve plugin entries FIRST: plugin platforms leak into ``Platform.__members__`` as
+    # Resolve plugin platforms FIRST: plugin platforms leak into ``Platform.__members__`` as
     # pseudo-members once anything calls ``Platform("<plugin id>")``, and iterating the enum
     # first would claim them with no plugin metadata (nameless "Irc"/"Ntfy" cards).
     plugin_map: dict[str, Any] = {}
     try:
         # Plugin discovery normally runs as a side effect of importing model_tools, which this
         # server process doesn't do — trigger it explicitly (idempotent).
-        from hermes_cli.plugins import discover_plugins
+        from hermes_cli.plugins import discover_plugins, get_plugin_manager
         discover_plugins()
         from gateway.platform_registry import platform_registry
-        for plugin_entry in platform_registry.plugin_entries():
-            plugin_map[plugin_entry.name] = plugin_entry
+        # Names + manifests only: enumerating the registry's ENTRIES materialized every
+        # deferred adapter (one platform SDK import each) just to list platform cards.
+        manifests = get_plugin_manager().platform_manifests()
+        for name in platform_registry.entry_names():
+            entry = platform_registry.peek(name)
+            if entry is not None:
+                if entry.source == "plugin":
+                    plugin_map[name] = entry
+                continue
+            manifest = manifests.get(name)
+            if manifest is not None:
+                plugin_map[name] = _ManifestPlatformView(name, manifest)
     except Exception:
         _log.debug("plugin platform registry unavailable", exc_info=True)
 
     seen: set[str] = set()
     entries: list[dict[str, Any]] = []
-    builtin = [m.value for m in Platform.__members__.values() if m.value != "local"]
+    builtin = [m.value for m in list(Platform.__members__.values()) if m.value != "local"]
     for pid in builtin + list(plugin_map):
         if pid in seen:
             continue
