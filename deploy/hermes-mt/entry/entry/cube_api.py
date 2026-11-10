@@ -60,6 +60,43 @@ class ForwarderSilent(CubeError):
     """等就绪时转发器一直不应答（``wait_hermes`` 的 ``unreachable_limit_s``）。"""
 
 
+# 等就绪超过这么久就记一行耗时明细。正常唤醒 2 秒左右，新建实例十几秒。
+SLOW_READY_LOG_S = 5.0
+
+
+class ReadyTrace:
+    """一次等就绪的经过：多久后转发器第一次应答、此前平台代理和网络各回了什么。
+
+    转发器自己回的话都带 ``ok``（不论成败）；不带的 502/503/504 是平台代理替它回的，状态 0 是连不上代理。"""
+
+    def __init__(self, sandbox_id: str) -> None:
+        self.sandbox_id = sandbox_id
+        self.started = time.monotonic()
+        self.first_answer: float | None = None
+        self.errors: dict[str, int] = {}
+
+    def elapsed(self) -> float:
+        return time.monotonic() - self.started
+
+    def answered(self) -> None:
+        if self.first_answer is None:
+            self.first_answer = self.elapsed()
+
+    def failed(self, exc: CubeError) -> None:
+        if isinstance(exc.body, dict) and "ok" in exc.body:
+            self.answered()
+            kind = f"转发器{exc.status}"
+        else:
+            kind = "连不上代理" if exc.status == 0 else f"代理{exc.status}"
+        self.errors[kind] = self.errors.get(kind, 0) + 1
+
+    def __str__(self) -> str:
+        answer = (f"转发器第 {self.first_answer:.1f}s 首次应答" if self.first_answer is not None
+                  else "转发器一直没应答")
+        errors = " ".join(f"{kind}×{count}" for kind, count in self.errors.items()) or "无"
+        return f"sandbox {self.sandbox_id} 共 {self.elapsed():.1f}s，{answer}，探测失败 {errors}"
+
+
 # 引导请求被平台代理挡回时重发：间隔、总时长。见 ``proxy_hiccup``。
 BOOTSTRAP_RETRY_S = 30.0
 BOOTSTRAP_RETRY_INTERVAL_S = 1.0
@@ -508,8 +545,11 @@ class Cube:
 
         ``unreachable_limit_s``：每次都是平台代理替转发器回 502/503/504（转发器根本没起来）连续这么久，
         就不等满 ``timeout_s``，报 ``ForwarderSilent``。转发器答过一次话（hermes 还没好）就照常等。
+
+        等得久（``SLOW_READY_LOG_S``）或没等到时记一行 ``ReadyTrace``，带完整 sandbox ID，可直接发给平台同事对日志。
         """
-        deadline = time.monotonic() + timeout_s
+        trace = ReadyTrace(sandbox_id)
+        deadline = trace.started + timeout_s
         last = ""
         next_probe = 0.0
         silent_since: float | None = None
@@ -518,16 +558,21 @@ class Cube:
                 st, body = await self._tenant_req(
                     "GET", sandbox_id, port, "/api/health", timeout_s=8, ok=(200,)
                 )
+                trace.answered()
                 if isinstance(body, dict) and body.get("ok"):
+                    if trace.elapsed() >= SLOW_READY_LOG_S:
+                        log.info("等就绪慢：%s", trace)
                     return
                 last = str(body)[:120]
                 silent_since = None
             except CubeError as exc:
                 last = exc.message or str(exc.status)
+                trace.failed(exc)
                 if unreachable_limit_s is not None and forwarder_unreachable(exc):
                     now = time.monotonic()
                     silent_since = now if silent_since is None else silent_since
                     if now - silent_since >= unreachable_limit_s:
+                        log.warning("等就绪放弃（转发器 %.0fs 一直不应答）：%s", unreachable_limit_s, trace)
                         raise ForwarderSilent(exc.status, f"转发器 {unreachable_limit_s:.0f}s 内一直不应答：{last}",
                                               exc.body) from exc
                 else:
@@ -539,8 +584,10 @@ class Cube:
                     # 现在每 5 秒问一次控制面，它说没了就立刻报，由调用方当场重建。
                     next_probe = time.monotonic() + 5.0
                     if await self.get_sandbox(sandbox_id) is None:
+                        log.warning("等就绪时实例已不存在（控制面 404）：%s", trace)
                         raise SandboxGone(404, f"实例 {sandbox_id[:12]} 已不存在（控制面 404）") from exc
             await asyncio.sleep(1.0)
+        log.warning("等就绪超时（%.0fs）：%s；最后一次：%s", timeout_s, trace, last)
         raise CubeError(0, f"hermes {timeout_s}s 内没就绪：{last}")
 
     # ---- 空闲回收 --------------------------------------------------------------

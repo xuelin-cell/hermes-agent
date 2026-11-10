@@ -215,6 +215,46 @@ def _tar_bytes(files: dict[str, bytes], mode: int = 0o644) -> bytes:
     return buf.getvalue()
 
 
+class WakeTrace:
+    """一次唤醒暂停实例的经过，最后记成一行日志：唤醒成功用了多久，或者没起来、删旧建新各用了多久。"""
+
+    def __init__(self, sandbox_id: str, silent_limit: float | None) -> None:
+        self.sandbox_id = sandbox_id
+        self.rebuildable = silent_limit is not None
+        self.started = time.monotonic()
+        self.marks: list[tuple[str, float]] = []
+        self.new_sandbox = ""
+
+    def _mark(self, step: str) -> None:
+        self.marks.append((step, time.monotonic()))
+
+    def gave_up(self) -> None:
+        self._mark("等就绪放弃")
+
+    def repaired(self) -> None:
+        self._mark("补引导")
+
+    def discarded(self) -> None:
+        self._mark("删旧实例")
+
+    def created(self, sandbox_id: str) -> None:
+        self.new_sandbox = sandbox_id
+        self._mark("新建实例")
+
+    def __str__(self) -> str:
+        total = time.monotonic() - self.started
+        head = f"唤醒 sandbox {self.sandbox_id}（{'可从归档重建' if self.rebuildable else '不可重建'}）"
+        if not self.marks:
+            return f"{head} 共 {total:.1f}s"
+        steps, previous = [], self.started
+        for step, at in self.marks:
+            steps.append(f"{step} {at - previous:.1f}s")
+            previous = at
+        if self.new_sandbox:
+            steps.append(f"新实例 {self.new_sandbox} 就绪 {time.monotonic() - previous:.1f}s")
+        return f"{head} 没直接起来：{'，'.join(steps)}，共 {total:.1f}s"
+
+
 class TenantManager:
     """两种执行后端共用的门面。
 
@@ -227,7 +267,7 @@ class TenantManager:
 
     # 唤醒正常时转发器几秒内就应答（11-09 真机 2 秒）；这么久一直是平台代理替它回 502/503/504，就是没起来。
     # 判错了也只是多一次从归档重建（约 20 秒），不丢东西，所以宁短勿长。
-    RESUME_UNREACHABLE_S = 10.0
+    RESUME_UNREACHABLE_S = 15.0
 
     def __init__(
         self,
@@ -807,6 +847,7 @@ class TenantManager:
 
             # 与 Docker 那条路同一条不变式：中途失败不能把状态留在 starting，
             # 否则这个用户会一直被当成"正在启动"，既不会被回收也不会被重试。
+            woken: WakeTrace | None = None
             try:
                 if self._needs_change(rt, sb):
                     # 慢路径：要动实例了。先拿跨副本的锁，再重读一遍 ——
@@ -826,6 +867,7 @@ class TenantManager:
                 # 重建不丢东西，转发器连续 RESUME_UNREACHABLE_S 秒不应答就交给下面的 _discard_unresponsive。
                 silent_limit = (self.RESUME_UNREACHABLE_S
                                 if was_paused and await self.store.paused_after_archive(user_id) else None)
+                woken = WakeTrace(sandbox_id, silent_limit) if was_paused else None
                 try:
                     await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s,
                                                 unreachable_limit_s=silent_limit)
@@ -845,17 +887,27 @@ class TenantManager:
                     # 等不到 hermes：没引导过就补一次，窗口已关就删了重建；引导过的照常报错，
                     # 除非它是暂停后唤醒没起来的那种（见 _discard_unresponsive），那就从归档重建。
                     replaced = False
+                    if woken:
+                        woken.gave_up()
                     async with self._pg_lock(user_id):
                         sandbox_id, repaired = await self._repair_bootstrap(user_id, slug, sandbox_id, token, context)
                         if not repaired and await self._discard_unresponsive(user_id, slug, sandbox_id):
+                            if woken:
+                                woken.discarded()
                             sandbox_id = await self._create_cube(user_id, slug, volume, token, context)
                             replaced = True
+                    if woken and repaired:
+                        woken.repaired()
                     if replaced:
                         was_paused = False
+                        if woken:
+                            woken.created(sandbox_id)
                         await self.cube.wait_hermes(sandbox_id, port, timeout_s=self.s.ready_timeout_s)
                     elif not repaired:
                         raise
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                if woken:
+                    log.warning("tenant %s: %s，最终失败：%s", slug, woken, (str(exc) or type(exc).__name__)[:120])
                 try:
                     await self.store.set_tenant_state(user_id, "stopped")
                 except Exception as state_exc:  # noqa: BLE001
@@ -866,6 +918,9 @@ class TenantManager:
                     )
                 raise
 
+            if woken:
+                # 唤醒用时：平台同事排查慢唤醒时按 sandbox ID 和时间对他们的日志。
+                log.info("tenant %s: %s", slug, woken)
             if was_paused:
                 # 暂停的实例被这个请求唤醒了。平台不通知，只有这里能记一笔。
                 await self.store.write_audit(user_id, "tenant.resume", {"sandbox": sandbox_id})
