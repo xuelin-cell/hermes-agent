@@ -188,7 +188,6 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
   const [page, setPage] = useState<TaskPage>('tasks')
   const [filter, setFilter] = useState<Filter>('all')
   const [templatesOpen, setTemplatesOpen] = useState(false)
-  const [templatesDismissed, setTemplatesDismissed] = useState(false)
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [pendingDelete, setPendingDelete] = useState<CronJob | null>(null)
   const [runningJobId, setRunningJobId] = useState<string | null>(null)
@@ -316,7 +315,7 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
   )
 
   const visible = useMemo(() => jobs.filter(job => filter === 'all' || jobBucket(job) === filter), [filter, jobs])
-  const showTemplates = templatesOpen || (!loading && jobs.length === 0 && !templatesDismissed)
+  const showTemplates = templatesOpen
 
   const footerText = (job: JobWithDir): string => {
     if (job.state === 'paused' || !job.enabled) {
@@ -441,10 +440,7 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
               {showTemplates ? (
                 <Button
                   className="h-7 px-3 text-sm"
-                  onClick={() => {
-                    setTemplatesOpen(false)
-                    setTemplatesDismissed(true)
-                  }}
+                  onClick={() => setTemplatesOpen(false)}
                   size="sm"
                   variant="outline"
                 >
@@ -499,7 +495,6 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={() => {
-                        setTemplatesDismissed(false)
                         setTemplatesOpen(true)
                       }}
                     >
@@ -710,7 +705,6 @@ export function ScheduledTasksView({ onOpenSession, onRunTask }: ScheduledTasksV
               await mutateAndRefreshCronJobs(profile, () => createCronJob(payload))
               notify({ kind: 'success', message: t('created') })
               setTemplatesOpen(false)
-              setTemplatesDismissed(true)
             }
 
             setEditor(null)
