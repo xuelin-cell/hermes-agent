@@ -62,15 +62,6 @@ interface AuxTaskCopy {
 }
 
 export interface Translations {
-  workspaceEditor: {
-    title: string
-    capabilities: string
-    openProject: string
-    selectFile: string
-    unsupported: string
-    refresh: string
-    save: string
-  }
   conversationShare: {
     sessionShare: string
     responseShare: string
@@ -1009,7 +1000,6 @@ export interface Translations {
     unreadSessions: (count: number) => string
     muteHaptics: string
     unmuteHaptics: string
-    openSettings: string
     openStarmap: string
     enterHud: string
     exitHud: string
@@ -3713,6 +3703,18 @@ export interface Translations {
     attachLabel: string
     files: string
     folder: string
+    skills: string
+    connectors: string
+    manageSkills: string
+    manageConnectors: string
+    loading: string
+    noSkills: string
+    noConnectors: string
+    quickConnectorNames: {
+      uniAiToolkit: string
+      arxiv: string
+      uniworkDrive: string
+    }
     images: string
     pasteImage: string
     url: string
@@ -3924,11 +3926,18 @@ export interface Translations {
     bundleSwapPendingDesc: string
     bundleSwapPendingAction: string
     stages: Record<string, string>
+    /** The apply-start status line, shown until the first progress event lands. */
+    startingUpdate: string
+    /** Shown when apply begins with the package already downloaded: no bytes
+     *  move, so the progress surface must not claim a download. */
+    preparingInstall: string
     checking: string
     checkFailedTitle: string
     tryAgain: string
     notAvailableTitle: string
     unsupportedMessage: string
+    /** The preload's `hermesDesktop.updates` bridge is missing. */
+    bridgeUnavailable: string
     connectionRetry: string
     gitUnusable: string
     connectionSettings: string
@@ -4001,6 +4010,7 @@ export interface Translations {
       restarting: string
       notAvailable: string
       failed: string
+      applied: string
       noReturn: string
     }
     /** Update-status overlay + version-details (mechanism-aware update UI):

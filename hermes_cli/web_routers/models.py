@@ -56,7 +56,12 @@ def _load_config_scoped(profile: Optional[str]) -> dict:
 # provider probes, each with its own multi-second timeout, so an unreachable or
 # blackholed model.base_url can hold this response for tens of seconds — and the
 # Desktop Model Settings page waits on it (#63214).
-_MODEL_INFO_PROBE_BUDGET_S = 5.0
+#
+# Must stay strictly below the Desktop client's MODEL_INFO_REQUEST_TIMEOUT_MS
+# (apps/desktop/src/api/models.ts, 5s): the client aborts at its own timeout, so
+# a server budget at or above it guarantees every cold-start caller times out and
+# gets nothing. Startup issues these calls back to back, so the gap is multiplied.
+_MODEL_INFO_PROBE_BUDGET_S = 3.0
 
 
 def _bounded_context_length_probe(model: str, base_url: str, provider: str) -> int:

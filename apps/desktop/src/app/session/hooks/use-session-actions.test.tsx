@@ -94,6 +94,7 @@ import {
 import { $sessionSeenCounts, $unreadFinishedMarkers } from '@/store/session-unread'
 import { $retainedTodosBySession, clearSessionTodos } from '@/store/todos'
 import { loadTranscriptTail, saveTranscriptTail } from '@/store/transcript-tail-cache'
+import { $selectedWorkspaceMode } from '@/store/workspace-scope'
 
 import sessionResumeActiveTurn from '../../../../../../tests/fixtures/session-resume-active-turn.json'
 import { deferred } from '../../../test/deferred'
@@ -2798,13 +2799,28 @@ describe('branchStoredSession desktop source tagging', () => {
   })
 
   it('falls back without creating an empty branch against an older backend', async () => {
+    const metadata = {
+      turn_token_usage: {
+        input_tokens: 40,
+        output_tokens: 8,
+        total_tokens: 48,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0
+      },
+      turn_model: { model: 'answered-model', provider: 'test', name: 'Answered model' },
+      turn_completed_at: 5.125
+    }
+
     const requestGateway = vi.fn(async (method: string, params?: Record<string, unknown>) => {
       if (method === 'session.branch_stored') {
         throw new Error('unknown method: session.branch_stored')
       }
 
       if (method === 'session.create') {
-        expect(params?.messages).toEqual([{ content: 'persisted context', role: 'user' }])
+        expect(params?.messages).toEqual([
+          { content: 'persisted context', role: 'user', timestamp: 1 },
+          { content: 'persisted reply', role: 'assistant', timestamp: 5, display_metadata: metadata }
+        ])
 
         return { session_id: 'branch-runtime', stored_session_id: 'branch-stored' } as never
       }
@@ -2813,7 +2829,10 @@ describe('branchStoredSession desktop source tagging', () => {
     })
 
     vi.mocked(getAllSessionMessages).mockResolvedValue({
-      messages: [{ content: 'persisted context', role: 'user', timestamp: 1 }],
+      messages: [
+        { content: 'persisted context', role: 'user', timestamp: 1 },
+        { content: 'persisted reply', role: 'assistant', timestamp: 5, display_metadata: metadata }
+      ],
       session_id: 'stored-parent'
     } as never)
 
@@ -5741,6 +5760,20 @@ describe('routed fresh chat keeps its exact owner across turns', () => {
 
     return { ambientRequest, runtimeId: runtimeId as unknown as string }
   }
+
+  it('代码场景新建仍沿原Hermes路由并保留所属专家', async () => {
+    const previousMode = $selectedWorkspaceMode.get()
+    $selectedWorkspaceMode.set('codex')
+
+    try {
+      await createRoutedFreshChat()
+      const create = vi.mocked(requestGatewayForAgent).mock.calls.find(call => call[2] === 'session.create')!
+      expect(create.slice(0, 2)).toEqual(['local', 'omar'])
+      expect(create[3]).not.toHaveProperty('code_mode')
+    } finally {
+      $selectedWorkspaceMode.set(previousMode)
+    }
+  })
 
   it('unit: an explicitly routed fresh create never resolves its follow-up owner to the ambient default', async () => {
     await createRoutedFreshChat()

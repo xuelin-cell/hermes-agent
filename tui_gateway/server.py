@@ -2552,11 +2552,15 @@ def _make_agent(
     if synthetic is not None:
         return synthetic
     from run_agent import AIAgent
+    from hermes_cli.startup_timing import mark_once as _startup_mark_once
+
+    _startup_mark_once("agent build start")
     # MCP discovery runs in a daemon thread (a dead server can't freeze the shell); the agent snapshots its tool
     # list once, so briefly wait for in-flight discovery. Dashboard /api/ws uses mcp_startup; TUI stdio uses entry.
     for _mod in ("hermes_cli.mcp_startup", "tui_gateway.entry"):
         with contextlib.suppress(Exception):
             importlib.import_module(_mod).wait_for_mcp_discovery()
+    _startup_mark_once("agent build past MCP wait")
     cfg = _load_cfg()
     # Load hooks alongside the same profile config used to construct this agent.
     from agent.shell_hooks import register_from_config
@@ -2606,6 +2610,7 @@ def _make_agent(
         # Emitted once on the first successful reply via _emit_pending_fallback_notice -> status_callback.
         agent._pending_fallback_notice = fallback_notice
     agent._desktop_code_mode = desktop_code_mode
+    _startup_mark_once("agent build done")
     return agent
 
 

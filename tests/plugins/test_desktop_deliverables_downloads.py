@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 
 import pytest
 
@@ -35,7 +36,9 @@ def call(plugin, name, result, **kwargs):
     return (
         resolve_plugin_command_result(
             handler(
-                tool_name=name, result=result, session_id="s", turn_id="t", **kwargs
+                tool_name=name, result=result,
+                session_id=kwargs.pop("session_id", "s"),
+                turn_id=kwargs.pop("turn_id", "t"), **kwargs
             )
         )
         if handler
@@ -82,6 +85,222 @@ def test_generated_media_is_downloaded_and_carded_without_reply_path(
         assert output.read_bytes().startswith(b"file-content")
         assert str(output) in finish(plugin)
         assert len(requests) == 1
+
+
+@pytest.mark.parametrize("platform", ["desktop", "cron", "weixin", "feishu", "wecom", "dingtalk", "uniagentgate"])
+@pytest.mark.parametrize("tool,extension", [("txt2img_generate", "png"), ("txt2vid_generate", "mp4"), ("tts_synthesize", "wav"), ("doc_translate", "pdf")])
+def test_downloaded_output_and_identical_delivery_copy_show_once(delivery, monkeypatch, platform, tool, extension):
+    """真实下载后复制并显式交付，只展示最终副本；缓存和副本都保留。"""
+    plugin, work = delivery
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+    plugin.before_turn(session_id="s", turn_id="t", task_id="s", platform=platform)
+    with serving() as (base, _):
+        downloaded = call(plugin, tool, json.dumps({"url": base + "/output." + extension}))
+    if platform == "dingtalk" and tool == "txt2vid_generate":
+        assert downloaded is None
+        assert not list(work.glob("outputs/*"))
+        return
+    data = json.loads(downloaded)
+    source = Path(data["desktop_deliverables" if platform in {"desktop", "cron"} else "deliverables"][0])
+    target = work / ("最终交付." + extension)
+    shutil.copyfile(source, target)
+    response = f"完成了。\nMEDIA:{source}\nMEDIA:{target}\nMEDIA:{target}"
+    result = plugin.transform(session_id="s", turn_id="t", platform=platform, response_text=response) or response
+    assert result.count("MEDIA:") == 1
+    assert f"MEDIA:{target}" in result
+    assert str(source) not in result
+    assert source.read_bytes() == target.read_bytes()
+
+
+@pytest.mark.parametrize("platform", ["desktop", "cron", "feishu", "dingtalk"])
+@pytest.mark.parametrize("copied", [False, True])
+def test_background_completion_after_intervening_question_delivers_once(delivery, monkeypatch, platform, copied):
+    """后台完成恰逢用户插问时不抢先出卡；完成通知交付副本后不再补原缓存。"""
+    plugin, work = delivery
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+    plugin.before_turn(session_id="s", turn_id="first", task_id="s", platform=platform)
+    plugin.background.remember_child(parent_session_id="s", child_session_id="child")
+    assert plugin.transform(session_id="s", turn_id="first", platform=platform, response_text="后台已启动。") is None
+    plugin.before_turn(session_id="s", turn_id="question", task_id="s", platform=platform, user_message="现在几点？")
+    plugin.before_turn(session_id="child", turn_id="c", task_id="child", platform="subagent")
+    with serving() as (base, _):
+        data = json.loads(call(plugin, "doc_translate", json.dumps({"url": base + "/report.pdf"}), session_id="child", turn_id="c"))
+    source = Path(data["desktop_deliverables" if platform in {"desktop", "cron"} else "deliverables"][0])
+    assert plugin.transform(session_id="s", turn_id="question", platform=platform, response_text="这是插问的回答。") is None
+    plugin.end_turn(session_id="s", turn_id="question")
+    plugin.before_turn(session_id="s", turn_id="finished", task_id="s", platform=platform, user_message=f"后台完成。\nMEDIA:{source}")
+    target = work / "最终报告.pdf" if copied else source
+    if copied:
+        shutil.copyfile(source, target)
+    response = f"任务完成。\nMEDIA:{target}\nMEDIA:{target}"
+    result = plugin.transform(session_id="s", turn_id="finished", platform=platform, response_text=response) or response
+    assert result.count("MEDIA:") == 1 and f"MEDIA:{target}" in result
+    if copied:
+        assert str(source) not in result
+    assert plugin.background.returned_results(plugin.scope("s")) == []
+    plugin.before_turn(session_id="s", turn_id="later", task_id="s", platform=platform, user_message="谢谢")
+    assert plugin.transform(session_id="s", turn_id="later", platform=platform, response_text="不客气。") is None
+    assert source.read_bytes() == target.read_bytes()
+
+
+@pytest.mark.parametrize("changed", [True, False])
+def test_different_or_unreadable_copy_keeps_both_outputs(delivery, monkeypatch, changed):
+    """同尺寸不同内容及无法核对的文件保留各自入口，不仅凭文件名或大小去重。"""
+    plugin, work = delivery
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+    begin(plugin)
+    with serving() as (base, _):
+        data = json.loads(call(plugin, "txt2img_generate", json.dumps({"url": base + "/output.png"})))
+    source = Path(data["desktop_deliverables"][0])
+    target = work / "交付.png"
+    target.write_bytes(bytes(byte ^ 1 for byte in source.read_bytes()) if changed else source.read_bytes())
+    calls = []
+    if not changed:
+        def unreadable(path):
+            """模拟内容读取失败，文件本身仍存在且可供用户打开。"""
+            calls.append(path)
+            raise OSError("unreadable fixture")
+        from fallback_delivery import uploads
+        monkeypatch.setattr(uploads, "fingerprint", unreadable)
+    result = plugin.transform(session_id="s", turn_id="t", platform="desktop", response_text=f"完成了。\nMEDIA:{target}")
+    assert result.count("MEDIA:") == 2
+    assert f"MEDIA:{source}" in result and f"MEDIA:{target}" in result
+    if not changed:
+        assert calls
+
+
+def test_equal_independent_outputs_and_large_files_are_not_merged(delivery, monkeypatch):
+    """独立生成的同内容产物、普通文件及超出比对上限的文件均保持独立。"""
+    plugin, work = delivery
+    from fallback_delivery import downloads
+    first, second = work / "first.png", work / "second.png"
+    first.write_bytes(b"same")
+    second.write_bytes(b"same")
+    paths = [first, second]
+    assert plugin.copied_downloads(paths, set(paths), set(paths), set()) == {}
+    assert plugin.copied_downloads(paths, set(), set(paths), set()) == {}
+    monkeypatch.setattr(downloads, "MAX_BYTES", 3)
+    assert plugin.copied_downloads(paths, {first}, {second}, set()) == {}
+
+
+@pytest.mark.parametrize("platform", ["desktop", "cron", "feishu"])
+def test_existing_inline_media_does_not_get_an_extra_copy_card(delivery, monkeypatch, platform):
+    """已有行内图片或附件引用时保留原入口，不再追加同内容副本。"""
+    plugin, work = delivery
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+    plugin.before_turn(session_id="s", turn_id="t", task_id="s", platform=platform)
+    with serving() as (base, _):
+        data = json.loads(call(plugin, "txt2img_generate", json.dumps({"url": base + "/output.png"})))
+    source = Path(data["desktop_deliverables" if platform in {"desktop", "cron"} else "deliverables"][0])
+    target = work / "副本.png"
+    shutil.copyfile(source, target)
+    response = f"图片：[查看](MEDIA:{source})\n\nMEDIA:{target}"
+    result = plugin.transform(session_id="s", turn_id="t", platform=platform, response_text=response) or response
+    assert result.count("MEDIA:") == 1
+    assert str(source) in result and str(target) not in result
+
+
+@pytest.mark.parametrize("platform", ["desktop", "weixin", "feishu"])
+def test_question_copy_then_notice_delivers_once(delivery, monkeypatch, platform):
+    """「介绍自己 #21」的顺序：插问时模型附上改名副本，完成通知那轮再附副本和原件也不重发；用户要重发仍可发。"""
+    plugin, work = delivery
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+
+    def turn(turn_id, message, reply):
+        """跑完一轮父会话，返回最终交付的回复。"""
+        plugin.before_turn(session_id="s", turn_id=turn_id, task_id="s", platform=platform, user_message=message)
+        result = plugin.transform(session_id="s", turn_id=turn_id, platform=platform, response_text=reply)
+        plugin.end_turn(session_id="s", turn_id=turn_id)
+        return reply if result is None else result
+
+    plugin.before_turn(session_id="s", turn_id="first", task_id="s", platform=platform)
+    plugin.background.remember_child(parent_session_id="s", child_session_id="child")
+    plugin.transform(session_id="s", turn_id="first", platform=platform, response_text="视频生成任务已提交。")
+    plugin.end_turn(session_id="s", turn_id="first")
+    plugin.before_turn(session_id="child", turn_id="c", task_id="child", platform="subagent")
+    with serving() as (base, _):
+        data = json.loads(call(plugin, "txt2vid_generate", json.dumps({"url": base + "/output.mp4"}), session_id="child", turn_id="c"))
+    source = Path(data["desktop_deliverables" if platform == "desktop" else "deliverables"][0])
+    copy = source.parent / "桃园三结义.mp4"
+    shutil.copyfile(source, copy)
+    # 实际中副本在上一轮复制，完成通知那轮开始时已不算本轮新建。
+    for path in (source, copy):
+        os.utime(path, (path.stat().st_mtime - 30,) * 2)
+    question = turn("question", "怎么样了？", f"已经生成好了。\n\nMEDIA:{copy}\n\n要改竖版跟我说。")
+    assert question.count("MEDIA:") == 1 and str(copy) in question
+    assert plugin.background.unreturned_results(plugin.scope("s")) == set()
+    notice = f"[ASYNC DELEGATION BATCH COMPLETE — deleg_1]\n已生成完成。\nMEDIA:{source}"
+    finished = turn("notice", notice, f"视频已经发给你了。\n\nMEDIA:{copy}\n\n要延长随时说。\n\nMEDIA:{source}")
+    assert "MEDIA:" not in finished
+    assert "视频已经发给你了。" in finished and "要延长随时说。" in finished
+    again = turn("again", "再发一次", f"好的。\nMEDIA:{copy}")
+    assert again.count("MEDIA:") == 1 and str(copy) in again
+    assert source.read_bytes() == copy.read_bytes()
+
+
+@pytest.mark.parametrize("platform", ["desktop", "weixin"])
+def test_notice_turn_only_drops_unchanged_delivered_files(delivery, platform):
+    """两个后台进程先后结束（10-26）：第二次通知不重发同一份 PDF；新文件、改过的和同大小不同内容的照发。"""
+    from tools.process_registry_notifications import format_process_notification
+
+    plugin, work = delivery
+    report, other, image = work / "示例文档.pdf", work / "另一份.pdf", work / "新图.png"
+    report.write_bytes(b"report-v1")
+    other.write_bytes(b"report-v2")
+
+    def turn(turn_id, reply):
+        """以真实后台进程完成通知开始一轮，返回最终交付的回复。"""
+        message = format_process_notification(
+            {"session_id": turn_id, "command": "render", "exit_code": 0, "output": "done"}
+        )
+        plugin.before_turn(session_id="s", turn_id=turn_id, task_id="s", platform=platform, user_message=message)
+        result = plugin.transform(session_id="s", turn_id=turn_id, platform=platform, response_text=reply)
+        plugin.end_turn(session_id="s", turn_id=turn_id)
+        return reply if result is None else result
+
+    assert turn("render", f"文档转好了。\nMEDIA:{report}").count(f"MEDIA:{report}") == 1
+    image.write_bytes(b"png")
+    second = turn("browser", f"浏览器也装好了。\nMEDIA:{report}\nMEDIA:{other}\n句中附件 MEDIA:{report} 也一样。\nMEDIA:{image}")
+    assert f"MEDIA:{report}" not in second and "句中附件 示例文档.pdf 也一样。" in second
+    assert f"MEDIA:{other}" in second and f"MEDIA:{image}" in second
+    report.write_bytes(b"report-v1-changed")
+    assert f"MEDIA:{report}" in turn("rerender", f"重新渲染了。\nMEDIA:{report}")
+
+
+def test_notice_detection_follows_hermes_notification_text(delivery):
+    """Hermes 通知开头一变这里先报错，去重不会悄悄失效；用户自己的消息不算通知。"""
+    from gateway.run_notifications import INTERNAL_NOTIFICATION_FOOTER
+    from tools.process_registry_notifications import format_process_notification
+
+    plugin, _ = delivery
+    events = [
+        {"session_id": "p", "command": "c", "exit_code": 0, "output": ""},
+        {"type": "watch_match", "session_id": "p", "pattern": "done", "output": ""},
+        {"type": "heartbeat", "session_id": "p", "elapsed": 30},
+        {"type": "async_delegation", "delegation_id": "d", "status": "completed", "summary": "ok"},
+        {"type": "async_delegation", "delegation_id": "d", "results": [{"status": "completed", "summary": "ok"}]},
+    ]
+    for event in events:
+        text = format_process_notification(event)
+        assert plugin.background.is_notice(text)
+        assert plugin.background.is_notice(f"{text}\n\n{INTERNAL_NOTIFICATION_FOOTER}")
+    assert not plugin.background.is_notice("再发一次视频")
+
+
+def test_desktop_scanned_copy_of_download_shows_once(delivery, monkeypatch):
+    """下载后模型复制改名、回复里没写路径，目录观察到的副本与下载缓存只出一张卡。"""
+    plugin, work = delivery
+    monkeypatch.setattr("tools.url_safety._global_allow_private_urls", lambda: True)
+    begin(plugin)
+    with serving() as (base, _):
+        data = json.loads(call(plugin, "txt2img_generate", json.dumps({"url": base + "/output.png"})))
+    source = Path(data["desktop_deliverables"][0])
+    plugin.before_tool(tool_name="terminal", session_id="s", turn_id="t", tool_call_id="cp")
+    target = work / "小狗.png"
+    shutil.copyfile(source, target)
+    plugin.after_tool(tool_name="terminal", session_id="s", turn_id="t", tool_call_id="cp", result={"exit_code": 0})
+    result = finish(plugin)
+    assert result.count("MEDIA:") == 1 and f"MEDIA:{target}" in result
 
 
 def test_budget_duplicates_search_and_ssrf_boundaries(delivery, monkeypatch, caplog):

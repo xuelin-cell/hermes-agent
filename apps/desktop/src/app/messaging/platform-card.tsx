@@ -64,12 +64,14 @@ export function PlatformCard({
   platform,
   actions,
   pending: connectionPending,
+  checking = false,
   children
 }: {
   id: PlatformId | 'uniagentgate'
   platform?: MessagingPlatformInfo
   actions?: ReactNode
   pending?: boolean
+  checking?: boolean
   children?: ReactNode
 }) {
   const { t } = useI18n()
@@ -86,7 +88,9 @@ export function PlatformCard({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-semibold leading-5">{copy.titles[id]}</h3>
             {id === 'weixin' && <Badge>{t.messaging.recommended}</Badge>}
-            {automatic && !platform ? (
+            {checking ? (
+              <Badge role="status" variant="muted"><Loader2 className="animate-spin" />{t.messaging.connection.checking}</Badge>
+            ) : automatic && !platform ? (
               <Badge role="status" variant="muted">
                 {copy.unavailable}
               </Badge>

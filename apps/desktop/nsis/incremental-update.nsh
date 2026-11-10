@@ -32,10 +32,8 @@ Var UNIWORK_PLANNED
 Var UNIWORK_ARCHIVE
 ; 进本流程之前的 $OUTDIR（安装目录），函数里会切到 $PLUGINSDIR 暂存工具
 Var UNIWORK_OUTDIR
-; 攒起来的一批 -x! 参数（一次 7za 调用的全部排除项）
-Var UNIWORK_EXCLUDES
 Var UNIWORK_EXTRACT_RC
-; 已经跳过式解压过几批：退回整包时用它判断"之前是否真跳过了东西"
+; 跳过式解压是否跑过（0/1）：退回整包时用它判断"之前是否真跳过了东西"
 Var UNIWORK_EXTRACT_BATCH
 ; 藏起来的卸载登记，退回老流程时原样写回
 Var UNIWORK_UNINSTALLER
@@ -159,24 +157,31 @@ Function UNIWORK_PrintLog
   Pop $0
 FunctionEnd
 
-; 解压一批：$UNIWORK_EXCLUDES 是这批要跳过的归档路径。
+; 解压主安装包：要跳过的归档路径全部写在 exclude-patterns.txt（一行一个模式），
+; 用 -x@listfile 传给 7za，一次解压完成。以前受 NSIS 1024 字符串上限限制，要把
+; -x! 参数攒成多批、每批都重扫并覆写整个包；listfile 让批数和保留组件数量无关。
 ; 只取结果码：这条命令的输出不值得塞进 nsExec 的栈里。
 ; 失败时重试一次（7za 偶尔会因为文件被占用而失败）。
 Function UNIWORK_ExtractExcluded
   !insertmacro UniPhaseBegin 3 "解压程序文件"
-  IntOp $UNIWORK_EXTRACT_BATCH $UNIWORK_EXTRACT_BATCH + 1
-  !insertmacro UniSay "跳过上面保留的组件，解压其余文件（第 $UNIWORK_EXTRACT_BATCH 批）"
-  ; 归档路径是给支持看的，详情面板已经逐条报过保留了哪些组件，这里不再刷屏。
-  !insertmacro UniLog "本批跳过：$UNIWORK_EXCLUDES"
-  nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa $UNIWORK_EXCLUDES'
+  StrCpy $UNIWORK_EXTRACT_BATCH 1
+  !insertmacro UniSay "正在解压程序文件..."
+  !insertmacro UniTick $UNIWORK_SUBPHASE_START
+  nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa "-x@$PLUGINSDIR\uniwork\exclude-patterns.txt"'
   Pop $UNIWORK_EXTRACT_RC
   ${If} $UNIWORK_EXTRACT_RC != 0
     !insertmacro UniLog "首次增量解压失败（$UNIWORK_EXTRACT_RC），重试..."
     Sleep 1000
-    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa $UNIWORK_EXCLUDES'
+    nsExec::Exec '"$PLUGINSDIR\uniwork\7za.exe" x "$UNIWORK_ARCHIVE" -o"$INSTDIR" -y -aoa "-x@$PLUGINSDIR\uniwork\exclude-patterns.txt"'
     Pop $UNIWORK_EXTRACT_RC
   ${EndIf}
-  !insertmacro UniLog "本批 7za 结果码：$UNIWORK_EXTRACT_RC"
+  !insertmacro UniTick $UNIWORK_SUBPHASE_END
+  !insertmacro UniSubphaseElapsed
+  ${If} $UNIWORK_EXTRACT_RC == 0
+    !insertmacro UniSay "程序文件解压完成，耗时 $UNIWORK_PHASE_DURATION"
+  ${Else}
+    !insertmacro UniLog "重试后仍失败（$UNIWORK_EXTRACT_RC）"
+  ${EndIf}
 FunctionEnd
 
 ; keep.txt 一行一行读：去掉行尾换行，读到结尾（或出错）时把 $UNIWORK_KEEP_EOF 置 1。
@@ -301,7 +306,7 @@ Function UNIWORK_TryIncremental
   ; -Archive/-SevenZip 只用来数包里被保留组件的文件数和体积（只读归档头，实测一秒多），
   ; 结果写进 keep.txt 交给 UNIWORK_PrintKept；读不到数字也不影响计划。
   ; 失败时重试一次（PowerShell 启动偶尔会超时）。
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -PatternsFile "$PLUGINSDIR\uniwork\exclude-patterns.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -314,7 +319,7 @@ Function UNIWORK_TryIncremental
     ${Loop}
     !insertmacro UniLog "首次生成更新计划失败（$0），重试..."
     Sleep 1000
-    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -ExcludeFile "$PLUGINSDIR\uniwork\exclude.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\uniwork\update-plan.ps1" -Install "$INSTDIR" -NewStamp "$PLUGINSDIR\uniwork\stamp\payload-stamp.txt" -DeleteFile "$PLUGINSDIR\uniwork\delete.txt" -PatternsFile "$PLUGINSDIR\uniwork\exclude-patterns.txt" -KeepFile "$PLUGINSDIR\uniwork\keep.txt" -Archive "$UNIWORK_ARCHIVE" -SevenZip "$PLUGINSDIR\uniwork\7za.exe" -Log "$PLUGINSDIR\uniwork\plan.log"'
     Pop $0
     Pop $1
   ${EndIf}
@@ -366,56 +371,21 @@ Function UNIWORK_TryIncremental
   !insertmacro UniSubphaseElapsed
   !insertmacro UniSay "旧版路径已清除，耗时 $UNIWORK_PHASE_DURATION"
 
-  ; exclude.txt 一行一个 -x! 参数：组件多的时候全部拼进一条命令会超出 NSIS 的字符串上限，
-  ; 所以攒够一批就先解压一次。一个组件都没保留时整包解压，让解压进度走模板的老路。
-  StrCpy $UNIWORK_EXCLUDES ""
+  ; exclude-patterns.txt 一行一个排除模式（update-plan.ps1 写出）。一个组件都没保留时
+  ; 这个文件不存在，不跑跳过式解压，退回整包让解压进度走模板的老路。
   ClearErrors
-  FileOpen $0 "$PLUGINSDIR\uniwork\exclude.txt" r
+  FileOpen $0 "$PLUGINSDIR\uniwork\exclude-patterns.txt" r
   IfErrors uniwork_try_exclude_done
-  uniwork_try_exclude_loop:
-    ClearErrors
-    FileRead $0 $1
-    IfErrors uniwork_try_exclude_close
-  uniwork_try_exclude_trim:
-    StrCpy $2 $1 1 -1
-    ${If} $2 == "$\r"
-    ${OrIf} $2 == "$\n"
-      StrCpy $1 $1 -1
-      Goto uniwork_try_exclude_trim
-    ${EndIf}
-    ${If} $1 == ""
-      Goto uniwork_try_exclude_loop
-    ${EndIf}
-    StrLen $2 $UNIWORK_EXCLUDES
-    ${If} $2 > 700
-      Call UNIWORK_ExtractExcluded
-      ${If} $UNIWORK_EXTRACT_RC != 0
-        !insertmacro UniSay "升级改为完整安装：增量解压失败（重试后仍失败，$UNIWORK_EXTRACT_RC）"
-        Goto uniwork_try_done
-      ${EndIf}
-      StrCpy $UNIWORK_EXCLUDES ""
-    ${EndIf}
-    ${If} $UNIWORK_EXCLUDES == ""
-      StrCpy $UNIWORK_EXCLUDES "$1"
-    ${Else}
-      StrCpy $UNIWORK_EXCLUDES "$UNIWORK_EXCLUDES $1"
-    ${EndIf}
-    Goto uniwork_try_exclude_loop
-  uniwork_try_exclude_close:
-    FileClose $0
+  FileClose $0
+  Call UNIWORK_ExtractExcluded
+  ${If} $UNIWORK_EXTRACT_RC != 0
+    !insertmacro UniSay "升级改为完整安装：增量解压失败（重试后仍失败，$UNIWORK_EXTRACT_RC）"
+    Goto uniwork_try_done
+  ${EndIf}
   uniwork_try_exclude_done:
 
-  ${If} $UNIWORK_EXCLUDES != ""
-    Call UNIWORK_ExtractExcluded
-    ${If} $UNIWORK_EXTRACT_RC != 0
-      !insertmacro UniSay "升级改为完整安装：增量解压失败（重试后仍失败，$UNIWORK_EXTRACT_RC）"
-      Goto uniwork_try_done
-    ${EndIf}
-    StrCpy $UNIWORK_EXCLUDES ""
-  ${EndIf}
-
   ; 增量更新后，解压 archive 组件（venv.7z/tar.xz, hermes-agent.7z/tar.xz）
-  ; 这些组件在 exclude.txt 里被排除（保留旧版本），但如果组件指纹变了，
+  ; 这些组件在 exclude-patterns.txt 里被排除（保留旧版本），但如果组件指纹变了，
   ; 它们不在 exclude 里，archive 文件会被解压出来，需要进一步解压缩。
   StrCpy $UNIWORK_ARCHIVE_KIND "venv"
   Call UNIWORK_ExtractArchive

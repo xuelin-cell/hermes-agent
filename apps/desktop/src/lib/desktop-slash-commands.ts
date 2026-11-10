@@ -79,7 +79,7 @@ export type DesktopActionId =
 export type DesktopPickerId = 'model' | 'session'
 
 /** Why a known Hermes command has no desktop UI surface. */
-export type DesktopUnavailableReason = 'advanced' | 'composer-voice' | 'messaging' | 'settings' | 'terminal'
+export type DesktopUnavailableReason = 'advanced' | 'composer-voice' | 'disabled' | 'messaging' | 'settings' | 'terminal'
 
 /**
  * How the desktop fulfils a command. This is the single discriminator the
@@ -325,6 +325,8 @@ const REGISTRY_DESKTOP_SURFACE: Readonly<Record<string, string | null>> = deskto
 export const TS_ONLY_NO_DESKTOP_SURFACE: Record<DesktopUnavailableReason, readonly string[]> = {
   advanced: [],
   'composer-voice': [],
+  // 暂停 Codex 产品入口；旧后端目录或缓存也不能重新展示、执行。
+  disabled: ['/codex'],
   messaging: [],
   settings: ['/pets'],
   terminal: ['/density', '/details', '/logs', '/mouse']
@@ -420,6 +422,7 @@ function asUnavailableReason(value: string | null | undefined): DesktopUnavailab
   if (
     value === 'advanced' ||
     value === 'composer-voice' ||
+    value === 'disabled' ||
     value === 'messaging' ||
     value === 'settings' ||
     value === 'terminal'
@@ -477,6 +480,7 @@ const UNAVAILABLE_MESSAGE: Record<DesktopUnavailableReason, (command: string) =>
     `${command} is not shown in the desktop slash palette. Use the relevant desktop control or terminal interface instead.`,
   'composer-voice': () =>
     'Voice chat lives in the composer here: click the microphone button and choose "Start voice chat", or use the voice shortcut from Settings → Keyboard Shortcuts.',
+  disabled: command => `${command} 暂未开放，请直接描述开发任务。`,
   messaging: command => `${command} is only used from chat apps.`,
   settings: command => `${command} is managed from the desktop sidebar.`,
   terminal: command => `${command} is only available in the terminal interface.`
@@ -525,7 +529,7 @@ function isKnownHermesSlashCommand(command: string): boolean {
 /**
  * An "extension" command is anything the backend surfaces that is NOT one of
  * Hermes' built-in slash commands — i.e. skill commands (`/gif-search`,
- * `/codex`, …) and user-defined quick commands. These are user-activated, so
+ * `/docx`, …) and user-defined quick commands. These are user-activated, so
  * they appear in the desktop slash palette and execute when typed.
  */
 export function isDesktopSlashExtensionCommand(command: string): boolean {

@@ -178,6 +178,7 @@ export function RecommendedConnectorDetail(props: RecommendedConnectorDetailProp
               error={props.error}
               examples={connectorExamples(props.entry.id, item.name, locale === 'zh' || locale === 'zh-hant')}
               item={item}
+              onCancel={props.onCancel}
               onConnect={props.onConnect}
               onDisconnect={props.onDisconnect}
               onEnable={props.onEnable}
@@ -204,6 +205,7 @@ interface OverviewViewProps {
   error: string
   examples: string[]
   item: ConnectorCopy
+  onCancel: () => void
   onConnect: () => void
   onDisconnect: () => void
   onEnable: () => void
@@ -219,6 +221,7 @@ function OverviewView({
   error,
   examples: prompts,
   item,
+  onCancel,
   onConnect,
   onDisconnect,
   onEnable,
@@ -266,7 +269,7 @@ function OverviewView({
             )}
           </>
         ) : waiting ? (
-          <Button onClick={onDisconnect} size="lg" variant="outline">
+          <Button onClick={onCancel} size="lg" variant="outline">
             {copy.cancel}
           </Button>
         ) : (

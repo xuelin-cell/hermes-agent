@@ -58,13 +58,13 @@ def _make_payload(root: Path, target: str, components: dict[str, str], tools: di
     _write_stamp(payload / "payload-stamp.txt", target, components, tools)
 
 
-def _run_planner(install: Path, new_stamp: Path, old_stamp: Path | None, delete_file: Path, exclude_file: Path) -> subprocess.CompletedProcess:
+def _run_planner(install: Path, new_stamp: Path, old_stamp: Path | None, delete_file: Path, patterns_file: Path) -> subprocess.CompletedProcess:
     powershell = shutil.which("powershell.exe")
     assert powershell, "Windows planner tests require Windows PowerShell."
     args = [
         powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(UPDATE_PLAN_PS1),
         "-Install", str(install), "-NewStamp", str(new_stamp),
-        "-DeleteFile", str(delete_file), "-ExcludeFile", str(exclude_file),
+        "-DeleteFile", str(delete_file), "-PatternsFile", str(patterns_file),
     ]
     if old_stamp:
         args.extend(["-OldStamp", str(old_stamp)])
@@ -77,8 +77,8 @@ def test_planner_exits_2_when_not_installed_payload(tmp_path):
     new_stamp = tmp_path / "new.txt"
     _write_stamp(new_stamp, "windows-x64", {"venv": "a" * 64, "pm-runtime": "b" * 64, "uv-cache.zip": "c" * 64}, {})
     delete = tmp_path / "delete.txt"
-    exclude = tmp_path / "exclude.txt"
-    result = _run_planner(install, new_stamp, None, delete, exclude)
+    patterns = tmp_path / "exclude-patterns.txt"
+    result = _run_planner(install, new_stamp, None, delete, patterns)
     assert result.returncode == 2
 
 
@@ -93,8 +93,8 @@ def test_planner_deletes_everything_when_no_previous_stamp(tmp_path):
     _make_payload(install, "windows-x64", components, tools)
     new_stamp = install / "resources/agent-payload/payload-stamp.txt"
     delete = tmp_path / "delete.txt"
-    exclude = tmp_path / "exclude.txt"
-    result = _run_planner(install, new_stamp, None, delete, exclude)
+    patterns = tmp_path / "exclude-patterns.txt"
+    result = _run_planner(install, new_stamp, None, delete, patterns)
     assert result.returncode == 0
     deleted = delete.read_text(encoding="utf-8").splitlines()
     assert "other" in deleted
@@ -114,14 +114,15 @@ def test_planner_keeps_components_with_matching_digests(tmp_path):
     _write_stamp(old_stamp, "windows-x64", components, tools)
     new_stamp = install / "resources/agent-payload/payload-stamp.txt"
     delete = tmp_path / "delete.txt"
-    exclude = tmp_path / "exclude.txt"
-    result = _run_planner(install, new_stamp, old_stamp, delete, exclude)
+    patterns = tmp_path / "exclude-patterns.txt"
+    result = _run_planner(install, new_stamp, old_stamp, delete, patterns)
     assert result.returncode == 0
-    excluded = exclude.read_text(encoding="utf-8").splitlines()
-    assert r"-x!resources\agent-payload\venv\*" in excluded
-    assert r"-x!resources\agent-payload\pm-runtime\*" in excluded
-    assert r"-x!resources\agent-payload\uv-cache.zip" in excluded
-    assert r"-x!resources\agent-payload\tools\python\*" in excluded
+    patterns_lines = patterns.read_text(encoding="utf-8").splitlines()
+    # 纯模式行，7za 用 -x@listfile 读取（一行一个，不再带 -x! 前缀）。
+    assert r"resources\agent-payload\venv\*" in patterns_lines
+    assert r"resources\agent-payload\pm-runtime\*" in patterns_lines
+    assert r"resources\agent-payload\uv-cache.zip" in patterns_lines
+    assert r"resources\agent-payload\tools\python\*" in patterns_lines
     deleted = delete.read_text(encoding="utf-8").splitlines()
     assert len(deleted) == 0
 
@@ -138,12 +139,12 @@ def test_planner_replaces_component_when_digest_changes(tmp_path):
     _write_stamp(old_stamp, "windows-x64", old_components, tools)
     new_stamp = install / "resources/agent-payload/payload-stamp.txt"
     delete = tmp_path / "delete.txt"
-    exclude = tmp_path / "exclude.txt"
-    result = _run_planner(install, new_stamp, old_stamp, delete, exclude)
+    patterns = tmp_path / "exclude-patterns.txt"
+    result = _run_planner(install, new_stamp, old_stamp, delete, patterns)
     assert result.returncode == 0
-    excluded = exclude.read_text(encoding="utf-8").splitlines()
-    assert r"-x!resources\agent-payload\pm-runtime\*" in excluded
-    assert r"-x!resources\agent-payload\uv-cache.zip" in excluded
-    assert not any("venv" in line for line in excluded)
+    patterns_lines = patterns.read_text(encoding="utf-8").splitlines()
+    assert r"resources\agent-payload\pm-runtime\*" in patterns_lines
+    assert r"resources\agent-payload\uv-cache.zip" in patterns_lines
+    assert not any("venv" in line for line in patterns_lines)
     deleted = delete.read_text(encoding="utf-8").splitlines()
     assert r"resources\agent-payload\venv" in deleted

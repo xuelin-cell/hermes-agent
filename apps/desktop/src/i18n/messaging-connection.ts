@@ -13,6 +13,8 @@ export interface MessagingConnectionCopy {
   saveFailed: string
   connecting: string
   savedFailed: string
+  unbindFailed: string
+  unbindApplyFailed: string
   duplicateTitle: string
   duplicateDescription: string
   invalid: string
@@ -39,6 +41,9 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saveFailed: 'Could not save chat app settings. Your previous configuration is unchanged.',
     connecting: 'Connecting… Other chat apps may disconnect briefly.',
     savedFailed: 'Settings saved, but the chat app connection could not be restored. Retry the connection.',
+    unbindFailed: 'Could not disconnect this chat app. Try again or open logs.',
+    unbindApplyFailed:
+      'Disconnected, but the messaging gateway did not restart or stop properly. Other chat apps may be unavailable. Retry the connection.',
     duplicateTitle: 'Bot already used on this device',
     duplicateDescription: 'Another account or Profile uses this bot. Continuing may disconnect it. Continue?',
     invalid: 'ID or Secret was rejected.',
@@ -60,6 +65,8 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saveFailed: '聊天应用配置保存失败，原配置保持不变。',
     connecting: '正在连接，其它聊天应用会短暂断开。',
     savedFailed: '配置已保存，但消息连接恢复失败，请重试连接。',
+    unbindFailed: '解绑未完成，请重试或查看日志。',
+    unbindApplyFailed: '已解绑，但消息网关没有正常重启或停止，其它聊天应用可能暂时不可用，请重试连接。',
     duplicateTitle: '此机器人已在本机使用',
     duplicateDescription: '其它账号或 Profile 已使用此机器人，继续可能使其断开。是否继续？',
     invalid: 'ID 或 Secret 无效，请检查后重试。',
@@ -81,6 +88,8 @@ export const messagingConnectionCopy: Record<Locale, MessagingConnectionCopy> = 
     saveFailed: '聊天應用設定儲存失敗，原設定保持不變。',
     connecting: '正在連線，其他聊天應用會短暫斷線。',
     savedFailed: '設定已儲存，但訊息連線恢復失敗，請重試連線。',
+    unbindFailed: '解除綁定未完成，請重試或查看日誌。',
+    unbindApplyFailed: '已解除綁定，但訊息閘道沒有正常重新啟動或停止，其他聊天應用可能暫時無法使用，請重試連線。',
     duplicateTitle: '此機器人已在本機使用',
     duplicateDescription: '其他帳號或 Profile 已使用此機器人，繼續可能使其斷線。是否繼續？',
     invalid: 'ID 或 Secret 無效，請檢查後重試。',

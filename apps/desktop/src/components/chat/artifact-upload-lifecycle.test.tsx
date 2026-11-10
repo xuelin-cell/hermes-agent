@@ -100,7 +100,7 @@ it.each(['card', 'preview'] as const)('%s 提交后立即自动关闭，后台�
     )
   )
 
-  fireEvent.click(screen.getByRole('button', { name: '上传到资料库' }))
+  fireEvent.click(screen.getByRole('button', { name: '上传到云盘' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Reports' }))
   await waitFor(() =>
     expect((screen.getByRole('button', { name: '上传到此文件夹' }) as HTMLButtonElement).disabled).toBe(false)

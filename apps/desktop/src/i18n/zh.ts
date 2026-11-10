@@ -5,15 +5,6 @@ import { introZh } from './intro-zh'
 import { messagingConnectionCopy } from './messaging-connection'
 
 export const zh = defineLocale({
-  workspaceEditor: {
-    title: '编辑器',
-    capabilities: '扩展',
-    openProject: '请先打开项目中的会话，再浏览和编辑文件。',
-    selectFile: '选择一个文件开始编辑。',
-    unsupported: '无法编辑二进制、截断或过大的文件。',
-    refresh: '刷新',
-    save: '保存'
-  },
   conversationShare: {
     sessionShare: '分享会话',
     responseShare: '分享回复',
@@ -141,7 +132,7 @@ export const zh = defineLocale({
     officePreviewFailed: 'Office 文件转换失败，请下载原文件查看。',
     artifactSensitive: '该文件属于敏感配置或凭据，不能上传云盘。',
     uploadArtifact: '上传到云盘',
-    uploadToLibrary: '上传到资料库',
+    uploadToLibrary: '上传到云盘',
     uploadHere: '上传到此文件夹',
     chooseUploadFolder: '选择个人云盘中的保存位置',
     artifactRemote: '暂时只能上传当前桌面账号的本机产物，远程文件和网络链接不支持直接上传。',
@@ -902,7 +893,6 @@ export const zh = defineLocale({
     unreadSessions: count => (count === 1 ? '1 个未读会话' : `${count} 个未读会话`),
     muteHaptics: '关闭触感反馈',
     unmuteHaptics: '开启触感反馈',
-    openSettings: '打开设置',
     openStarmap: '打开记忆图谱',
     enterHud: 'HUD 模式',
     exitHud: '退出 HUD 模式',
@@ -1362,7 +1352,7 @@ export const zh = defineLocale({
       tabStripAlways: '始终',
       tabStripNever: '从不',
       appActionsTitle: '应用操作',
-      appActionsDesc: '设置、布局和 HUD 放在标题栏左侧还是右侧。选右侧可给标签留出左边空间。',
+      appActionsDesc: '布局和 HUD 放在标题栏左侧还是右侧。选右侧可给标签留出左边空间。',
       appActionsLeft: '左侧',
       appActionsRight: '右侧',
       terminalFontTitle: '终端字体',
@@ -4292,6 +4282,7 @@ export const zh = defineLocale({
       '/context': '显示详细的上下文窗口，包括用量、分类明细、压缩统计与吞吐量',
       '/whoami': '显示你的斜线命令访问权限（admin / user）',
       '/profile': '切换活跃的 UniWork 配置档案',
+      '/codex': '使用当前会话所选模型执行编码任务',
       '/codex-runtime': '切换 OpenAI/Codex 模型使用的 Codex app-server runtime',
       '/personality': '设置预定义人格',
       '/battery': '切换状态栏中的彩色电池指示器',
@@ -4372,6 +4363,18 @@ export const zh = defineLocale({
     attachLabel: '附加',
     files: '添加文件',
     folder: '添加文件夹',
+    skills: '技能',
+    connectors: '连接器',
+    manageSkills: '管理技能…',
+    manageConnectors: '管理连接器…',
+    loading: '正在加载…',
+    noSkills: '暂无已安装技能',
+    noConnectors: '暂无已配置连接器',
+    quickConnectorNames: {
+      uniAiToolkit: '通用 AI 工具箱',
+      arxiv: 'arXiv 论文检索',
+      uniworkDrive: 'UniWork 云盘'
+    },
     images: '图片…',
     pasteImage: '粘贴图片',
     url: 'URL…',
@@ -4612,11 +4615,14 @@ export const zh = defineLocale({
       guiSkew: '请更新桌面应用',
       error: '更新已暂停'
     },
+    startingUpdate: '正在开始更新…',
+    preparingInstall: '正在准备安装…',
     checking: '正在检查更新…',
     checkFailedTitle: '无法检查更新',
     tryAgain: '重试',
     notAvailableTitle: '更新不可用',
     unsupportedMessage: '此版本的 UniWork 无法在应用内自行更新。',
+    bridgeUnavailable: '桌面端更新服务不可用，请重启应用后重试。',
     connectionRetry: '请检查网络连接后重试。',
     gitUnusable: 'UniWork 无法在这台电脑上运行 Git，因此无法检查更新。',
     latestBody: '你正在运行最新版本。',
@@ -4685,6 +4691,7 @@ export const zh = defineLocale({
       restarting: '后端正在重启以加载更新…',
       notAvailable: '此后端无法更新。',
       failed: '后端更新失败。',
+      applied: '后端更新已完成。',
       noReturn: '后端未恢复在线。更新可能未完成——请检查后端主机。'
     },
     // Update-status overlay + version-details (mechanism-aware update UI).

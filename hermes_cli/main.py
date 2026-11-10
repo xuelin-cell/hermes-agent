@@ -46,6 +46,12 @@ if _bootstrap_root not in sys.path:
     sys.path.insert(0, _bootstrap_root)
 from hermes_cli import _startup_fast  # noqa: E402
 
+# Startup stage timing: imported before the heavy import graph below so the
+# baseline is as close to process start as this process controls.
+from hermes_cli import startup_timing as _startup_timing  # noqa: E402
+
+_startup_timing.mark("python entry")
+
 # A literal ``~``/``$VAR`` in HERMES_HOME (fish, or any quoted value) must become absolute
 # before the first reader — otherwise it resolves against cwd and scaffolds <cwd>/~/.hermes.
 _startup_fast.normalize_hermes_home_env()
@@ -736,6 +742,10 @@ try:
     )
 except Exception:
     pass  # best-effort — don't crash the CLI if logging setup fails
+
+# Replay the startup marks taken before logging existed.
+_startup_timing.mark("logging ready")
+_startup_timing.flush()
 
 # Apply IPv4 preference before any HTTP client is created.
 if _FORCE_IPV4_EARLY:

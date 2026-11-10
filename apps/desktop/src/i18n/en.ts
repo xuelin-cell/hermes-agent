@@ -4,15 +4,6 @@ import { messagingConnectionCopy } from './messaging-connection'
 import type { Translations } from './types'
 
 export const en: Translations = {
-  workspaceEditor: {
-    title: 'Editor',
-    capabilities: 'Extensions',
-    openProject: 'Open a project conversation to browse its files.',
-    selectFile: 'Select a file to edit.',
-    unsupported: 'Binary, truncated, or large files cannot be edited here.',
-    refresh: 'Refresh',
-    save: 'Save'
-  },
   conversationShare: {
     sessionShare: 'Share conversation',
     responseShare: 'Share response',
@@ -148,7 +139,7 @@ export const en: Translations = {
     officePreviewFailed: 'Office conversion failed. Download the original file to view it.',
     artifactSensitive: 'Sensitive configuration and credential files cannot be uploaded to the cloud drive.',
     uploadArtifact: 'Upload to cloud drive',
-    uploadToLibrary: 'Upload to library',
+    uploadToLibrary: 'Upload to cloud drive',
     uploadHere: 'Upload to this folder',
     chooseUploadFolder: 'Choose a destination in your personal cloud drive',
     artifactRemote:
@@ -1208,7 +1199,6 @@ export const en: Translations = {
     unreadSessions: count => (count === 1 ? '1 unread session' : `${count} unread sessions`),
     muteHaptics: 'Mute haptics',
     unmuteHaptics: 'Unmute haptics',
-    openSettings: 'Open settings',
     openStarmap: 'Open memory graph',
     enterHud: 'HUD mode',
     exitHud: 'Exit HUD mode',
@@ -1694,7 +1684,7 @@ export const en: Translations = {
       tabStripAlways: 'Always',
       tabStripNever: 'Never',
       appActionsTitle: 'App Actions',
-      appActionsDesc: 'Where Settings, Layout, and HUD sit in the titlebar. Right leaves room for tabs on the left.',
+      appActionsDesc: 'Where Layout and HUD sit in the titlebar. Right leaves room for tabs on the left.',
       appActionsLeft: 'Left',
       appActionsRight: 'Right',
       terminalFontTitle: 'Terminal Font',
@@ -4556,6 +4546,7 @@ export const en: Translations = {
         'Show detailed context window view with usage gauge, category breakdown, compression stats, and throughput',
       '/whoami': 'Show your slash command access (admin / user)',
       '/profile': 'Switch the active UniWork profile',
+      '/codex': 'Run a coding task with the model selected in this chat',
       '/codex-runtime': 'Toggle codex app-server runtime for OpenAI/Codex models',
       '/personality': 'Set a predefined personality',
       '/battery': 'Toggle a color-coded battery indicator in the status bar',
@@ -4638,6 +4629,18 @@ export const en: Translations = {
     attachLabel: 'Attach',
     files: 'Add files',
     folder: 'Add folder',
+    skills: 'Skills',
+    connectors: 'Connectors',
+    manageSkills: 'Manage skills…',
+    manageConnectors: 'Manage connectors…',
+    loading: 'Loading…',
+    noSkills: 'No installed skills',
+    noConnectors: 'No configured connectors',
+    quickConnectorNames: {
+      uniAiToolkit: 'UniAI Toolkit',
+      arxiv: 'arXiv research',
+      uniworkDrive: 'UniWork Drive'
+    },
     images: 'Images…',
     pasteImage: 'Paste image',
     url: 'URL…',
@@ -4881,11 +4884,14 @@ export const en: Translations = {
       guiSkew: 'Update the desktop app',
       error: 'Update paused'
     },
+    startingUpdate: 'Starting update…',
+    preparingInstall: 'Preparing the install…',
     checking: 'Looking for updates…',
     checkFailedTitle: 'Couldn’t check for updates',
     tryAgain: 'Try again',
     notAvailableTitle: 'Update not available',
     unsupportedMessage: 'This version of UniWork can’t update itself from inside the app.',
+    bridgeUnavailable: 'Desktop bridge unavailable.',
     connectionRetry:
       "UniWork couldn't reach the update server. Check your internet connection and try again. If you use a remote UniWork, make sure it is online.",
     gitUnusable: 'UniWork could not run Git on this computer, so it could not check for updates.',
@@ -4965,6 +4971,7 @@ export const en: Translations = {
       restarting: 'Backend restarting to load the update…',
       notAvailable: 'Update not available for this backend.',
       failed: 'Backend update failed.',
+      applied: 'Backend update applied.',
       noReturn: 'Backend didn’t come back online. The update may not have completed — check the backend host.'
     },
     // Update-status overlay + version-details (mechanism-aware update UI).

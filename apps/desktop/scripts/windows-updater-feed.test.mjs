@@ -57,9 +57,9 @@ test('the self-managed NSIS build bakes its feed at the OSS origin', () => {
 })
 
 test('the web installer target keeps the OSS feed and the per-machine elevation', () => {
-  // Only nsis-web embeds the payload blockmap, so it is the one NSIS shape
-  // electron-updater can update differentially. The feed origin and the
-  // elevation flag must survive the target switch.
+  // The web installer embeds the payload blockmap instead of publishing a
+  // .exe.blockmap beside the installer. The feed origin and the elevation flag
+  // must survive the target switch.
   const config = fresh({
     HERMES_DESKTOP_VARIANT: 'bundled',
     HERMES_BUILD_COMMIT: COMMIT,

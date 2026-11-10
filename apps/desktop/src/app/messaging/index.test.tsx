@@ -4,6 +4,9 @@ import { cleanStores } from 'nanostores'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { $apiRequestScope } from '@/api/client'
+import type * as queryClientModule from '@/lib/query-client'
+import { queryClient } from '@/lib/query-client'
 import { $settingsScopeOverride } from '@/store/settings-scope'
 import type { MessagingPlatformInfo } from '@/types/hermes'
 
@@ -83,7 +86,10 @@ vi.mock('@/store/gateway', () => ({
   ensureGatewayForProfile: vi.fn(async () => undefined),
   openGatewayForProfile: vi.fn(async () => undefined)
 }))
-vi.mock('@/lib/query-client', () => ({ invalidateProfileScopedQueries: vi.fn() }))
+vi.mock('@/lib/query-client', async importOriginal => ({
+  ...await importOriginal<typeof queryClientModule>(),
+  invalidateProfileScopedQueries: vi.fn()
+}))
 vi.mock('@/store/starmap', () => ({ resetStarmapGraph: vi.fn() }))
 
 vi.mock('@/lib/external-link', () => ({
@@ -122,6 +128,9 @@ function platform(patch: Partial<MessagingPlatformInfo> = {}): MessagingPlatform
 }
 
 beforeEach(() => {
+  queryClient.clear()
+  queryClient.mount()
+  $apiRequestScope.set({ profile: null, connectionId: null })
   currentStatus = { phase: 'idle', revision: 0 }
   $messagingOperation.set({ phase: 'idle', revision: -1 })
   $dismissedMessagingFailureRevision.set(-1)
@@ -143,6 +152,9 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  queryClient.unmount()
+  queryClient.clear()
+  vi.useRealTimers()
   cleanStores($messagingOperation)
   statusListeners.clear()
   vi.clearAllMocks()
@@ -156,7 +168,7 @@ afterEach(() => {
 void import('./index')
 
 /** 在隔离路由中渲染产品页面，不启动用户后端或连接真实平台。 */
-async function renderMessaging() {
+async function renderMessaging(waitForData = true) {
   let result: ReturnType<typeof render>
   await act(async () => {
     result = render(
@@ -165,6 +177,11 @@ async function renderMessaging() {
       </MemoryRouter>
     )
   })
+
+  if (waitForData) {
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+  }
 
   return result!
 }
@@ -599,6 +616,68 @@ describe('Messaging cards and native configuration', () => {
     expect(dingtalkCard.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
+  const CHANNELS = [
+    ['weixin', 'WeChat ClawBot integration'],
+    ['dingtalk', 'DingTalk bot integration'],
+    ['feishu', 'Feishu bot integration'],
+    ['wecom', 'WeCom smart bot integration']
+  ] as const
+
+  it.each(CHANNELS)('%s 解绑成功后只剩未连接和配置入口，不留旧错误', async (id, title) => {
+    publishOperation({ phase: 'completed', operation: 'disconnect', platform: id, profile: 'default', saved: true })
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [platform({ id, state: 'disabled', error_message: 'stale link error' })]
+    })
+    const view = await renderMessaging()
+    const card = within(await screen.findByRole('article', { name: title }))
+    expect(card.getByRole('status').textContent).toBe('Not connected')
+    expect(card.getByText('Configure').closest('button')!.hasAttribute('disabled')).toBe(false)
+    expect(card.queryByRole('button', { name: 'Disconnect' })).toBeNull()
+    expect(card.queryByRole('button', { name: 'Retry' })).toBeNull()
+    expect(card.queryByRole('button', { name: 'Scan again' })).toBeNull()
+    expect(screen.queryByText('stale link error')).toBeNull()
+    expect(view.container.querySelector('[data-slot="alert"]')).toBeNull()
+  })
+
+  it.each(CHANNELS)('%s 凭据完整仅停用显示已禁用，残留绑定不算解绑成功，两者都保留解绑入口', async (id, title) => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id, configured: true, state: 'disabled' })] })
+    await renderMessaging()
+    const card = within(await screen.findByRole('article', { name: title }))
+    expect(card.getByRole('status').textContent).toBe('Disabled')
+    expect(card.getByRole('button', { name: 'Disconnect' })).toBeTruthy()
+
+    getMessagingPlatforms.mockResolvedValue({
+      platforms: [platform({ id, enabled: true, state: 'not_configured' })]
+    })
+    await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() => expect(card.getByRole('status').textContent).toBe('Not connected'))
+    expect(card.getByRole('button', { name: 'Disconnect' })).toBeTruthy()
+  })
+
+  it.each(CHANNELS)('%s 解绑前发出的迟到响应不能把卡片恢复成已绑定', async (id, title) => {
+    const bound = platform({ id, configured: true, enabled: true, state: 'connected' })
+    getMessagingPlatforms.mockResolvedValue({ platforms: [bound] })
+    await renderMessaging()
+    const card = within(await screen.findByRole('article', { name: title }))
+    expect(card.getByText('Connected')).toBeTruthy()
+
+    let deliverStale!: (value: { platforms: MessagingPlatformInfo[] }) => void
+    getMessagingPlatforms.mockReturnValueOnce(new Promise(resolve => { deliverStale = resolve }))
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id, state: 'disabled' })] })
+    await act(async () => { window.document.dispatchEvent(new Event('visibilitychange')) })
+    await waitFor(() => expect(getMessagingPlatforms).toHaveBeenCalledTimes(2))
+    await act(async () => {
+      publishOperation({ phase: 'completed', operation: 'disconnect', platform: id, profile: 'default', saved: true })
+    })
+    await act(async () => { deliverStale({ platforms: [bound] }) })
+
+    await waitFor(() => expect(card.getByRole('status').textContent).toBe('Not connected'))
+    expect(card.queryByText('Connected')).toBeNull()
+    expect(card.queryByRole('button', { name: 'Disconnect' })).toBeNull()
+    // 迟到的旧结果被丢弃后补读过新状态，而不是恰好没人再读。
+    expect(getMessagingPlatforms.mock.calls.length).toBeGreaterThan(2)
+  })
+
   it('解绑生效后移除飞书旧错误和超时，保留其它渠道的真实故障', async () => {
     publishOperation({
       phase: 'failed',
@@ -627,7 +706,8 @@ describe('Messaging cards and native configuration', () => {
     getMessagingPlatforms.mockResolvedValue({ platforms: [feishu, other] })
     await renderMessaging()
     expect(await screen.findByText(feishu.error_message!)).toBeTruthy()
-    expect(screen.getByText(/Settings saved, but the chat app connection/)).toBeTruthy()
+    // 绑定还在：只说解绑未完成，不说已解绑。
+    expect(screen.getByText(/Could not disconnect this chat app/)).toBeTruthy()
 
     getMessagingPlatforms.mockResolvedValue({
       platforms: [{ ...feishu, enabled: false, configured: false, state: 'disabled' }, other]
@@ -636,7 +716,7 @@ describe('Messaging cards and native configuration', () => {
       window.document.dispatchEvent(new Event('visibilitychange'))
     })
     await waitFor(() => expect(screen.queryByText(feishu.error_message!)).toBeNull())
-    expect(screen.queryByText(/Settings saved, but the chat app connection/)).toBeNull()
+    expect(screen.queryByText(/Could not disconnect this chat app/)).toBeNull()
     expect(screen.getByText(other.error_message!)).toBeTruthy()
     const card = within(screen.getByRole('article', { name: 'Feishu bot integration' }))
     expect(card.queryByRole('button', { name: 'Disconnect' })).toBeNull()
@@ -649,7 +729,7 @@ describe('Messaging cards and native configuration', () => {
     { error: 'apply_failed', saved: true },
     { error: 'index_failed', saved: true },
     { error: 'connection_timeout', saved: false }
-  ])('解绑后的新快照不能掩盖 $error/$saved 保存或执行错误', async ({ error, saved }) => {
+  ])('解绑后的新快照不能掩盖 $error/$saved 清理或执行错误，两种失败分开说明', async ({ error, saved }) => {
     publishOperation({ phase: 'failed', operation: 'disconnect', platform: 'feishu', profile: 'default', saved, error })
     getMessagingPlatforms.mockResolvedValue({
       platforms: [platform({ id: 'feishu' }), dingtalk({ enabled: true, configured: true, state: 'connected' })]
@@ -657,7 +737,8 @@ describe('Messaging cards and native configuration', () => {
     await renderMessaging()
     expect(
       await screen.findByText(
-        saved ? /Settings saved, but the chat app connection/ : /Could not save chat app settings/
+        saved ? /Disconnected, but the messaging gateway did not restart or stop properly/
+          : /Could not disconnect this chat app/
       )
     ).toBeTruthy()
   })
@@ -723,7 +804,7 @@ describe('Messaging cards and native configuration', () => {
     const row = dingtalk({ configured: true, enabled: true, state: 'connected' })
     let release!: (value: { platforms: MessagingPlatformInfo[] }) => void
     getMessagingPlatforms.mockReturnValue(new Promise(resolve => { release = resolve }))
-    await renderMessaging()
+    await renderMessaging(false)
     await act(async () => undefined)
     expect(screen.queryByText(/Chat app connections could not be restored/)).toBeNull()
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
@@ -797,6 +878,7 @@ describe('Messaging cards and native configuration', () => {
     expect(revealLogs).toHaveBeenCalledOnce()
     await act(async () => { publishOperation({ phase: 'failed', error: 'gateway_identity_unverified' }) })
     expect(await screen.findByText('The existing gateway’s ownership could not be verified. No new gateway was started. Open logs for details.')).toBeTruthy()
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Retry' })[0].hasAttribute('disabled')).toBe(false))
     fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0])
     await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
   })
@@ -846,6 +928,7 @@ describe('Messaging cards and native configuration', () => {
     expect(notify).not.toHaveBeenCalled()
     view.rerender(<MemoryRouter><MessagingView /></MemoryRouter>)
     expect(await screen.findByText('Settings saved, but the chat app connection could not be restored. Retry the connection.')).toBeTruthy()
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Retry' })[0].hasAttribute('disabled')).toBe(false))
     fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0])
     await waitFor(() => expect(messagingSetup).toHaveBeenCalledWith({ operation: 'retry', profile: 'default' }))
   })
@@ -1170,4 +1253,142 @@ describe('MessagingView RCS integration', () => {
   })
 
 
+})
+
+
+describe('连接手机的快速展示与后台读取', () => {
+  /** 创建可以控制返回时机的响应，验证真实组件不会依赖接口即时完成。 */
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>(done => { resolve = done })
+
+    return { promise, resolve }
+  }
+
+  it('慢接口返回前已显示五张卡片，未知状态不允许配置或显示已连接', async () => {
+    const request = deferred<{ platforms: MessagingPlatformInfo[] }>()
+    $messagingOperation.set(currentStatus)
+    getMessagingPlatforms.mockReturnValue(request.promise)
+    await renderMessaging(false)
+    expect(screen.getAllByRole('article')).toHaveLength(5)
+    expect(screen.queryByText('Connected')).toBeNull()
+    expect(screen.getAllByText('Checking chat app status…')).toHaveLength(5)
+    expect(screen.getAllByRole('button', { name: 'Configure' }).every(button => button.hasAttribute('disabled'))).toBe(true)
+    expect(getStatus).not.toHaveBeenCalled()
+    await act(async () => { request.resolve({ platforms: [platform({ id: 'dingtalk' })] }) })
+    await waitFor(() => expect(within(screen.getByRole('article', { name: /DingTalk/ }))
+      .getByRole('button', { name: 'Configure' }).hasAttribute('disabled')).toBe(false))
+  })
+
+  it('诊断未返回时仍显示平台，迟到诊断不能覆盖已连接的新快照', async () => {
+    const diagnostic = deferred<any>()
+    getStatus.mockReturnValue(diagnostic.promise)
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'dingtalk', configured: true,
+      enabled: true, gateway_running: false, state: 'startup_failed', error_message: 'unowned error' })] })
+    await renderMessaging(false)
+    await waitFor(() => expect(getStatus).toHaveBeenCalled())
+    const card = screen.getByRole('article', { name: /DingTalk/ })
+    expect(within(card).queryByText('Checking chat app status…')).toBeNull()
+    expect(screen.queryByText('unowned error')).toBeNull()
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'dingtalk', configured: true,
+      enabled: true, state: 'connected' })] })
+    await act(async () => { publishOperation({ phase: 'completed' }) })
+    await waitFor(() => expect(within(card).getByText('Connected')).toBeTruthy())
+    await act(async () => { diagnostic.resolve({ gateway_running: false, gateway_state: 'startup_failed',
+      gateway_platforms: { dingtalk: { state: 'fatal', error_message: 'obsolete diagnostic' } } }) })
+    expect(screen.queryByText('obsolete diagnostic')).toBeNull()
+    expect(within(card).getByText('Connected')).toBeTruthy()
+  })
+
+  it('重新进入立即复用卡片，但缓存不能代替本次状态确认', async () => {
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'dingtalk', configured: true,
+      enabled: true, state: 'connected' })] })
+    const view = await renderMessaging()
+    view.unmount()
+    const request = deferred<{ platforms: MessagingPlatformInfo[] }>()
+    getMessagingPlatforms.mockReturnValue(request.promise)
+    await renderMessaging(false)
+    const card = screen.getByRole('article', { name: /DingTalk/ })
+    // 缓存保留已绑定账号的解绑入口，但新确认完成前不允许执行。
+    expect(within(card).getByRole('button', { name: 'Disconnect' }).hasAttribute('disabled')).toBe(true)
+    expect(within(card).getByText('Connected')).toBeTruthy()
+    expect(screen.queryByText('Checking chat app status…')).toBeNull()
+    await act(async () => { request.resolve({ platforms: [platform({ id: 'dingtalk' })] }) })
+    await waitFor(() => expect(within(card).queryByRole('button', { name: 'Disconnect' })).toBeNull())
+  })
+
+  it('超过六秒的读取不被轮询作废，完成后再计时刷新', async () => {
+    vi.useFakeTimers()
+    $messagingOperation.set(currentStatus)
+    const request = deferred<{ platforms: MessagingPlatformInfo[] }>()
+    getMessagingPlatforms.mockReturnValue(request.promise)
+    await renderMessaging(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(18_000) })
+    expect(getMessagingPlatforms).toHaveBeenCalledTimes(1)
+    await act(async () => { request.resolve({ platforms: [platform({ id: 'dingtalk' })] }) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(within(screen.getByRole('article', { name: /DingTalk/ })).getByText('Not connected')).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(5998) })
+    expect(getMessagingPlatforms).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2) })
+    expect(getMessagingPlatforms).toHaveBeenCalledTimes(2)
+    expect(getStatus).not.toHaveBeenCalled()
+  })
+
+  it('离开再进入合并同范围的在途请求', async () => {
+    $messagingOperation.set(currentStatus)
+    const request = deferred<{ platforms: MessagingPlatformInfo[] }>()
+    getMessagingPlatforms.mockReturnValue(request.promise)
+    const view = await renderMessaging(false)
+    view.unmount()
+    await renderMessaging(false)
+    expect(getMessagingPlatforms).toHaveBeenCalledTimes(1)
+    await act(async () => { request.resolve({ platforms: [platform({ id: 'dingtalk' })] }) })
+    await waitFor(() => expect(screen.queryAllByText('Checking chat app status…')).toHaveLength(0))
+  })
+
+  it('慢诊断跨过多次平台轮询仍只保留一份在途请求', async () => {
+    vi.useFakeTimers()
+    $messagingOperation.set(currentStatus)
+    const diagnostic = deferred<any>()
+    getStatus.mockReturnValue(diagnostic.promise)
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'dingtalk', configured: true,
+      enabled: true, gateway_running: false, state: 'startup_failed' })] })
+    await renderMessaging(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(18_100) })
+    expect(getMessagingPlatforms.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect(getStatus).toHaveBeenCalledTimes(1)
+    expect(screen.getAllByRole('article')).toHaveLength(5)
+    getStatus.mockResolvedValue(null)
+    await act(async () => { diagnostic.resolve(null) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(getStatus).toHaveBeenCalledTimes(2)
+  })
+
+  it('平台读取失败保留五张卡片，手动重试后恢复真实状态', async () => {
+    getMessagingPlatforms.mockRejectedValue(new Error('fixture unavailable'))
+    await renderMessaging()
+    expect(screen.getAllByRole('article')).toHaveLength(5)
+    getMessagingPlatforms.mockResolvedValue({ platforms: [platform({ id: 'dingtalk', configured: true,
+      enabled: true, state: 'connected' })] })
+    fireEvent.keyDown(window, { key: 'r' })
+    await waitFor(() => expect(within(screen.getByRole('article', { name: /DingTalk/ })).getByText('Connected')).toBeTruthy())
+    expect(getStatus).not.toHaveBeenCalled()
+  })
+
+  it('连接目标变化不借用原连接缓存，也不接收其迟到结果', async () => {
+    $messagingOperation.set(currentStatus)
+    const original = deferred<{ platforms: MessagingPlatformInfo[] }>()
+    const replacement = deferred<{ platforms: MessagingPlatformInfo[] }>()
+    getMessagingPlatforms.mockReturnValueOnce(original.promise).mockReturnValue(replacement.promise)
+    await renderMessaging(false)
+    await act(async () => { $apiRequestScope.setKey('connectionId', 'other-connection') })
+    await act(async () => { original.resolve({ platforms: [platform({ id: 'dingtalk', configured: true,
+      enabled: true, state: 'connected' })] }) })
+    expect(screen.queryByText('Connected')).toBeNull()
+    expect(within(screen.getByRole('article', { name: /DingTalk/ })).queryByRole('button', { name: 'Disconnect' })).toBeNull()
+    await act(async () => { replacement.resolve({ platforms: [platform({ id: 'dingtalk' })] }) })
+    await waitFor(() => expect(screen.queryAllByText('Checking chat app status…')).toHaveLength(0))
+    expect(screen.queryByText('Connected')).toBeNull()
+  })
 })

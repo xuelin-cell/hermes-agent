@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { setApiRequestConnection, setApiRequestProfile } from '@/api/client'
 import type { DesktopUpdateStatus, DesktopVersionInfo } from '@/global'
+import { translateNow, TRANSLATIONS } from '@/i18n'
 import { en } from '@/i18n/en'
 
 const storage = new Map<string, string>()
@@ -1059,6 +1060,20 @@ describe('applyUpdates terminal state', () => {
     expect($updateDownloading.get()).toBe(false)
   })
 
+  // Status copy comes from the catalog: a literal here would surface as English
+  // in a Traditional Chinese session (zh-hant only overrides the keys it lists).
+  // The apply leg is also not a download: a prefetched package must never make
+  // the progress surface claim bytes are moving (stage 'update', not 'fetch').
+  it('starts the apply with the catalog copy', async () => {
+    applyMock.mockResolvedValue({ ok: true, handedOff: true })
+
+    const started = installClientUpdate()
+
+    expect($updateApply.get().stage).toBe('update')
+    expect($updateApply.get().message).toBe(translateNow('updates.preparingInstall'))
+    await started
+  })
+
   it('holds the restart view when a relauncher hands off (no close, no toast)', async () => {
     applyMock.mockResolvedValue({ ok: true, handedOff: true })
 
@@ -1605,6 +1620,7 @@ describe('startUpdatePoller', () => {
     }
     vi.useFakeTimers()
     stopUpdatePoller()
+    setConnection(null)
     resetUpdateApplyState()
   })
 
@@ -1614,13 +1630,20 @@ describe('startUpdatePoller', () => {
     vi.useRealTimers()
   })
 
-  it('calls checkUpdates() on startup so the version pill populates immediately', async () => {
+  // The poller mounts long before the backend answers; checking at mount put a
+  // GitHub round-trip and a background download on the same CPU/disk the
+  // backend is still booting on. The pass now waits for the published
+  // connection descriptor (main mints it after HTTP + WS readiness).
+  it('defers the startup check until the backend connection is published', async () => {
     startUpdatePoller()
 
-    // checkUpdates() is async — flush microtasks without advancing the daily interval.
+    await vi.advanceTimersByTimeAsync(0)
+    expect(checkMock).not.toHaveBeenCalled()
+
+    setRemote(false)
     await vi.advanceTimersByTimeAsync(0)
 
-    expect(checkMock).toHaveBeenCalled()
+    expect(checkMock).toHaveBeenCalledWith({ force: false })
     expect($updateStatus.get()?.behind).toBe(5)
   })
 
@@ -1643,6 +1666,7 @@ describe('startUpdatePoller', () => {
 
   it('polls once per day and never forces past the caches', async () => {
     startUpdatePoller()
+    setRemote(false)
     await vi.advanceTimersByTimeAsync(0)
     expect(checkMock).toHaveBeenCalledWith({ force: false })
     checkMock.mockClear()
@@ -1661,6 +1685,7 @@ describe('startUpdatePoller', () => {
 
   it('window focus only re-checks once the daily cadence has elapsed', async () => {
     startUpdatePoller()
+    setRemote(false)
     await vi.advanceTimersByTimeAsync(0)
     checkMock.mockClear()
 
@@ -2310,5 +2335,30 @@ describe('retryUpdateDownload', () => {
     expect($updateDownloadFailure.get()).toBeNull()
     expect(prepareMock).not.toHaveBeenCalled()
     expect(applyMock).not.toHaveBeenCalled()
+  })
+})
+
+// Every status line the update store publishes resolves through the catalog.
+// zh-hant is a partial locale that falls back to EN, so a key missing from the
+// Chinese catalogs would show English in a Chinese session — the exact drift
+// these store-side literals used to cause.
+describe('update status copy', () => {
+  it('resolves the apply-status lines from every shipped locale', () => {
+    for (const locale of ['en', 'zh', 'zh-hant'] as const) {
+      const copy = TRANSLATIONS[locale].updates
+
+      expect(copy.startingUpdate.trim()).toBeTruthy()
+      expect(copy.bridgeUnavailable.trim()).toBeTruthy()
+      expect(copy.applyStatus.applied.trim()).toBeTruthy()
+      expect(copy.applyStatus.failed.trim()).toBeTruthy()
+      expect(copy.applyStatus.noReturn.trim()).toBeTruthy()
+    }
+
+    // The Chinese catalogs must override the lines the store publishes, not
+    // inherit the English fallback.
+    expect(TRANSLATIONS.zh.updates.startingUpdate).not.toBe(en.updates.startingUpdate)
+    expect(TRANSLATIONS['zh-hant'].updates.startingUpdate).not.toBe(en.updates.startingUpdate)
+    expect(TRANSLATIONS['zh-hant'].updates.bridgeUnavailable).not.toBe(en.updates.bridgeUnavailable)
+    expect(TRANSLATIONS['zh-hant'].updates.applyStatus.applied).not.toBe(en.updates.applyStatus.applied)
   })
 })

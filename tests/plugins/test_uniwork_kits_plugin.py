@@ -598,11 +598,15 @@ def test_router_follows_the_per_session_home_override(kits, profile_env, kit_pkg
 
 def test_register_wires_cli_sections_and_hook(kits, monkeypatch):
     """register 注册了 kit 命令、合法的系统提示段和各个钩子，没有注册 transform_llm_output。"""
-    calls = {"cli": [], "sections": [], "hooks": []}
+    calls = {"cli": [], "commands": {}, "sections": [], "hooks": []}
     # 终端环境（python3、NODE_PATH）有自己的测试，这里不改测试进程的环境变量。
     monkeypatch.setattr(importlib.import_module("hermes_plugins.uniwork_kits.terminal_env"), "setup", lambda *a, **k: False)
 
     class Ctx:
+        def register_command(self, name, handler, **metadata):
+            """记录公开斜杠命令及其处理器。"""
+            calls["commands"][name] = (handler, metadata)
+
         def register_cli_command(self, name, help, setup_fn, handler_fn=None, description=""):
             """记下注册的命令名。"""
             calls["cli"].append(name)
@@ -619,6 +623,8 @@ def test_register_wires_cli_sections_and_hook(kits, monkeypatch):
     from hermes_cli.plugins import is_valid_system_prompt_section_id
 
     assert calls["cli"] == ["kit"]
+    assert "codex" not in calls["commands"]
+    assert "post_llm_call" not in calls["hooks"]
     assert set(calls["hooks"]) >= {
         "pre_llm_call",
         "pre_tool_call",

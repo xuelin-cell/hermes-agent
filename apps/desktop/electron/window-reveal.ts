@@ -49,6 +49,10 @@ export function createWindowRevealController(
     revealed = true
     cancelFallback()
 
+    // Show BEFORE onRevealed: a throwing onRevealed must not leave the window
+    // hidden forever — the fallback timer is already disarmed by `revealed`.
+    // Callers that must act before the window becomes visible do it inside
+    // their own show callback (the HUD hides the main window there).
     if (!window.isVisible()) {
       window.show()
     }

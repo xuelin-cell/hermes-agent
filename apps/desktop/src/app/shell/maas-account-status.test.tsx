@@ -81,13 +81,12 @@ function LocationProbe() {
   return <span data-testid="pathname">{pathname}</span>
 }
 
-function announcement(id: string, readAt: number | null = null): AnnouncementRecord {
-  return { at: Date.now(), id, priority: 3, readAt, text: `正文-${id}`, title: `标题-${id}`, topic: 'uniwork' }
+function announcement(id: string): AnnouncementRecord {
+  return { at: Date.now(), id, priority: 3, readAt: null, text: `正文-${id}`, title: `标题-${id}`, topic: 'uniwork' }
 }
 
 it('账号行右侧的通知入口与账号控件同一行，点击进入通知整页', async () => {
-  // 已读通知：入口的 aria-label 回落为「消息中心」。
-  $announcements.set([announcement('a', Date.now())])
+  // 无通知时入口依然渲染，aria-label 回落为「消息中心」。
   window.hermesDesktop = {
     getMaasAccount: vi.fn().mockResolvedValue({ maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }),
     ntfy: {}
@@ -127,7 +126,7 @@ it('没有 ntfy 通道时账号行不渲染通知入口', async () => {
   expect(screen.queryByRole('button', { name: '消息中心' })).toBeNull()
 })
 
-it('没有任何通知时不渲染通知入口，收到通知后才出现', async () => {
+it('没有任何通知时也渲染通知入口，未读数只影响 aria-label', async () => {
   window.hermesDesktop = {
     getMaasAccount: vi.fn().mockResolvedValue({ maskedPhone: '138****0000', expiresAt: Date.now() + 60_000 }),
     ntfy: {}
@@ -135,13 +134,12 @@ it('没有任何通知时不渲染通知入口，收到通知后才出现', asyn
 
   render(<AccountFixture />)
 
-  // 通道已就绪但列表为空：入口不存在，账号行也不留空位。
-  await screen.findByRole('button', { name: '138****0000' })
-  expect(screen.queryByRole('button', { name: '消息中心' })).toBeNull()
+  // 通道就绪但列表为空：入口仍在，不因通知条数显隐。
+  expect(await screen.findByRole('button', { name: '消息中心' })).toBeTruthy()
 
   act(() => $announcements.set([announcement('a')]))
 
-  // 未读通知到达后入口出现，aria-label 带着未读数。
+  // 未读通知到达后入口不变，只是 aria-label 带上未读数。
   expect(await screen.findByRole('button', { name: '1 条未读消息' })).toBeTruthy()
 })
 

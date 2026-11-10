@@ -55,6 +55,16 @@ describe('ScheduledTasksView run now', () => {
     expect(getCronJobRuns).not.toHaveBeenCalled()
   })
 
+  it('shows the empty task list instead of templates by default', async () => {
+    getCronJobs.mockResolvedValue([])
+    $cronJobs.set([])
+
+    render(<ScheduledTasksView />)
+
+    await screen.findByText('No scheduled tasks yet. Create one, or start from a template.')
+    expect(screen.queryByText('Start from a template', { exact: true })).toBeNull()
+  })
+
   it('opens the task actions menu from the more button', async () => {
     render(<ScheduledTasksView />)
 

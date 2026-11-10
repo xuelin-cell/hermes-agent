@@ -9,6 +9,7 @@ import { bumpFreshDraftEpoch } from '@/app/session/detached-create-mt'
 import { getLatestSessionMessages, getSession } from '@/hermes'
 import { textPart, toChatMessages } from '@/lib/chat-messages'
 import { createClientSessionState } from '@/lib/chat-runtime'
+import * as desktopSlashCommands from '@/lib/desktop-slash-commands'
 import { $compactingSessions, setSessionCompacting } from '@/store/compaction'
 import { $composerAttachments, $composerDraft, type ComposerAttachment, setComposerDraft } from '@/store/composer'
 import { $queuedPromptsBySession, getQueuedPrompts } from '@/store/composer-queue'
@@ -1705,7 +1706,7 @@ describe('usePromptActions slash.exec dispatch payloads', () => {
     $queuedPromptsBySession.set({})
   })
 
-  it("sends a skill's kickoff into the TAB that invoked it, not the foreground chat", async () => {
+  it.each(['work'])('sends /%s into the invoking tab through the native skill path', async skill => {
     // `/work` in a fresh ⌘T tab: slash.exec returns a skill dispatch whose
     // `message` is the kickoff prompt. The dispatcher resolved the tab as its
     // target, then submitted the kickoff with no target at all, so submit
@@ -1726,7 +1727,7 @@ describe('usePromptActions slash.exec dispatch payloads', () => {
 
       return (
         method === 'slash.exec'
-          ? { type: 'skill', name: 'work', message: 'Load the work skill, then: fix the tab bug' }
+          ? { type: 'skill', name: skill, message: 'Load the work skill, then: fix the tab bug' }
           : {}
       ) as never
     })
@@ -1742,7 +1743,7 @@ describe('usePromptActions slash.exec dispatch payloads', () => {
       />
     )
 
-    await handle!.submitText('/work fix the tab bug', { sessionId: tabRuntimeId })
+    await handle!.submitText(`/${skill} fix the tab bug`, { sessionId: tabRuntimeId })
 
     expect(submitted).toEqual([
       expect.objectContaining({
@@ -6270,5 +6271,146 @@ describe('usePromptActions stale multi-window guard (#65047)', () => {
       { session_id: RUNTIME_SESSION_ID, text: 'send anyway' },
       1_800_000
     )
+  })
+})
+
+describe('disabled Codex product entry', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it.each(['/codex', '/codex 开发网站'])('blocks %s before dispatching or submitting a model turn', async text => {
+    const requestGateway = vi.fn(async () => ({}) as never)
+    let handle: HarnessHandle | null = null
+
+    await actRender(
+      <Harness onReady={h => (handle = h)} refreshSessions={async () => undefined} requestGateway={requestGateway} />
+    )
+    await handle!.submitText(text)
+    expect(requestGateway.mock.calls.some(([method]) =>
+      ['slash.exec', 'command.dispatch', 'prompt.submit'].includes(method)
+    )).toBe(false)
+  })
+})
+
+describe('retained Codex command uses the existing prompt flow when explicitly enabled in tests', () => {
+  beforeEach(() => {
+    // 保留实现的回归只在本组模拟开放；默认关闭行为单独验证。
+    const resolve = desktopSlashCommands.resolveDesktopCommand
+    vi.spyOn(desktopSlashCommands, 'resolveDesktopCommand').mockImplementation(
+      command => command.replace(/^\//, '') === 'codex'
+        ? { name: '/codex', surface: { kind: 'exec' }, argumentMode: 'text' }
+        : resolve(command)
+    )
+    const original = desktopSlashCommands.isDesktopSlashCommand
+    vi.spyOn(desktopSlashCommands, 'isDesktopSlashCommand').mockImplementation(
+      command => command.replace(/^\//, '') === 'codex' || original(command)
+    )
+    setSessions(() => [sessionInfo()])
+    $queuedPromptsBySession.set({})
+    publishSessionState(RUNTIME_SESSION_ID, createClientSessionState(RUNTIME_SESSION_ID))
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+    dropSessionState(RUNTIME_SESSION_ID)
+    $queuedPromptsBySession.set({})
+  })
+
+  it.each([false, true])('submits the native command reply through prompt.submit (fallback: %s)', async fallback => {
+    const text = '/codex 修复测试\n保留  空格'
+
+    const requestGateway = vi.fn(async (method: string) => {
+      if (method === 'slash.exec') {
+        if (fallback) {
+          throw new Error('worker unavailable')
+        }
+
+        return { output: text } as never
+      }
+
+      return (method === 'command.dispatch' ? { type: 'plugin', output: text } : {}) as never
+    })
+
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness onReady={h => (handle = h)} refreshSessions={async () => undefined} requestGateway={requestGateway} />
+    )
+    await handle!.submitText(text)
+    expect(requestGateway).toHaveBeenCalledWith(
+      'prompt.submit',
+      expect.objectContaining({ session_id: RUNTIME_SESSION_ID, text }),
+      expect.anything()
+    )
+    expect(requestGateway.mock.calls.filter(([method]) => method === 'prompt.submit')).toHaveLength(1)
+  })
+
+  it('keeps bare command usage out of the model turn', async () => {
+    const requestGateway = vi.fn(
+      async (method: string) => (method === 'slash.exec' ? { output: '用法：/codex <任务内容>' } : {}) as never
+    )
+
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness onReady={h => (handle = h)} refreshSessions={async () => undefined} requestGateway={requestGateway} />
+    )
+    await handle!.submitText('/codex')
+    expect(requestGateway.mock.calls.some(([method]) => method === 'prompt.submit')).toBe(false)
+  })
+
+  it('queues into the target session using the ordinary busy queue', async () => {
+    publishSessionState(RUNTIME_SESSION_ID, {
+      ...createClientSessionState(RUNTIME_SESSION_ID),
+      busy: true,
+      streamId: 'active'
+    })
+
+    const requestGateway = vi.fn(
+      async (method: string) => (method === 'slash.exec' ? { output: '/codex queued-task' } : {}) as never
+    )
+
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        busyRef={{ current: true }}
+        onReady={h => (handle = h)}
+        refreshSessions={async () => undefined}
+        requestGateway={requestGateway}
+      />
+    )
+    await handle!.submitText('/codex queued-task')
+    expect(requestGateway.mock.calls.some(([method]) => method === 'prompt.submit')).toBe(false)
+    expect(getQueuedPrompts(RUNTIME_SESSION_ID)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ text: '/codex queued-task' })])
+    )
+  })
+
+  it('keeps two command submissions bound to their own tabs', async () => {
+    const ids = ['codex-tab-a', 'codex-tab-b']
+    ids.forEach(id => publishSessionState(id, createClientSessionState(id)))
+
+    const requestGateway = vi.fn(
+      async (method: string, params?: Record<string, unknown>) =>
+        (method === 'slash.exec' ? { output: '/' + params?.command } : {}) as never
+    )
+
+    let handle: HarnessHandle | null = null
+    await actRender(
+      <Harness
+        activeSessionId="foreground"
+        onReady={h => (handle = h)}
+        refreshSessions={async () => undefined}
+        requestGateway={requestGateway}
+      />
+    )
+    await Promise.all(ids.map((id, i) => handle!.submitText(`/codex task-${i}`, { sessionId: id })))
+    const sent = requestGateway.mock.calls.filter(([method]) => method === 'prompt.submit').map(([, params]) => params)
+    expect(sent).toEqual(
+      expect.arrayContaining(ids.map((id, i) => expect.objectContaining({ session_id: id, text: `/codex task-${i}` })))
+    )
+    expect(sent).toHaveLength(2)
+    ids.forEach(dropSessionState)
   })
 })
