@@ -20,7 +20,7 @@ import { useI18n } from '@/i18n'
 import { sessionTitle } from '@/lib/chat-runtime'
 import { pathLeaf } from '@/lib/display-path'
 import { triggerHaptic } from '@/lib/haptics'
-import { Archive, ArchiveOff, FolderOpen, Loader2, Trash2 } from '@/lib/icons'
+import { Archive, ArchiveOff, Loader2, Trash2 } from '@/lib/icons'
 import { confirm } from '@/store/confirm'
 import { notify, notifyError } from '@/store/notifications'
 import { applyConfiguredDefaultProjectDir, ensureDefaultWorkspaceCwd } from '@/store/session'
@@ -38,13 +38,14 @@ const DEFAULT_AUTO_ARCHIVE_DAYS = 3
 const ARCHIVED_FETCH_LIMIT = 200
 
 interface SessionsSettingsProps {
+  onlyArchived?: boolean
   subpage?: string
 }
 
-export function SessionsSettings({ subpage }: SessionsSettingsProps = {}) {
+export function SessionsSettings({ subpage, onlyArchived = false }: SessionsSettingsProps = {}) {
   useSettingDeepLink('sessions', page => subpage === undefined || page === subpage)
 
-  if (subpage === 'default-directory') {
+  if (!onlyArchived && subpage === 'default-directory') {
     return (
       <SettingsContent>
         <DefaultProjectDirSetting />
@@ -52,10 +53,21 @@ export function SessionsSettings({ subpage }: SessionsSettingsProps = {}) {
     )
   }
 
-  return <ArchivedSessionsSettings includeDefaultDirectory={subpage === undefined} />
+  return (
+    <ArchivedSessionsSettings
+      includeDefaultDirectory={!onlyArchived && subpage === undefined}
+      includeRetention={!onlyArchived}
+    />
+  )
 }
 
-function ArchivedSessionsSettings({ includeDefaultDirectory }: { includeDefaultDirectory: boolean }) {
+function ArchivedSessionsSettings({
+  includeDefaultDirectory,
+  includeRetention
+}: {
+  includeDefaultDirectory: boolean
+  includeRetention: boolean
+}) {
   const { t } = useI18n()
   const s = t.settings.sessions
   const [sessions, setLocalSessions] = useState<SessionInfo[]>([])
@@ -145,7 +157,7 @@ function ArchivedSessionsSettings({ includeDefaultDirectory }: { includeDefaultD
     <SettingsContent>
       {includeDefaultDirectory && <DefaultProjectDirSetting />}
 
-      <AutoArchiveSetting />
+      {includeRetention && <AutoArchiveSetting />}
 
       <SectionHeading
         icon={Archive}
@@ -157,9 +169,11 @@ function ArchivedSessionsSettings({ includeDefaultDirectory }: { includeDefaultD
       </p>
 
       {sessions.length === 0 ? (
-        <EmptyState description={s.emptyArchivedDesc} title={s.emptyArchivedTitle} />
+        <div className="settings-card">
+          <EmptyState description={s.emptyArchivedDesc} title={s.emptyArchivedTitle} />
+        </div>
       ) : (
-        <div className="grid gap-1">
+        <div className="settings-card grid gap-1">
           {sessions.map(session => {
             const label = pathLeaf(session.cwd)
             const busy = busyId === session.id
@@ -440,7 +454,7 @@ export function DefaultProjectDirSetting() {
   }, [accountWorkspace, s])
 
   return (
-    <div className="mb-6">
+    <div className="py-4">
       <ConfirmDialog
         cancelLabel={workdirCopy('later')}
         confirmLabel={workdirCopy('restartNow')}
@@ -450,27 +464,26 @@ export function DefaultProjectDirSetting() {
         open={Boolean(restartRoot)}
         title={workdirCopy('restartTitle')}
       />
-      <SectionHeading icon={FolderOpen} page title={s.defaultDirTitle} />
+      <h3 className="mb-1 text-[length:var(--conversation-text-font-size)] font-medium">{s.defaultDirTitle}</h3>
       <p className="mb-2 text-[length:var(--conversation-caption-font-size)] text-(--ui-text-tertiary)">
         {accountWorkspace ? workdirCopy('settingsHint') : s.defaultDirDesc}
       </p>
-      <ListRow
-        action={
-          <div className="flex items-center gap-3">
-            <Button disabled={busy} onClick={() => void choose()} size="sm" type="button" variant="textStrong">
-              <FolderOpen className="size-3.5" />
-              <span>{dir ? s.change : s.choose}</span>
-            </Button>
-            {dir && (
-              <Button disabled={busy} onClick={() => void clear()} size="sm" type="button" variant="text">
-                {s.clear}
-              </Button>
-            )}
-          </div>
-        }
-        description={dir || s.defaultsTo(fallback || '~')}
-        title={dir ? dir : s.notSet}
-      />
+      <div className="flex items-center gap-2">
+        <div
+          className="min-w-0 flex-1 truncate rounded-lg bg-(--ui-bg-quaternary) px-3 py-2 text-[length:var(--conversation-text-font-size)] text-(--ui-text-tertiary)"
+          title={dir || fallback || '~'}
+        >
+          {dir || fallback || '~'}
+        </div>
+        <Button disabled={busy} onClick={() => void choose()} type="button" variant="outline">
+          {s.change}
+        </Button>
+        {dir && (
+          <Button disabled={busy} onClick={() => void clear()} size="sm" type="button" variant="text">
+            {s.clear}
+          </Button>
+        )}
+      </div>
       {dir && unusableRoot && (
         <p className="mt-2 text-[length:var(--conversation-caption-font-size)] text-destructive" role="alert">
           {workdirCopy('unusable', dir, unusableRoot)}

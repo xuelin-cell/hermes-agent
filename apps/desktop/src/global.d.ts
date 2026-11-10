@@ -155,8 +155,6 @@ declare global {
       // Pop the in-app Browser (webview + address bar) into its own OS window.
       // `tabId` is the `$previewTabs` id; closing the window fires
       // `onBrowserPopoutClosed` so the caller can dock the tab again.
-      uploadSettingsFeedback?: (input: { bytes: Uint8Array; description: string; date: string }) => Promise<{ ok: boolean }>
-      openSettingsWindow: (path: string, options?: DesktopProfileRoute) => Promise<{ ok: boolean; error?: string }>
       openBrowserWindow: (tabId: string) => Promise<{ ok: boolean; error?: string }>
       onBrowserPopoutClosed: (callback: (tabId: string) => void) => () => void
       // Claim a one-shot cross-window ambient cue (turn-end sound / spoken

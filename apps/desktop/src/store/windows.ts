@@ -111,9 +111,7 @@ export function windowBrowserTabId(): null | string {
 // session window, the HUD, or a popped-out Browser. Single-claim channels
 // (the quick-entry capture bridge, the pet overlay control bridge) and the
 // install/onboarding overlays belong to the primary alone.
-export const isSettingsWindow = (): boolean => new URLSearchParams(window.location.search).get('win') === 'settings'
-
-export const isAuxiliaryWindow = (): boolean => isSettingsWindow() || isSecondaryWindow() || isHudWindow() || isBrowserWindow()
+export const isAuxiliaryWindow = (): boolean => isSecondaryWindow() || isHudWindow() || isBrowserWindow()
 
 // A full peer window renders the ordinary app shell against the backend that
 // Electron already has running. It is not an auxiliary/specialized renderer,

@@ -1,3 +1,4 @@
+import { useStore } from '@nanostores/react'
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,7 @@ import { triggerHaptic } from '@/lib/haptics'
 import { ChevronDown, Globe } from '@/lib/icons'
 import { normalize } from '@/lib/text'
 import { cn } from '@/lib/utils'
+import { $developerMode } from '@/store/developer-mode'
 import { notifyError } from '@/store/notifications'
 
 export interface LanguageSwitcherProps {
@@ -137,6 +139,7 @@ function LanguageCommand({
   searchPlaceholder,
   variant = 'default'
 }: LanguageCommandProps) {
+  const developerMode = useStore($developerMode)
   const [search, setSearch] = useState('')
 
   // Own the search term and filter manually. cmdk's built-in shouldFilter
@@ -145,7 +148,7 @@ function LanguageCommand({
   // and do a plain substring filter that preserves array order — matching
   // model-picker.tsx. Match against the endonym, the (hidden) English name,
   // and the locale code so "繁體"/"traditional"/"zh-hant" find Traditional Chinese.
-  const q = normalize(search)
+  const q = developerMode ? normalize(search) : ''
 
   const filtered = allLocales.filter(
     ([code, meta]) =>
@@ -157,7 +160,9 @@ function LanguageCommand({
 
   return (
     <Command className="bg-transparent" shouldFilter={false} variant={variant}>
-      <CommandInput autoFocus={autoFocus} onValueChange={setSearch} placeholder={searchPlaceholder} value={search} />
+      {developerMode && (
+        <CommandInput autoFocus={autoFocus} onValueChange={setSearch} placeholder={searchPlaceholder} value={search} />
+      )}
       <CommandList className={variant === 'menu' ? undefined : 'max-h-80 p-1'}>
         <CommandEmpty>{noResults}</CommandEmpty>
         {filtered.map(([code, meta]) => {

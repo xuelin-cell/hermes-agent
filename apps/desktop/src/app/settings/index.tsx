@@ -1,9 +1,5 @@
-import { HelpSettings } from './help-settings'
-import { GeneralSettings } from './general-settings'
-import { GroupedSettingsNavigation } from './grouped-navigation'
-import { useSettingsRedesignCopy } from './redesign-copy'
-import { PhoneSettings } from './phone-settings'
 import './settings-redesign.css'
+
 import { useStore } from '@nanostores/react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router'
@@ -38,6 +34,7 @@ import { notifyError } from '@/store/notifications'
 import { $settingsScopeProfile } from '@/store/settings-scope'
 
 import { useRouteEnumParam } from '../hooks/use-route-enum-param'
+import { MessagingView } from '../messaging'
 import { OverlayIconButton } from '../overlays/overlay-chrome'
 import { OverlayMain, type OverlayNavGroup, OverlaySplitLayout } from '../overlays/overlay-split-layout'
 import { OverlayView } from '../overlays/overlay-view'
@@ -49,6 +46,9 @@ import { deriveBillingView, useBillingState, useSubscriptionState } from './bill
 import { ConfigSettings } from './config-settings'
 import { SECTIONS } from './constants'
 import { GatewaySettings } from './gateway-settings'
+import { GeneralSettings } from './general-settings'
+import { GroupedSettingsNavigation } from './grouped-navigation'
+import { HelpSettings } from './help-settings'
 import { KeybindSettings } from './keybind-settings'
 import { KEYS_VIEWS, KeysSettings, type KeysView } from './keys-settings'
 import { useModelsCopy } from './models-mt/copy'
@@ -57,6 +57,7 @@ import { movedSettingsTabRedirect } from './moved-tabs'
 import { NotificationsSettings } from './notifications-settings'
 import { SettingsBreadcrumbContext } from './primitives'
 import { PROVIDER_VIEWS, ProvidersSettings, type ProviderView } from './providers-settings'
+import { useSettingsRedesignCopy } from './redesign-copy'
 import { SessionsSettings } from './sessions-settings'
 import { SettingsSubpageHeader } from './subpage-navigation'
 import { resolveSettingsSubpage, settingsNavSubpages, settingsSubpageIcon } from './subpages'
@@ -109,7 +110,14 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
   const activeView = settingsViewVisible(requestedView, developerMode) ? requestedView : 'general'
   const params = new URLSearchParams(search)
   const requestedSubpage = params.get('page')
-  const subpage = resolveSettingsSubpage(activeView, params, developerMode)
+
+  const subpage =
+    activeView === 'sessions'
+      ? 'archived'
+      : activeView === 'config:safety'
+        ? undefined
+        : resolveSettingsSubpage(activeView, params, developerMode)
+
   const needsSubpageRedirect = Boolean(subpage && subpage !== requestedSubpage)
   const subpageSearch = new URLSearchParams(search)
 
@@ -139,7 +147,13 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
       }
 
       next.set('tab', view)
-      const destination = page ?? settingsNavSubpages(view, developerMode)[0]?.id
+
+      const destination =
+        view === 'sessions'
+          ? 'archived'
+          : view === 'config:safety'
+            ? undefined
+            : (page ?? settingsNavSubpages(view, developerMode)[0]?.id)
 
       if (destination) {
         next.set('page', destination)
@@ -402,8 +416,10 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         )
         .map(group => {
           const view = group.id as SettingsViewId
+
           // In-page anchors (About's merged sections) route but never get a nav entry.
-          const children = settingsNavSubpages(view, developerMode)
+          const children =
+            view === 'sessions' || view === 'config:safety' ? [] : settingsNavSubpages(view, developerMode)
 
           return children.length
             ? {
@@ -499,7 +515,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     ) : activeView === 'general' ? (
       <GeneralSettings />
     ) : activeView === 'messaging' ? (
-      <PhoneSettings />
+      <MessagingView />
     ) : activeView === 'config:appearance' ? (
       <AppearanceSettings subpage={subpage} />
     ) : activeView === 'about' ? (
@@ -538,17 +554,21 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
     ) : activeView === 'vault' ? (
       <VaultSettings key={vaultOwnerKey(activeConnectionId, scopeProfile)} subpage={subpage} />
     ) : (
-      <SessionsSettings subpage={subpage} />
+      <SessionsSettings onlyArchived subpage="archived" />
     )
 
   return (
-    <OverlayView compact closeLabel={t.settings.closeSettings} onClose={onClose} rootClassName="settings-redesign">
+    <OverlayView closeLabel={t.settings.closeSettings} compact onClose={onClose} rootClassName="settings-redesign">
       <OverlaySplitLayout className="settings-redesign-layout">
         <GroupedSettingsNavigation footer={navFooter} groups={navGroups} />
 
         <OverlayMain className="px-0 pb-0">
           <SettingsBreadcrumbContext.Provider value>
-            {activeGroup && <SettingsSubpageHeader child={activeChild} group={activeGroup} />}
+            {activeGroup &&
+              !['general', 'sessions'].includes(activeView) &&
+              (activeView !== 'config:safety' || developerMode) && (
+                <SettingsSubpageHeader child={activeChild} group={activeGroup} />
+              )}
             {needsSubpageRedirect ? (
               <Navigate replace to={{ hash, pathname, search: `?${subpageSearch}` }} />
             ) : (

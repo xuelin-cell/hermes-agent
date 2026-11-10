@@ -1,13 +1,16 @@
 .settings-redesign {
   --conversation-text-font-size: 13px;
   --conversation-caption-font-size: 12px;
+  --settings-page-background: color-mix(in srgb, var(--ui-text-primary) 4%, var(--ui-bg-editor));
+  background: var(--settings-page-background);
 }
 .settings-redesign-layout {
   grid-template-columns: 232px minmax(0, 1fr);
 }
 .settings-redesign-nav {
   padding: 12px 10px 10px;
-  border-right: 1px solid var(--ui-stroke-tertiary);
+  border-right: 0;
+  background: var(--settings-page-background);
 }
 .settings-redesign-nav button[data-tour],
 .settings-redesign-nav nav button {
@@ -21,6 +24,7 @@
 }
 .settings-redesign main {
   padding-top: 16px;
+  background: var(--settings-page-background);
 }
 .settings-redesign main > section {
   flex: 1;
@@ -32,13 +36,24 @@
   color: var(--ui-text-tertiary);
 }
 .settings-card {
-  border: 1px solid var(--ui-stroke-tertiary);
+  border: 1px solid transparent;
   border-radius: 12px;
   padding: 0 15px;
-  background: var(--ui-bg-quinary);
+  background: var(--ui-bg-editor);
 }
 .settings-card > div + div {
   border-top: 1px solid var(--ui-stroke-tertiary);
+}
+.settings-redesign .messaging-platform-card {
+  background: var(--ui-bg-editor);
+  border-color: transparent;
+}
+/* Standalone rows in developer pages share the same surface as grouped rows. */
+.settings-redesign .settings-row:not(.settings-card .settings-row) {
+  margin-bottom: 8px;
+  padding-inline: 15px;
+  border-radius: 12px;
+  background: var(--ui-bg-editor);
 }
 @media (max-width: 760px) {
   .settings-redesign-layout {

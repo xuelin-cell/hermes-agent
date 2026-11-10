@@ -8,6 +8,7 @@ import type { HermesConfigRecord } from '@/types/hermes'
 
 import { ToggleRow } from './primitives'
 import { useSettingsRedesignCopy } from './redesign-copy'
+import { SETTING_IDS, settingElementId } from './settings-manifest'
 
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
@@ -22,7 +23,9 @@ export function PrivacySettings() {
     setConfig(null)
     void getHermesConfigRecord(profile)
       .then(value => {
-        if (current) {setConfig(value)}
+        if (current) {
+          setConfig(value)
+        }
       })
       .catch(error => notifyError(error, copy('privacy')))
 
@@ -55,7 +58,9 @@ export function PrivacySettings() {
 
       await saveHermesConfig(fresh, profile)
 
-      if ($settingsRequestProfile.get() === profile) {setConfig(fresh)}
+      if ($settingsRequestProfile.get() === profile) {
+        setConfig(fresh)
+      }
     } catch (error) {
       notifyError(error, copy('privacy'))
     } finally {
@@ -69,6 +74,7 @@ export function PrivacySettings() {
         checked={Boolean(config && drive.enabled !== false && drive.uniwork_managed)}
         description={copy('driveDesc')}
         disabled={!config || busy || !drive.uniwork_managed}
+        id={settingElementId(SETTING_IDS.general.agentLibraryAccess)}
         label={copy('drive')}
         onChange={on => void change('drive', on)}
       />

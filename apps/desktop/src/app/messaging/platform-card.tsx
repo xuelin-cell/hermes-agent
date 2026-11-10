@@ -79,7 +79,7 @@ export function PlatformCard({
   return (
     <article
       aria-label={copy.titles[id]}
-      className="rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-card) p-4"
+      className="messaging-platform-card rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-bg-card) p-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">

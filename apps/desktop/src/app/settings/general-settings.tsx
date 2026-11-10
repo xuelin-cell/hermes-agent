@@ -10,8 +10,10 @@ import { ListRow, SettingsContent, ToggleRow } from './primitives'
 import { PrivacySettings } from './privacy-settings'
 import { useSettingsRedesignCopy } from './redesign-copy'
 import { DefaultProjectDirSetting } from './sessions-settings'
+import { useSettingDeepLink } from './use-setting-deep-link'
 
 export function GeneralSettings() {
+  useSettingDeepLink('general')
   const copy = useSettingsRedesignCopy()
   const { t } = useI18n()
   const { mode, setMode } = useTheme()

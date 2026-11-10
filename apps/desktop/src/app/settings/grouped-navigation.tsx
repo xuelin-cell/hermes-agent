@@ -29,11 +29,17 @@ const sectionOrder = [
 ]
 
 const sectionFor = (id: string) => {
-  if (['general', 'config:appearance', 'keybinds', 'notifications'].includes(id)) {return 'settings'}
+  if (['general', 'config:appearance', 'keybinds', 'notifications'].includes(id)) {
+    return 'settings'
+  }
 
-  if (['sessions', 'config:safety', 'vault'].includes(id)) {return 'data'}
+  if (['sessions', 'config:safety', 'vault'].includes(id)) {
+    return 'data'
+  }
 
-  if (['about', 'help', 'billing'].includes(id)) {return 'other'}
+  if (['about', 'help', 'billing'].includes(id)) {
+    return 'other'
+  }
 
   return 'features'
 }
@@ -79,6 +85,7 @@ export function GroupedSettingsNavigation({ groups, footer }: { groups: OverlayN
                     onClick={group.onSelect}
                   />
                   {group.active &&
+                    !['sessions', 'config:safety'].includes(group.id) &&
                     group.children?.map(child => (
                       <OverlayNavItem
                         active={child.active}

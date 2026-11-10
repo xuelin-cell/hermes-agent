@@ -31,3 +31,25 @@ it('keeps every visible entry in exactly one of the four sections and excludes d
   expect(screen.getByRole('button', { name: 'general' })).toBeTruthy()
   view.unmount()
 })
+
+it('keeps data management and security as single entries even when active', () => {
+  const groups = ['sessions', 'config:safety'].map(id => ({
+    id,
+    label: id,
+    icon: Info,
+    active: true,
+    onSelect: () => undefined,
+    children: ['archived', 'default-directory', 'approvals'].map(child => ({
+      id: child,
+      label: child,
+      icon: Info,
+      active: true,
+      onSelect: () => undefined
+    }))
+  }))
+  const view = render(<GroupedSettingsNavigation groups={groups} />)
+  expect(screen.getAllByRole('button')).toHaveLength(2)
+  for (const label of ['archived', 'default-directory', 'approvals'])
+    expect(screen.queryByRole('button', { name: label })).toBeNull()
+  view.unmount()
+})

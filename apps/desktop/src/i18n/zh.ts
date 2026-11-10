@@ -4009,7 +4009,7 @@ export const zh = defineLocale({
       actions: '分组操作'
     },
     nav: {
-      'new-session': '新对话',
+      'new-session': '新建任务',
       capabilities: '扩展',
       messaging: '连接手机',
       artifacts: '资料库',

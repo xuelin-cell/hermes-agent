@@ -93,7 +93,7 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
           ? category.templates.map(template => (
               <Button
                 aria-pressed={selection.template === template.id}
-                className="rounded-full"
+                className="welcome-template-tag rounded-full"
                 disabled={disabled || catalog.status === 'loading'}
                 key={template.id}
                 onClick={() => {
@@ -110,7 +110,7 @@ export function WorkTemplatePicker({ scope, disabled, onReplaceText, selectionCo
             ))
           : categories.map(item => (
               <Button
-                className="rounded-full"
+                className="welcome-template-tag rounded-full"
                 disabled={disabled}
                 key={item.id}
                 onClick={() => {

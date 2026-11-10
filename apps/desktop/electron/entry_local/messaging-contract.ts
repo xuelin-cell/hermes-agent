@@ -1,5 +1,5 @@
 export interface MessagingSetupRequest {
-  operation: 'save' | 'disconnect' | 'retry' | 'watch' | 'reset-history'
+  operation: 'save' | 'disconnect' | 'retry' | 'watch'
   platform?: 'dingtalk' | 'feishu' | 'wecom' | 'weixin'
   profile?: string
   env?: Record<string, string>
