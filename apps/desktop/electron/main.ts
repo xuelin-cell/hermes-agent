@@ -13066,6 +13066,8 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
       }
     }
 
+    // 父进程身份探测起一个 PowerShell 子进程，先发出去与档案准备并行；结果在 spawn 前才用。
+    const parentStartMarkerProbe = desktopParentStartMarker()
     // 上游会话标题：首次调用给账号内所有已有助手安装标题扩展，之后只补当前主助手。
     prepareManagedTitleProfiles(primaryProfile)
     // desktop-mt: 恢复也经过这里；运行中及正在启停的专家留到自己的下次启动准备。
@@ -13100,7 +13102,7 @@ async function runHermesStart({ supervisorRecovery = false }: { supervisorRecove
 
     const profile = primaryProfile
     const portAnnounceTimeout = accountPortAnnounceTimeoutMs(HERMES_HOME)
-    const parentStartMarker = await desktopParentStartMarker()
+    const parentStartMarker = await parentStartMarkerProbe
     const backendNonce = crypto.randomBytes(16).toString('hex')
     const parentIdentityEnv = parentWatchdogEnv(process.pid, parentStartMarker, backendNonce)
 
