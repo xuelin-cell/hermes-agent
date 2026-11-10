@@ -14,7 +14,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from entry.client_events import ClientEvents
-from entry.sso import SsoIdentity
+from entry.sso import SsoIdentity, parse_networks
 
 CHROME = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
@@ -63,20 +63,34 @@ async def test_each_event_is_one_traceable_line_that_the_page_cannot_bend(caplog
 
 
 @pytest.mark.asyncio
-async def test_one_address_cannot_flood_the_log_and_the_drop_is_reported(caplog) -> None:
+async def test_limits_are_per_session_and_the_ip_is_the_client_behind_the_gateway(caplog) -> None:
+    """所有请求都经 .116 转发：按直连地址限频就是全体用户共用一份额度，日志里也全是网关地址。"""
     now = [0.0]
-    client = await _client(ClientEvents(lambda request: None, clock=lambda: now[0]))
+
+    def identity_of(request):
+        sid = request.headers.get("X-Test-Sid", "")
+        return SsoIdentity(uid=f"u-{sid}", account_type="personal", tenant_id="", sid=sid) if sid else None
+
+    events = ClientEvents(identity_of, lambda: parse_networks("192.168.212.0/24"), clock=lambda: now[0])
+    client = await _client(events)
     caplog.set_level(logging.INFO, logger="entry.client")
+
+    async def send(sid: str, state: str) -> None:
+        await client.post("/agents/api/__entry/client-event", data=json.dumps({"type": "link", "state": state}),
+                          headers={"X-Real-IP": "192.168.212.116", "X-Test-Sid": sid,
+                                   # 最左边是客户端自己带的（可伪造），往右是网关追加的真实来源和网关自己
+                                   "X-Forwarded-For": "6.6.6.6, 123.127.62.1, 192.168.212.116"})
     try:
         for _ in range(ClientEvents.PER_MINUTE + 5):
-            await _send(client, {"type": "link", "state": "closed"})
-        await _send(client, {"type": "link", "state": "closed"}, ip="10.0.0.9")  # 别的地址不受影响
+            await send("aaaaaa111", "closed")
+        await send("bbbbbb222", "closed")  # 同一网关、同一办公室出口，另一个会话不受影响
         now[0] = 61.0
-        await _send(client, {"type": "link", "state": "restored"})
+        await send("aaaaaa111", "restored")
     finally:
         await client.close()
 
     lines = [record.getMessage() for record in caplog.records if record.name == "entry.client"]
     assert len(lines) == ClientEvents.PER_MINUTE + 2
-    assert sum("ip=10.0.0.9" in line for line in lines) == 1
-    assert lines[-1].startswith("client link who=-") and "限频丢了" in lines[-1]
+    assert sum("sid=bbbbbb" in line for line in lines) == 1
+    assert all("ip=123.127.62.1 " in line for line in lines)
+    assert "sid=aaaaaa" in lines[-1] and "限频丢了 5 条" in lines[-1]

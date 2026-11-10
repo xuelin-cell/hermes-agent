@@ -179,7 +179,7 @@ class Entry:
         self.welcome_routes = WelcomeRoutes(self)
         self.timing_routes = TimingRoutes(self)
         self.usage_routes = UsageRoutes(self)
-        self.client_events = ClientEvents(self._sso_identity)
+        self.client_events = ClientEvents(self._sso_identity, lambda: self._sso_networks)
         self.skill_routes = SkillRoutes(self)
         self.shares: Shares | None = None
         # aiohttp 客户端必须在事件循环中创建，因此在 on_startup 里赋值。
