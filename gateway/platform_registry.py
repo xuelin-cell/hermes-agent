@@ -365,6 +365,16 @@ class PlatformRegistry:
             entries, _deferred = self._scope_maps(scope)
             return entries.get(name) or self._entries.get(name)
 
+    def peek(self, name: str) -> Optional[PlatformEntry]:
+        """The CONCRETE entry for *name* when it is already loaded; None while it is still deferred.
+
+        Never resolves a deferred loader — the way to ask "is this platform imported?" without
+        importing it.
+        """
+        with self._lock:
+            entries, _deferred = self._scope_maps(self.current_scope_key())
+            return entries.get(name) or self._entries.get(name)
+
     def all_entries(self) -> list[PlatformEntry]:
         """Return all registered platform entries."""
         self._resolve_all()
@@ -381,6 +391,23 @@ class PlatformRegistry:
         with self._lock:
             entries, deferred = self._scope_maps(self.current_scope_key())
             return entries.keys() | deferred.keys() | self._entries.keys() | self._deferred.keys()
+
+    def entry_names(self) -> list[str]:
+        """Registered platform names in registration order, WITHOUT loading adapters.
+
+        ``all_entries``/``plugin_entries`` materialize every deferred adapter, and each
+        adapter import pulls in a platform SDK — seconds of GIL-holding work. A caller
+        that only needs the NAMES (config bridging, target lists) must not pay that.
+        """
+        with self._lock:
+            scope = self.current_scope_key()
+            scoped_entries, scoped_deferred = self._scope_maps(scope)
+            names: list[str] = []
+            for source in (self._entries, scoped_entries, self._deferred, scoped_deferred):
+                for name in source:
+                    if name not in names:
+                        names.append(name)
+            return names
 
     def is_registered(self, name: str) -> bool:
         # A deferred (not-yet-imported) platform still counts as registered so cheap membership
