@@ -1009,7 +1009,6 @@ export interface Translations {
     unreadSessions: (count: number) => string
     muteHaptics: string
     unmuteHaptics: string
-    openSettings: string
     openStarmap: string
     enterHud: string
     exitHud: string

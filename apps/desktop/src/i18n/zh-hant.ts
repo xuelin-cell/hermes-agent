@@ -734,7 +734,6 @@ export const zhHant = defineLocale({
     unreadSessions: count => (count === 1 ? '1 個未讀工作階段' : `${count} 個未讀工作階段`),
     muteHaptics: '靜音觸感回饋',
     unmuteHaptics: '開啟觸感回饋',
-    openSettings: '開啟設定',
     openStarmap: '開啟記憶圖譜',
     resetHudLayout: '重設 HUD 大小和位置'
   },
@@ -1018,7 +1017,7 @@ export const zhHant = defineLocale({
       tabStripAlways: '一律',
       tabStripNever: '永不',
       appActionsTitle: '應用操作',
-      appActionsDesc: '設定、版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
+      appActionsDesc: '版面與 HUD 放在標題列左側或右側。選右側可把左側留給分頁。',
       appActionsLeft: '左側',
       appActionsRight: '右側',
       terminalFontTitle: '終端機字型',

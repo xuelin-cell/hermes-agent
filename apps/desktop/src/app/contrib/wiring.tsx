@@ -1304,10 +1304,10 @@ export function ContribWiring({ children }: { children: ReactNode }) {
     [chatRoutesNode, sidebarNode, statusbarNode, terminalNode]
   )
 
-  // The REAL titlebar tool clusters (sidebar/flip toggles, haptics, keybinds,
-  // settings gear) — fixed chrome positioned via the same CSS vars AppShell
-  // sets, computed here from the live connection. Page-registered tools
-  // (preview's monitor/devtools cluster, …) arrive as registry contributions.
+  // The REAL titlebar tool clusters (sidebar/flip toggles, haptics, keybinds)
+  // — fixed chrome positioned via the same CSS vars AppShell sets, computed
+  // here from the live connection. Page-registered tools (preview's
+  // monitor/devtools cluster, …) arrive as registry contributions.
   const leftTitlebarTools = useTitlebarToolContributions('left')
   const rightTitlebarTools = useTitlebarToolContributions('right')
   const connection = useStore($connection)
@@ -1383,7 +1383,6 @@ export function ContribWiring({ children }: { children: ReactNode }) {
         {!isHudWindow() && !isBrowserWindow() && (
           <TitlebarControls
             leftTools={leftTitlebarTools}
-            onOpenSettings={() => navigate(SETTINGS_ROUTE)}
             tools={rightTitlebarTools}
           />
         )}

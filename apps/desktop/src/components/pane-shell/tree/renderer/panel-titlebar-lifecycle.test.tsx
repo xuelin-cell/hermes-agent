@@ -72,7 +72,7 @@ function RouteChrome() {
 
   return (
     <>
-      <TitlebarControls onOpenSettings={() => {}} />
+      <TitlebarControls />
       <Panel />
       <Link to="/">Chat</Link>
       <Link to="/kanban">Kanban</Link>
