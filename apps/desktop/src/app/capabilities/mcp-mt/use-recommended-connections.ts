@@ -217,6 +217,16 @@ export function useRecommendedConnections(scope: ProfileScope) {
     return () => clearTimeout(timer)
   }, [pending, rows])
 
+  async function cancel(id: ConnectorId): Promise<void> {
+    setPending(current => (current === id ? null : current))
+
+    if (!available || busy) {
+      return
+    }
+
+    await request('disconnect', id)
+  }
+
   return {
     scopeKey: key,
     rows,
@@ -231,6 +241,6 @@ export function useRecommendedConnections(scope: ProfileScope) {
 
       return () => generation.current === epoch
     },
-    cancel: () => setPending(null)
+    cancel
   }
 }
