@@ -25,6 +25,7 @@ import urllib.parse
 from hermes_cli.install_identity import get_install_id as _shared_get_install_id
 from hermes_cli.process_identity import is_desktop_owned_backend
 from hermes_cli.pty_session import run_reaper
+from hermes_cli.startup_timing import mark as _startup_mark
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -1072,6 +1073,8 @@ from hermes_cli.dashboard_auth.routes import router as _dashboard_auth_router  #
 app.include_router(_dashboard_auth_router)
 mount_spa(app)
 
+_startup_mark("web server routes mounted")
+
 
 def _no_auth_provider_message(host: str) -> str:
     """Actionable SystemExit text for a gated bind with no registered auth provider.
@@ -1426,6 +1429,7 @@ def _on_server_started(
     # Same instant as the sentinel: the /api middleware reports elapsed time
     # from here to the first successful API response.
     _STARTUP_READY_MONOTONIC = time.monotonic()
+    _startup_mark("backend READY", port=actual_port)
     if headless:
         # Auth-gated JSON-RPC/WS only — announce the bind, not a URL. flush:
         # a piped stdout otherwise surfaces this minutes after the sentinel.

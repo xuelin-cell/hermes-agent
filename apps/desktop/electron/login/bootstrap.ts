@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, net } from 'electron'
 
 import { resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
+import { startupMark } from '../desktop-startup-log'
 import { accountDataRoot } from '../entry_local/account-paths'
 import { enableDesktopPlugins } from '../entry_local/desktop-plugins-config'
 import { startAccountDesktop } from '../entry_local/desktop-runtime'
@@ -75,6 +76,8 @@ function initializeLoginShell(): void {
     userData
   }
 
+  startupMark('login shell initialized', `userData=${userData}`)
+
   const installationRoot = process.env.HERMES_DESKTOP_HERMES_ROOT || path.resolve(app.getAppPath(), '../..')
   recovery = app
     .whenReady()
@@ -84,6 +87,7 @@ function initializeLoginShell(): void {
 
       // 该弹窗文案是通用的；真实原因（权限/超时/探测失败）不落日志的话
       // 现场无法事后定位，只能靠复现。
+      startupMark('account recovery failed', String((error as NodeJS.ErrnoException)?.code ?? ''))
       console.error(
         '[account-recovery] failed:',
         (error as NodeJS.ErrnoException)?.code ?? '',
@@ -147,6 +151,8 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     return null
   }
 
+  startupMark('login window opening')
+
   const devServer = process.env.HERMES_DESKTOP_DEV_SERVER
 
   const expectedUrl = devServer
@@ -172,6 +178,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
   loginWindow = window
   window.removeMenu()
+  startupMark('login window created')
   window.webContents.setWindowOpenHandler(createWindowOpenHandler())
   window.webContents.on('will-navigate', event => event.preventDefault())
   window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
@@ -180,6 +187,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     loginWindow = null
 
     if (!handedOff) {
+      startupMark('login window closed before sign-in')
       stopping = true
       app.quit()
     }
@@ -191,6 +199,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
     try {
       const context = accountRuntime!.prepare()
+      startupMark('login succeeded', `account=${context.id}`)
 
       // Plan B：登录成功后，把 Plan A 已迁移的 old_uniwork_data 复制到
       // 当前账号 workspace 下（账号隔离）。await Plan A 的 Promise，
@@ -201,6 +210,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
 
       enableDesktopPlugins(context.home, ['desktop-deliverables'])
       installArtifactSharePlugin(context.home, app.getAppPath())
+      startupMark('account desktop starting')
       desktopStarting ??= startAccountDesktop(context, currentDesktopIdentity)
         .then(() => {
           if (stopping || window.isDestroyed()) {
@@ -208,18 +218,21 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
           }
 
           handedOff = true
+          startupMark('account desktop started, closing login window')
           window.destroy()
         })
         .catch(error => {
           // 不回退旧环境，不在半初始化的主进程中重复安装原版事件和 IPC。
           if (!stopping && !window.isDestroyed()) {
             startupFailed = true
+            startupMark('account desktop failed to start', error instanceof Error ? error.message : String(error))
             showLocalStartupFailure(new LocalStartupError('runtime', error), window)
           }
         })
     } catch (error) {
       // 不把文件系统路径、账号标识或原始异常交给页面。
       startupFailed = true
+      startupMark('account preparation failed', error instanceof Error ? error.message : String(error))
       showLocalStartupFailure(
         error instanceof LocalStartupError ? error : new LocalStartupError('runtime', error),
         window
@@ -237,7 +250,9 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     return null
   }
 
+  startupMark('login window content loaded')
   window.show()
+  startupMark('login window visible')
   markDesktopLaunchSuccessful()
 
   return window
