@@ -70,6 +70,16 @@ def _wait_for_quiet_window() -> None:
         time.sleep(0.05)
 
 
+def wait_for_quiet_request_window() -> None:
+    """Wait for a short quiet gap in the server's request traffic (bounded).
+
+    Shared with the desktop's post-READY boot work: a heavy import burst that lands on top
+    of the desktop's first hydration burst starves the loop that has to answer those
+    requests, so the burst waits for a gap instead of colliding.
+    """
+    _wait_for_quiet_window()
+
+
 def _startup_mark(stage: str, **fields: Any) -> None:
     """Record an MCP discovery stage on the backend's startup timeline."""
     try:
