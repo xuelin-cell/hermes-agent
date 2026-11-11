@@ -15,6 +15,9 @@ import {
 import type { ComponentPropsWithoutRef, ComponentType, SVGProps } from 'react'
 import { forwardRef, memo } from 'react'
 
+import dingtalkLogo from '@/assets/platforms-mt/dingtalk.png'
+import feishuLogo from '@/assets/platforms-mt/feishu.png'
+import wecomLogo from '@/assets/platforms-mt/wecom.png'
 import { AvatarChip } from '@/components/ui/avatar-chip'
 import { Globe, Link as LinkIcon, MessageSquareText } from '@/lib/icons'
 
@@ -37,7 +40,8 @@ function PhotonIcon(props: React.SVGProps<SVGSVGElement>) {
 // We render simpleicons.org brand glyphs for platforms whose owners publish a
 // usable mark (telegram, discord, matrix, ...). A few brands — Slack, Dingtalk,
 // Feishu, WeCom — have been removed from Simple Icons at the brand owner's
-// request, so we fall back to a colored letter monogram for those.
+// request, so we fall back to a colored letter monogram for those (desktop-mt
+// ships the official Dingtalk, Feishu and WeCom marks via `rasterIcon`).
 //
 // `iconColor` is the brand's hex from simpleicons.org so we can paint each
 // glyph in its native color on top of a soft tint. The fallback monogram uses
@@ -49,6 +53,17 @@ interface PlatformIconSpec {
   color: string
   kind: IconKind
   monogram?: string
+}
+
+/** desktop-mt: 把官方位图标志包成 SVG 图标，这样底色和大小都与微信等矢量图标走同一套规则。 */
+function rasterIcon(src: string): ComponentType<SVGProps<SVGSVGElement>> {
+  return function RasterIcon(props: SVGProps<SVGSVGElement>) {
+    return (
+      <svg viewBox="0 0 24 24" {...props}>
+        <image height="24" href={src} width="24" />
+      </svg>
+    )
+  }
 }
 
 const PLATFORM_ICONS: Record<string, PlatformIconSpec> = {
@@ -69,6 +84,10 @@ const PLATFORM_ICONS: Record<string, PlatformIconSpec> = {
   webhook: { Icon: LinkIcon, color: '#71717A', kind: 'generic' },
   api_server: { Icon: Globe, color: '#64748B', kind: 'generic' },
   weixin: { Icon: SiWechat, color: '#07C160', kind: 'brand' },
+  // desktop-mt: 企业微信、钉钉、飞书已从 Simple Icons 下架，改用官网标志，不再显示字母。
+  wecom: { Icon: rasterIcon(wecomLogo), color: '#0082EF', kind: 'brand' },
+  dingtalk: { Icon: rasterIcon(dingtalkLogo), color: '#005FFF', kind: 'brand' },
+  feishu: { Icon: rasterIcon(feishuLogo), color: '#3370FF', kind: 'brand' },
   qqbot: { Icon: SiQq, color: '#EB1923', kind: 'brand' },
   yuanbao: { Icon: SiBilibili, color: '#FB7299', kind: 'brand' }
 }

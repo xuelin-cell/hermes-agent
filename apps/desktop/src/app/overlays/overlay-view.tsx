@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 export const OVERLAY_TOP_CLEARANCE = 'pt-[calc(var(--titlebar-height)/2-0.4375rem)]'
 
 interface OverlayViewProps {
+  compact?: boolean
   children: ReactNode
   onClose: () => void
   closeLabel?: string
@@ -34,6 +35,7 @@ interface OverlayViewProps {
 
 export function OverlayView({
   children,
+  compact = false,
   onClose,
   closeLabel = translateNow('common.close'),
   contentClassName,
@@ -74,7 +76,8 @@ export function OverlayView({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 bg-black/22 backdrop-blur-[0.125rem]',
+        'fixed inset-0 z-50',
+        compact ? 'flex items-center justify-center bg-black/10' : 'bg-black/22 backdrop-blur-[0.125rem]',
         // Equidistant inset on every side. The top value is driven by the
         // titlebar height so the card clears the OS traffic-lights vertically;
         // since the card top already sits below them, the left needs no extra
@@ -102,10 +105,11 @@ export function OverlayView({
       // the edges. Re-pin the real height at the overlay root.
       style={{ '--titlebar-height': `${TITLEBAR_HEIGHT}px` } as CSSProperties}
     >
-      <div className="relative h-full min-h-0">
+      <div className={cn("relative h-full min-h-0", compact && "w-full max-w-[1040px] max-h-[712px]")}>
         <div
           className={cn(
             'relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-(--ui-stroke-secondary) bg-(--ui-chat-surface-background) shadow-md',
+            compact && 'rounded-lg shadow-lg',
             rootClassName
           )}
           // Marks the card as a RAISED surface for window glass: while the field

@@ -3780,6 +3780,7 @@ export const zhHant = defineLocale({
       error: '更新已暫停'
     },
     startingUpdate: '正在開始更新…',
+    preparingInstall: '正在準備安裝…',
     checking: '正在檢查更新…',
     checkFailedTitle: '無法檢查更新',
     tryAgain: '重試',

@@ -216,7 +216,7 @@ export function ModelsSettings({ onConfigSaved }: ModelsSettingsProps) {
         )}
       </div>
       {editor ? (
-        <div className="grid max-w-xl gap-5">
+        <div className="settings-card grid max-w-xl gap-5 py-4">
           <label className="grid gap-2 text-sm">
             {t('baseUrl')} *
             <Input
@@ -331,7 +331,7 @@ export function ModelsSettings({ onConfigSaved }: ModelsSettingsProps) {
         <p>{t('loading')}</p>
       ) : rows.length ? (
         rows.map(row => (
-          <div className="border-b border-border/50 py-4" key={row.key}>
+          <div className="settings-card mb-3 py-4" key={row.key}>
             <div className="flex items-center gap-2">
               <button
                 className="min-w-0 flex-1 truncate text-left text-sm"
@@ -358,7 +358,7 @@ export function ModelsSettings({ onConfigSaved }: ModelsSettingsProps) {
           </div>
         ))
       ) : (
-        <p className="py-12 text-center text-sm text-muted-foreground">{t('empty')}</p>
+        <p className="settings-card py-12 text-center text-sm text-muted-foreground">{t('empty')}</p>
       )}
       <ConfirmDialog
         confirmLabel={t('delete')}

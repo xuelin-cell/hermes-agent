@@ -531,6 +531,9 @@ class InProcessCronScheduler(CronScheduler):
             [p[0] if isinstance(p, tuple) else p for p in initial_homes],
             " (re-enumerated every cycle)" if callable(profile_homes) else "",
         )
+        from hermes_cli.startup_timing import mark as _startup_mark
+
+        _startup_mark("cron scheduler started", profiles=len(initial_homes))
 
         def tick_adapters_for(profile_name):
             # Deliver via the profile's OWN adapters; NEVER fall back to the default profile's

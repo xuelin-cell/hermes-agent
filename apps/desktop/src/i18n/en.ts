@@ -4629,6 +4629,18 @@ export const en: Translations = {
     attachLabel: 'Attach',
     files: 'Add files',
     folder: 'Add folder',
+    skills: 'Skills',
+    connectors: 'Connectors',
+    manageSkills: 'Manage skills…',
+    manageConnectors: 'Manage connectors…',
+    loading: 'Loading…',
+    noSkills: 'No installed skills',
+    noConnectors: 'No configured connectors',
+    quickConnectorNames: {
+      uniAiToolkit: 'UniAI Toolkit',
+      arxiv: 'arXiv research',
+      uniworkDrive: 'UniWork Drive'
+    },
     images: 'Images…',
     pasteImage: 'Paste image',
     url: 'URL…',
@@ -4873,6 +4885,7 @@ export const en: Translations = {
       error: 'Update paused'
     },
     startingUpdate: 'Starting update…',
+    preparingInstall: 'Preparing the install…',
     checking: 'Looking for updates…',
     checkFailedTitle: 'Couldn’t check for updates',
     tryAgain: 'Try again',

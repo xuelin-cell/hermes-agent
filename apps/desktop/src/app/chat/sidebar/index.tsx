@@ -230,7 +230,7 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
   {
     id: 'artifacts',
     label: '',
-    icon: props => <Codicon name="files" {...props} />,
+    icon: props => <Codicon name="files" size="1rem" {...props} />,
     route: ARTIFACTS_ROUTE,
     keybindActionId: 'nav.artifacts',
     tier: 'advanced'
@@ -1617,6 +1617,7 @@ export function ChatSidebar({
                       'flex h-[var(--sidebar-row-min-height,1.75rem)] w-full justify-start gap-2 rounded-md border border-transparent px-2 text-left text-[length:var(--sidebar-row-font-size,0.8125rem)] font-medium text-(--ui-text-secondary) transition-colors duration-100 ease-out [-webkit-app-region:no-drag] hover:bg-(--ui-control-hover-background) hover:text-foreground hover:transition-none',
                       active &&
                         'border-(--ui-stroke-tertiary) bg-(--ui-control-active-background) text-foreground shadow-none hover:border-(--ui-stroke-tertiary)!',
+                      isNewSession && 'font-normal',
                       !isInteractive &&
                         'cursor-default hover:border-transparent hover:bg-transparent hover:text-inherit'
                     )}
@@ -1667,7 +1668,7 @@ export function ChatSidebar({
                     }
                     type="button"
                   >
-                    <item.icon className="size-5 shrink-0 text-(--ui-text-secondary)" />
+                    <item.icon className="size-4 shrink-0 text-(--ui-text-secondary)" />
                     {/* Shrink-to-fit, not flex-1: the label carries the row's
                         `data-tour` handle, and anything anchored to it should
                         land at the end of the WORD, not out at the sidebar's

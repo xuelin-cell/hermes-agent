@@ -3999,7 +3999,7 @@ export const zh = defineLocale({
       actions: '分组操作'
     },
     nav: {
-      'new-session': '新对话',
+      'new-session': '新建任务',
       capabilities: '扩展',
       messaging: '连接手机',
       artifacts: '资料库',
@@ -4363,6 +4363,18 @@ export const zh = defineLocale({
     attachLabel: '附加',
     files: '添加文件',
     folder: '添加文件夹',
+    skills: '技能',
+    connectors: '连接器',
+    manageSkills: '管理技能…',
+    manageConnectors: '管理连接器…',
+    loading: '正在加载…',
+    noSkills: '暂无已安装技能',
+    noConnectors: '暂无已配置连接器',
+    quickConnectorNames: {
+      uniAiToolkit: '通用 AI 工具箱',
+      arxiv: 'arXiv 论文检索',
+      uniworkDrive: 'UniWork 云盘'
+    },
     images: '图片…',
     pasteImage: '粘贴图片',
     url: 'URL…',
@@ -4604,6 +4616,7 @@ export const zh = defineLocale({
       error: '更新已暂停'
     },
     startingUpdate: '正在开始更新…',
+    preparingInstall: '正在准备安装…',
     checking: '正在检查更新…',
     checkFailedTitle: '无法检查更新',
     tryAgain: '重试',

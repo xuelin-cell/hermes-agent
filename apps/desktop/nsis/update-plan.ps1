@@ -26,7 +26,7 @@ param(
     [Parameter(Mandatory = $true)][string]$NewStamp,
     [string]$OldStamp = '',
     [Parameter(Mandatory = $true)][string]$DeleteFile,
-    [Parameter(Mandatory = $true)][string]$ExcludeFile,
+    [Parameter(Mandatory = $true)][string]$PatternsFile,
     [string]$Log = '',
     [string]$Archive = '',
     [string]$SevenZip = '',
@@ -327,35 +327,35 @@ try {
             }
         }
 
-        $exclusions = [System.Collections.Generic.List[string]]::new()
+        $patterns = [System.Collections.Generic.List[string]]::new()
         foreach ($name in $keep) {
             $comp = $new.Components[$name]
             $isArchive = ($comp -is [hashtable]) -and $comp.IsArchive
             if ($isArchive) {
                 # Archive component: exclude both .7z and .tar.xz files
-                $exclusions.Add("-x!resources\agent-payload\$name.7z")
-                $exclusions.Add("-x!resources\agent-payload\$name.tar.xz")
+                $patterns.Add("resources\agent-payload\$name.7z")
+                $patterns.Add("resources\agent-payload\$name.tar.xz")
             } elseif ($name -ieq 'uv-cache.zip') {
-                $exclusions.Add("-x!resources\agent-payload\$name")
+                $patterns.Add("resources\agent-payload\$name")
             } else {
                 # Directory component: exclude all files inside
-                $exclusions.Add("-x!resources\agent-payload\$name\*")
+                $patterns.Add("resources\agent-payload\$name\*")
             }
         }
         foreach ($entry in $keepTools) {
-            $exclusions.Add("-x!resources\agent-payload\tools\$entry\*")
+            $patterns.Add("resources\agent-payload\tools\$entry\*")
         }
 
         [System.IO.File]::WriteAllLines($DeleteFile, $delete, $utf8)
-        if ($exclusions.Count -gt 0) {
-            # One switch per line: NSIS builds the 7-Zip command in a 1024-character
-            # variable and batches the lines itself.
-            [System.IO.File]::WriteAllLines($ExcludeFile, $exclusions, $utf8)
-        } elseif ([System.IO.File]::Exists($ExcludeFile)) {
-            [System.IO.File]::Delete($ExcludeFile)
+        if ($patterns.Count -gt 0) {
+            # One pattern per line: the installer feeds this to 7za as -x@listfile,
+            # so the count is not bound by the NSIS command-line string limit.
+            [System.IO.File]::WriteAllLines($PatternsFile, $patterns, $utf8)
+        } elseif ([System.IO.File]::Exists($PatternsFile)) {
+            [System.IO.File]::Delete($PatternsFile)
         }
-        Add-Note "delete $($delete.Count) path(s), skip $($exclusions.Count) archive path(s)"
-        Write-Output "删除 $($delete.Count) 个路径，跳过 $($exclusions.Count) 个归档路径"
+        Add-Note "delete $($delete.Count) path(s), skip $($patterns.Count) archive path(s)"
+        Write-Output "删除 $($delete.Count) 个路径，跳过 $($patterns.Count) 个归档路径"
 
         # Reporting only: how much each kept component accounts for in the
         # package. Numbers come from the archive (that is what 7-Zip skips), and

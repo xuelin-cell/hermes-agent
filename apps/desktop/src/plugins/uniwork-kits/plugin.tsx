@@ -1,10 +1,8 @@
 /**
  * Kits & experts — the desktop side of the `uniwork-kits` Python plugin.
  *
- * Extensions embeds the registered catalog with Experts / Kits shelves.
- * Summoning an expert lives in the composer: a 「专家」 picker beside
- * the "+" and, while the chat belongs to an expert, a welcome / name bar above
- * the input.
+ * Extensions embeds the Experts / Kits catalog, where users can summon experts.
+ * Expert chats show a welcome / name bar above the composer.
  */
 
 import {
@@ -27,7 +25,6 @@ import { $expertDirectory, loadExperts } from './experts-store'
 import { KITS_LOCALES } from './i18n'
 import { KitsPage } from './page'
 import { resetExpertDraft, summonSendGuard } from './summon'
-import { SummonPicker } from './summon-picker'
 
 /**
  * 专家是装成独立档案的，模型、密钥和连接器都从通用助手同步；在「技能与工具」里单独改它们会破坏专家
@@ -65,9 +62,9 @@ function hideExpertProfiles(ctx: PluginContext): void {
 const plugin: HermesPlugin = {
   id: 'uniwork-kits',
   name: '套件',
-  description: '安装和管理套件与专家，在对话框里召唤专家。',
+  description: '安装和管理套件与专家，在专家目录里召唤专家。',
   defaultEnabled: true,
-  /** 注册扩展里的目录、召唤按钮、专家栏和发送拦截。 */
+  /** 注册扩展里的目录、专家栏和发送拦截。 */
   register(ctx) {
     ctx.i18n.register(KITS_LOCALES)
     bindApi(ctx.rest)
@@ -82,12 +79,6 @@ const plugin: HermesPlugin = {
         area: ROUTES_AREA,
         data: { path: '/kits' } satisfies RouteContribution,
         render: () => <KitsPage />
-      },
-      {
-        id: 'summon',
-        area: COMPOSER_AREAS.leading,
-        order: 20,
-        render: () => <SummonPicker />
       },
       {
         id: 'expert-bar',

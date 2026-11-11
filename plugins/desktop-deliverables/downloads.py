@@ -159,6 +159,17 @@ def output_stem(name, url, args):
     return FALLBACK_NAMES.get(tool, "生成文件")
 
 
+# 做幻灯片时生出来的图是配图，放进 assets 才不会被当成另一份成品。单独要一张图时仍放 outputs。
+_DECK_IMAGES = {"txt2img_generate", "image_edit"}
+
+
+def destination(root, name, deck=False):
+    """配图进 assets/generated；其余成品仍进 outputs。"""
+    if deck and leaf(name) in _DECK_IMAGES:
+        return Path(root) / "assets" / "generated"
+    return Path(root) / "outputs"
+
+
 def claim(folder, stem, suffix):
     """按“名字、名字-2、名字-3…”独占创建空文件占位，同名不覆盖，并行下载也不会抢到同一个名字。"""
     for index in range(1, 1000):
@@ -171,7 +182,7 @@ def claim(folder, stem, suffix):
     raise ValueError("no free file name")
 
 
-async def fetch(url, root, name="", args=None):
+async def fetch(url, root, name="", args=None, deck=False):
     """流式下载到隐藏的临时文件，整个请求最多二十秒；完整后才以可读名字出现，半成品绝不成卡。"""
     temporary = None
     target = None
@@ -179,10 +190,10 @@ async def fetch(url, root, name="", args=None):
     exempt = trusted(name, url)
     try:
         async with asyncio.timeout(TIMEOUT):
-            folder = root / "outputs"
+            folder = destination(root, name, deck)
             if is_link(folder):
                 raise ValueError("outputs is linked")
-            folder.mkdir(exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
             suffix = Path(unquote(urlsplit(url).path)).suffix.lower()
             temporary = folder / ("." + uuid4().hex + suffix + ".part")
             client_factory = (
@@ -272,7 +283,7 @@ def strip_data(value, urls):
     return value
 
 
-def saved_note(root, paths, missing, *, platform="desktop", kept=0):
+def saved_note(root, paths, missing, *, platform="desktop", kept=0, deck=False):
     """用陈述事实的方式告诉模型本机副本在哪、哪些没存下；结果在不可信包装内，不写成命令。"""
     parts = []
     if platform != "desktop":
@@ -288,7 +299,12 @@ def saved_note(root, paths, missing, *, platform="desktop", kept=0):
         if missing:
             parts.append(f"有 {len(missing)} 个成品没有本机副本，保留原链接交付，不生成不存在文件的 MEDIA 引用，也不另建下载任务。")
         return "".join(parts)
-    if paths:
+    if paths and deck:
+        parts.append(
+            "已保存为本轮幻灯片的配图。不要在回复里展示这些图片，不要写它们的路径或 MEDIA 行，只把图放进 PPT。"
+        )
+        parts.append("本机副本：" + "、".join(paths))
+    elif paths:
         # 链接一律移除，模型无法把远程地址贴进回复；再交给元景工具时由上传钩子换回原链接。
         parts.append(
             "已保存本机副本，桌面聊天区会自动显示预览卡片（原下载链接已移除，回复中引用时用本机副本；"
@@ -319,17 +335,34 @@ def kept_links(saved, platform):
     return large
 
 
-def annotate(result, data, root, saved, missing, *, platform="desktop"):
-    """标明本机副本与下载失败；能作为卡片或附件交付的移除链接，可能发不出的保留链接兜底。"""
-    messaging = platform != "desktop"
+def _hide_previews(payload):
+    """配图结果里不再留图片地址，工具行就不会画出预览。"""
+    if isinstance(payload, dict):
+        for key in ("image_url", "url", "path", "image_path", "imageUrl"):
+            if isinstance(payload.get(key), str):
+                payload.pop(key, None)
+        for value in payload.values():
+            _hide_previews(value)
+    elif isinstance(payload, list):
+        for item in payload:
+            _hide_previews(item)
+
+
+def annotate(result, data, root, saved, missing, *, platform="desktop", deck=False):
+    """返回改写后的工具结果：已下载的成品去掉链接，并写明本机副本与未保存的成品。"""
     paths = [str(path) for path in saved.values()]
+    messaging = platform != "desktop"
     kept = kept_links(saved, platform)
     removed = [url for url in saved if url not in kept]
-    note = saved_note(root, paths, missing, platform=platform, kept=len(kept))
+    note = saved_note(root, paths, missing, platform=platform, kept=len(kept), deck=deck)
     if isinstance(data, dict):
         rewritten = strip_data(data, removed)
-        if paths:
+        # 幻灯片配图不放进交付清单，避免聊天区把它画成预览卡。模型仍能从说明里拿到路径。
+        if paths and (messaging or not deck):
             rewritten["deliverables" if messaging else "desktop_deliverables"] = paths
+        if paths and deck and not messaging:
+            rewritten["desktop_slide_assets"] = paths
+            _hide_previews(rewritten)
         rewritten["delivery_note" if messaging else "desktop_note"] = note
         return json.dumps(rewritten, ensure_ascii=False)
     text = strip_links(str(result), removed).rstrip() if removed else str(result)

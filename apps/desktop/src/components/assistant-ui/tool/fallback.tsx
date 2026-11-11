@@ -82,6 +82,7 @@ import {
   type ToolStatus,
   type ToolTitleAction
 } from './fallback-model'
+import { NativePptResult } from './native-ppt/result'
 import { isToolCallPart, summarizeToolRun } from './run-summary'
 import { ToolRunTicker } from './run-ticker'
 import { InlineSearchCardsVisible, SearchCardResults } from './search-cards/results'
@@ -618,6 +619,7 @@ function ToolEntry({ part }: ToolEntryProps) {
         </DisclosureRow>
       </div>
       {part.toolName === 'web_search' && <SearchCardResults results={[part.result]} />}
+      {part.toolName === 'TencentPpt' && <NativePptResult part={part} />}
       {open && (
         <div className="relative grid w-full min-w-0 max-w-full gap-1.5 overflow-hidden p-1.5">
           {copyAction.text && (

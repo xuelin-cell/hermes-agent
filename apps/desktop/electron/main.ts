@@ -216,6 +216,7 @@ import {
 import { relaunchDesktop } from './desktop-relaunch'
 import { registryPrimaryBootRoute, resolveDesktopRemoteRoute, v1SshTerminalPoolKey } from './desktop-remote-route'
 import { isDesktopRendererSender } from './desktop-renderer-sender'
+import { setDesktopLogPath } from './desktop-startup-log'
 import {
   buildPosixCleanupScript,
   buildWindowsCleanupScript,
@@ -689,6 +690,38 @@ const IS_PACKAGED = app.isPackaged || Boolean(process.env.HERMES_DESKTOP_IS_PACK
 const IS_MAC = process.platform === 'darwin'
 const IS_WINDOWS = process.platform === 'win32'
 const IS_WSL = isWslEnvironment()
+// Startup diagnostics: launch-to-visible is measured from the main process
+// start (includes Electron's own boot, which is what the user waits through).
+const MAIN_PROCESS_STARTED_AT = Date.now() - Math.round(process.uptime() * 1000)
+// Launch-to-window-visible was one black box (3.6-21 s across runs). These
+// stamps split it into bundle evaluation, module init, app-ready, window
+// creation and first paint. A mark carries the timestamp it was taken at, so
+// one flushed later still reports when it happened.
+const startupMarkQueue: string[] = []
+
+function queueStartupMark(stage: string, at: number = Date.now()): void {
+  startupMarkQueue.push(
+    `[startup] ${stage} at +${Math.round(at - MAIN_PROCESS_STARTED_AT)}ms (since main process start, ${new Date(at).toISOString()})`
+  )
+}
+
+function flushStartupMarks(): void {
+  if (!startupMarkQueue.length) {
+    return
+  }
+
+  const pending = startupMarkQueue.splice(0, startupMarkQueue.length)
+
+  try {
+    rememberLog(pending.join('\n'))
+  } catch {
+    // The log sink is not initialized yet (this runs during module
+    // evaluation); keep the marks for the next flush.
+    startupMarkQueue.unshift(...pending)
+  }
+}
+
+queueStartupMark('main bundle evaluated')
 // Truthful macOS kernel major (Tahoe = 25). Product version lies (16 vs 26) per
 // build SDK, so gate Tahoe workarounds on Darwin instead.
 const DARWIN_MAJOR = IS_MAC ? Number.parseInt(os.release(), 10) || 0 : 0
@@ -1054,6 +1087,9 @@ const DEFAULT_UPDATE_BRANCH = 'main'
 // errors.log, gateway.log produced by hermes_logging.setup_logging — one log
 // directory per user, regardless of which UI surface produced the line.
 const DESKTOP_LOG_PATH = path.join(HERMES_HOME, 'logs', 'desktop.log')
+// The login shell logs its phases to its own file before this process exists;
+// hand the path over so the runtime's marks continue in the same timeline.
+setDesktopLogPath(DESKTOP_LOG_PATH)
 const DESKTOP_LOG_FLUSH_MS = 120
 const DESKTOP_LOG_BUFFER_MAX_CHARS = 64 * 1024
 // Bound desktop.log on disk. It is an append-only forensic log, so a boot loop
@@ -1704,6 +1740,10 @@ const hermesLog: string[] = []
 let desktopLogBuffer = ''
 let desktopLogFlushTimer = null
 let desktopLogFlushPromise = Promise.resolve()
+
+// The log sink exists now: replay the marks captured during module evaluation.
+queueStartupMark('module init complete')
+flushStartupMarks()
 
 let poolLimits = readPersistedPoolLimits()
 // Hard cap on local backends that are starting OR running (the LRU eviction
@@ -12317,7 +12357,11 @@ const accountLogout = createAccountLogout({
     accountExitWindows.seal(mode)
   },
   snapshot: async () => {
-    await desktopMessaging.settle()
+    try {
+      await withTimeout(desktopMessaging.settle(), 10_000, 'messaging settle')
+    } catch (error) {
+      rememberLog(`[quit] messaging settle failed, continuing: ${error?.message || error}`)
+    }
 
     const roots = [
       ...logoutTerminals,
@@ -12443,6 +12487,8 @@ const quitFinalization = createQuitFinalization({
   isWindows: IS_WINDOWS,
   hardExit: code => {
     rememberLog(`[quit] forcing Windows process exit after Electron quit finalization stalled`)
+    // app.exit 会终止事件循环，挂起的异步 flush 定时器不再执行，必须同步落盘。
+    flushDesktopLogBufferSync()
     app.exit(code)
   }
 })
@@ -14493,15 +14539,17 @@ function spawnHudWindow(sessionId, profile) {
 
   wireWindowReveal(win, {
     show: () => {
-      win.show()
-      win.focus()
-    },
-    onRevealed: () => {
-      // Step the app aside: the HUD IS the surface now.
+      // Step the app aside before the HUD appears: the HUD IS the surface now.
+      // This lives in the show callback, not in onRevealed, so the main window
+      // is already hidden when the HUD is shown regardless of reveal order.
       if (hudRestoreMainWindow && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.hide()
       }
 
+      win.show()
+      win.focus()
+    },
+    onRevealed: () => {
       // Compositor overlay adapters (Hyprland float+pin today). Electron
       // alwaysOnTop is already set; this is the dialect some WMs actually hear.
       void promoteHudOverlay({ title: HUD_WINDOW_TITLE })
@@ -14906,6 +14954,9 @@ function createWindow() {
   const createdMainWindow = mainWindow
   artifactShareWindows.add(createdMainWindow)
 
+  queueStartupMark('main window created')
+  flushStartupMarks()
+
   // 在开始导航前监听文档就绪；不等待图片等次要资源，避免卡在登录卡片。
   firstDesktopWindowReady ??= new Promise<BrowserWindow>((resolve, reject) => {
     createdMainWindow.webContents.once('dom-ready', () => resolve(createdMainWindow))
@@ -14958,15 +15009,18 @@ function createWindow() {
     }
   }
 
+  // 必须在首帧绘制前 maximize：从未显示过的窗口会直接以最大化态出现；
+  // 等 ready-to-show 再 maximize，Windows 会从还原矩形播 zoom 动画
+  // （可见的“小窗→全屏”过渡）。
+  if (savedWindowState?.isMaximized) {
+    createdMainWindow.maximize()
+  }
+
   const revealController = wireWindowReveal(createdMainWindow, {
     onRevealed: () => {
-      // Maximize after reveal (show) so Windows doesn't flash the normal-size
-      // frame before the maximize DWM transition. Calling maximize() on a
-      // hidden window queues the SWP change; when the window later shows, the
-      // user sees a brief "small box → fullscreen" flicker.
-      if (savedWindowState?.isMaximized) {
-        createdMainWindow.maximize()
-      }
+      rememberLog(
+        `[startup] main window visible at +${Math.round(Date.now() - MAIN_PROCESS_STARTED_AT)}ms (since main process start)`
+      )
 
       // Persist geometry as soon as the window is visible so a crash before the
       // first clean resize/move/close still captures the restored bounds (#56726).
@@ -19115,6 +19169,9 @@ app.on('open-url', (event, url) => {
 })
 
 const desktopStartup = app.whenReady().then(() => {
+  queueStartupMark('app ready')
+  flushStartupMarks()
+
   // desktop-mt: 云盘续期只管理桌面令牌，不触碰 Hermes 账号或会话缓存。
   stopDriveCredentialRenewal = installDriveCredentialRenewal(ACCOUNT_DRIVE_CLIENT, powerMonitor)
   // Post-update relaunch detection (App Installer arm): when the previous
@@ -19317,6 +19374,7 @@ app.on('before-quit', event => {
 
   if (!logoutComplete && !isQuittingForHandoff) {
     event.preventDefault()
+    quitFinalization.arm()
     void logoutDesktopAccount('quit').catch(() => {
       restartAfterQuit = false
       dialog.showErrorBox('元景数字员工', '无法开始安全退出，请重试。历史和登录记录未删除。')

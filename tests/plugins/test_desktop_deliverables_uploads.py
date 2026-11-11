@@ -562,3 +562,34 @@ def test_mail_attachments_keep_the_strict_rule(uploads, tmp_path):
     )
     assert blocked["action"] == "block" and "email was not sent" in blocked["message"]
     assert not uploads.puts
+
+
+def test_a_slow_upload_blocks_only_its_own_call_and_is_reused_once_done(uploads, monkeypatch):
+    """上传卡住时钩子按期限返回、只拦这一次调用：核心给 pre_tool_call 30 秒，超时后整个进程的工具调用都会被拦。
+    后台照常传完，模型重试时直接用上，不再传第二遍。"""
+    import threading
+
+    image = uploads.home / "slow.png"
+    image.write_bytes(b"png")
+    release = threading.Event()
+    recorded = uploads.module.call_tool
+
+    def slow_call(name, args):
+        """取上传地址这一步卡住，直到测试放行。"""
+        release.wait(10)
+        return recorded(name, args)
+
+    monkeypatch.setattr(uploads.module, "call_tool", slow_call)
+    monkeypatch.setattr(uploads.module, "HOOK_WAIT_SECONDS", 0.3)
+    started = time.monotonic()
+    first = before(uploads, "mcp__UniAI_Toolkit__analyze_image", {"image_url_or_oss_path": str(image)})
+    assert time.monotonic() - started < 4
+    assert first["action"] == "block" and "还在上传" in first["message"]
+
+    pending = list(uploads.module._inflight.values())
+    assert len(pending) == 1
+    release.set()
+    pending[0].result(timeout=10)
+    again = before(uploads, "mcp__UniAI_Toolkit__analyze_image", {"image_url_or_oss_path": str(image)})
+    assert again == {"action": "modify", "args": {"image_url_or_oss_path": "app-agent-prod/temp/obj1.png"}}
+    assert len(uploads.calls) == 1 and len(uploads.puts) == 1

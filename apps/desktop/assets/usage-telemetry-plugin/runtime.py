@@ -244,7 +244,7 @@ class Runtime:
             result = next_call(request)
             return result
         finally:
-            # An interrupted/failed call without usage makes totals unknown, never a fabricated zero.
+            # Keep a missing-usage observation for diagnostics; confirmed totals survive the failure.
             try:
                 self.put("usage", payload, attempt=str(uuid4()), credential=credential,
                          tokens=raw_tokens(field(result, "usage"), payload.get("api_mode", "")))
@@ -289,11 +289,12 @@ class Runtime:
             self.enabled = action == "on"
             self.generation += 1
             self.wake.set()
-            return "办公统计已开启（含本轮输入摘要）。" if self.enabled else "办公统计已关闭。"
+            return "办公统计已开启（含本轮输入摘要；Token 按已确认用量累计）。" if self.enabled else "办公统计已关闭。"
         if action == "flush":
             self.wake.set()
             return "已请求发送待上报事件；请稍后查看 status。"
         return json.dumps({"enabled": self.enabled, "bridge": bool(self.account), "queue": self.queue.qsize(),
+                           "tokenBasis": "已确认 Token 累计：仅累计已返回的有效用量，未返回部分不估算，可能低于实际消耗。",
                            "events": self.counts, "delivery": self.delivery, "dropped": self.dropped,
                            "bridgeError": self.context_error or self.input_error,
                            "coverageGaps": dict(self.collector.gaps)}, ensure_ascii=False)

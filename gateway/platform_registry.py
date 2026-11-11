@@ -10,6 +10,8 @@ registry first, then the legacy built-in path. Plugin side: ``platform_registry
 import logging
 import sys
 import threading
+import time
+import traceback
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
 
@@ -275,8 +277,40 @@ class PlatformRegistry:
                     global_names.add(name)
         # Load outside the registry lock; each name has an in-flight event so concurrent
         # readers wait for the same materialization.
-        for name in (*sorted(scoped_names), *sorted(global_names)):
+        pending = (*sorted(scoped_names), *sorted(global_names))
+        if not pending:
+            return
+        self._log_materialization_trigger(pending)
+        started = time.monotonic()
+        for name in pending:
             self._resolve(name, active_scope)
+        logger.info(
+            "Materialized %d deferred platform adapter(s) in %.2fs", len(pending), time.monotonic() - started
+        )
+        from hermes_cli.startup_timing import mark as _startup_mark
+
+        _startup_mark("platform adapters materialized", count=len(pending))
+
+    @staticmethod
+    def _log_materialization_trigger(names: tuple[str, ...]) -> None:
+        """Report a bulk materialization: which platforms and who asked.
+
+        Materializing every deferred adapter imports every platform SDK, which
+        is seconds of GIL-holding work. Whether that is worth it is the
+        caller's call (a platform *list* does not need it), so the trigger has
+        to be visible in the log.
+        """
+        frames = [
+            f"{frame.filename.rsplit('/', 1)[-1]}:{frame.lineno} {frame.name}"
+            for frame in traceback.extract_stack()[:-2]
+            if "platform_registry" not in frame.filename
+        ][-6:]
+        logger.info(
+            "Materializing %d deferred platform adapter(s): %s (trigger: %s)",
+            len(names),
+            ", ".join(names),
+            " <- ".join(frames) or "unknown",
+        )
 
     def register(self, entry: PlatformEntry, *, scope: Optional[str] = None) -> None:
         """Register a platform adapter entry (last writer wins on name clash)."""
@@ -331,6 +365,16 @@ class PlatformRegistry:
             entries, _deferred = self._scope_maps(scope)
             return entries.get(name) or self._entries.get(name)
 
+    def peek(self, name: str) -> Optional[PlatformEntry]:
+        """The CONCRETE entry for *name* when it is already loaded; None while it is still deferred.
+
+        Never resolves a deferred loader — the way to ask "is this platform imported?" without
+        importing it.
+        """
+        with self._lock:
+            entries, _deferred = self._scope_maps(self.current_scope_key())
+            return entries.get(name) or self._entries.get(name)
+
     def all_entries(self) -> list[PlatformEntry]:
         """Return all registered platform entries."""
         self._resolve_all()
@@ -347,6 +391,23 @@ class PlatformRegistry:
         with self._lock:
             entries, deferred = self._scope_maps(self.current_scope_key())
             return entries.keys() | deferred.keys() | self._entries.keys() | self._deferred.keys()
+
+    def entry_names(self) -> list[str]:
+        """Registered platform names in registration order, WITHOUT loading adapters.
+
+        ``all_entries``/``plugin_entries`` materialize every deferred adapter, and each
+        adapter import pulls in a platform SDK — seconds of GIL-holding work. A caller
+        that only needs the NAMES (config bridging, target lists) must not pay that.
+        """
+        with self._lock:
+            scope = self.current_scope_key()
+            scoped_entries, scoped_deferred = self._scope_maps(scope)
+            names: list[str] = []
+            for source in (self._entries, scoped_entries, self._deferred, scoped_deferred):
+                for name in source:
+                    if name not in names:
+                        names.append(name)
+            return names
 
     def is_registered(self, name: str) -> bool:
         # A deferred (not-yet-imported) platform still counts as registered so cheap membership

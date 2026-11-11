@@ -152,7 +152,7 @@ describe('settings subpage routing', () => {
     for (const viewKey of Object.keys(SETTINGS_MANIFEST) as ManifestViewKey[]) {
       const view = manifestView(viewKey)
       const subpages = settingsSubpages(view).map(page => page.id)
-      expect(views).toContain(view)
+      expect([...views, 'general']).toContain(view)
 
       for (const [key, setting] of Object.entries(SETTINGS_MANIFEST[viewKey])) {
         const id = SETTING_IDS[viewKey][key as keyof (typeof SETTING_IDS)[typeof viewKey]]

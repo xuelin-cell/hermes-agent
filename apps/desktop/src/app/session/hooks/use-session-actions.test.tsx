@@ -49,6 +49,7 @@ import {
   $newChatWorkspaceTarget,
   $resumeFailedSessionId,
   $selectedStoredSessionId,
+  $sessionResumeRequest,
   $sessions,
   $sessionStartedAt,
   $turnStartedAt,
@@ -2268,6 +2269,7 @@ describe('branchStoredSession desktop source tagging', () => {
     setSessions([])
     $sessionTiles.set([])
     setSelectedStoredSessionId(null)
+    $sessionResumeRequest.set(null)
     vi.restoreAllMocks()
   })
 
@@ -2313,11 +2315,8 @@ describe('branchStoredSession desktop source tagging', () => {
 
     await expect(branchStoredSession!('stored-parent')).resolves.toBe(true)
 
-    // The branch becomes the primary session — this is what routes the main
-    // workspace area to it, not just a new sidebar row. Selection alone is not
-    // enough: leaving the URL on the parent makes chat/index see a permanent
-    // routeSessionMismatch and keeps the central loader mounted.
-    expect($selectedStoredSessionId.get()).toBe('branch-stored')
+    // 新路由提交后由统一恢复流程选中分支，创建回调只发布恢复请求。
+    expect($sessionResumeRequest.get()).toMatchObject({ sessionId: 'branch-stored' })
     expect(navigate).toHaveBeenCalledWith(sessionRoute('branch-stored'), { replace: true })
     // It must not ALSO exist as a tile: a session is either the main thread or
     // a tile, never both (resumeSession closes any tile with the same id).

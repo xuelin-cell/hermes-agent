@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { HermesConfigRecord } from '@/hermes'
 import { type I18nConfigClient, I18nProvider } from '@/i18n'
+import { $developerMode } from '@/store/developer-mode'
 import { stubMenuDomApis, stubResizeObserver } from '@/test/jsdom'
 
 import { LanguageSwitcher } from './language-switcher'
@@ -12,6 +13,7 @@ stubMenuDomApis()
 describe('LanguageSwitcher', () => {
   afterEach(() => {
     cleanup()
+    $developerMode.set(false)
     vi.restoreAllMocks()
   })
 
@@ -35,6 +37,13 @@ describe('LanguageSwitcher', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch language' }))
+    expect(screen.queryByPlaceholderText('Search languages...')).toBeNull()
+    act(() => $developerMode.set(true))
+    expect(screen.getByRole('combobox')).toBeTruthy()
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'English' } })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    act(() => $developerMode.set(false))
+    expect(screen.queryByRole('combobox')).toBeNull()
     expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
       'Englishen',
       '简体中文zh',

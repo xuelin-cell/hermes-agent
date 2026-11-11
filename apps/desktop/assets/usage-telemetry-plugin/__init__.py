@@ -24,6 +24,6 @@ def register(ctx):
                       runtime.put("child_end", kw, child_session_id=child_session_id))
     ctx.register_hook("pre_approval_request", lambda surface=None, **kw: runtime.put("wait_start", kw, surface=surface))
     ctx.register_hook("post_approval_response", lambda surface=None, **kw: runtime.put("wait_end", kw, surface=surface))
-    ctx.register_command("usage-report", runtime.command, description="办公统计开关与上报状态（包含本轮输入摘要）",
+    ctx.register_command("usage-report", runtime.command, description="办公统计开关与上报状态（已确认 Token 累计，含本轮输入摘要）",
                          args_hint="on | off | status | flush")
     ctx.on_unload(runtime.close)

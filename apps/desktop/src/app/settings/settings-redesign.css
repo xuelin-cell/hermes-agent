@@ -1,0 +1,70 @@
+.settings-redesign {
+  --conversation-text-font-size: 13px;
+  --conversation-caption-font-size: 12px;
+  --settings-page-background: color-mix(in srgb, var(--ui-text-primary) 4%, var(--ui-bg-editor));
+  background: var(--settings-page-background);
+}
+.settings-redesign-layout {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+.settings-redesign-nav {
+  padding: 12px 10px 10px;
+  border-right: 0;
+  background: var(--settings-page-background);
+}
+.settings-redesign-nav button[data-tour],
+.settings-redesign-nav nav button {
+  min-height: 33px;
+  font-size: 13px;
+  border-color: transparent;
+}
+.settings-redesign-nav button[aria-current='page'] {
+  color: var(--theme-primary);
+  background: color-mix(in srgb, var(--theme-primary) 9%, transparent);
+}
+.settings-redesign main {
+  padding-top: 16px;
+  background: var(--settings-page-background);
+}
+.settings-redesign main > section {
+  flex: 1;
+}
+.settings-section-label {
+  margin: 16px 2px 7px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ui-text-tertiary);
+}
+.settings-card {
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 0 15px;
+  background: var(--ui-bg-editor);
+}
+.settings-card > div + div {
+  border-top: 1px solid var(--ui-stroke-tertiary);
+}
+.settings-redesign .messaging-platform-card {
+  background: var(--ui-bg-editor);
+  border-color: transparent;
+}
+/* Standalone rows in developer pages share the same surface as grouped rows. */
+.settings-redesign .settings-row:not(.settings-card .settings-row) {
+  margin-bottom: 8px;
+  padding-inline: 15px;
+  border-radius: 12px;
+  background: var(--ui-bg-editor);
+}
+@media (max-width: 760px) {
+  .settings-redesign-layout {
+    grid-template-columns: 180px minmax(0, 1fr);
+    grid-template-rows: 1fr;
+  }
+}
+@media (max-width: 520px) {
+  .settings-redesign-layout {
+    grid-template-columns: 140px minmax(0, 1fr);
+  }
+}
+
+.settings-redesign-nav button[aria-current='page'] svg { color: inherit; }

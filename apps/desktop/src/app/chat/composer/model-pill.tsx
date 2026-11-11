@@ -221,7 +221,7 @@ export function ModelPill({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-64 p-0"
+        className="composer-model-menu w-[21rem] max-w-[calc(100vw-2rem)] p-0"
         onCloseAutoFocus={event => {
           if (restoreSelection.current) {
             event.preventDefault()

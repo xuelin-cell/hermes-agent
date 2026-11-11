@@ -65,12 +65,15 @@ class Turn:
         if not metadata:
             return False
         key = (metadata.get("provider"), metadata["modelId"], metadata.get("productId"))
-        row = self.usages.setdefault(key, {**metadata, **dict.fromkeys(TOKEN_FIELDS, 0)})
+        row = self.usages.setdefault(key, dict(metadata))
         values = observation.get("tokens", {})
         for name in TOKEN_FIELDS:
-            value, previous = values.get(name), row.get(name)
-            # A missing call makes this group's total unknown; don't advertise a partial sum as a total.
-            row[name] = previous + value if integer(previous) and integer(value) and integer(previous + value) else None
+            value, previous = values.get(name), row.get(name, 0)
+            # Sum confirmed fields only. Missing receipts never erase earlier counts or invent zeros.
+            # Keep overflow/legacy unknown totals unknown instead of restarting them from zero.
+            if integer(value) and integer(previous):
+                total = previous + value
+                row[name] = total if integer(total) else None
         return True
 
     def duration(self, end):
@@ -172,6 +175,8 @@ class Collector:
             turn.seen.add(key)
             if not turn.add_usage(o):
                 self.gaps["model_or_plan_unmapped"] += 1
+            elif any(not integer(o.get("tokens", {}).get(name)) for name in TOKEN_FIELDS):
+                self.gaps["usage_fields_unavailable"] += 1
             if o.get("streaming"):
                 self.gaps["auxiliary_stream_usage"] += 1
 

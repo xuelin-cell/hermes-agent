@@ -450,18 +450,18 @@ function AboutUpdateCard({
         : u.checkForUpdates
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card p-6">
+    <div className="rounded-2xl border border-border/60 bg-card p-6 font-sans text-[length:var(--conversation-text-font-size)]">
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[0.9375rem] leading-6 text-foreground">
+          <p className="text-[length:var(--conversation-text-font-size)] leading-(--conversation-line-height) font-medium text-foreground">
             {u.currentVersion}
-            <span className="ml-1.5 text-xs text-muted-foreground">
+            <span className="ml-1.5 text-[length:var(--conversation-caption-font-size)] font-normal text-muted-foreground">
               {currentVersion ? `v${shortVersion(currentVersion)}` : u.versionUnavailable}
             </span>
           </p>
           <p
             className={cn(
-              'mt-1 whitespace-pre-line text-xs leading-5',
+              'mt-1 whitespace-pre-line text-[length:var(--conversation-caption-font-size)] leading-(--conversation-caption-line-height)',
               view.tone === 'error' ? 'text-destructive' : 'text-muted-foreground'
             )}
           >
@@ -469,7 +469,7 @@ function AboutUpdateCard({
           </p>
         </div>
         <Button
-          className="min-w-24 shrink-0 rounded-[0.625rem]"
+          className="min-w-24 shrink-0 rounded-[0.625rem] text-[length:var(--conversation-text-font-size)]"
           disabled={busy}
           // One path for a client build, whatever the label says: check → download
           // dialog → ready → "launch". Only the backend keeps its direct apply.
@@ -486,11 +486,11 @@ function AboutUpdateCard({
         <div className="mt-6 flex items-center justify-between gap-4">
           {/* `aboutApp` + `aboutAppName`: the CJK pair needs no separator, so
               the space lives in the English prefix only. */}
-          <p className="text-[0.9375rem] leading-6 text-foreground">
+          <p className="text-[length:var(--conversation-text-font-size)] leading-(--conversation-line-height) font-medium text-foreground">
             {u.aboutApp}
             <span className="text-muted-foreground">{u.aboutAppName}</span>
           </p>
-          <Button asChild className="min-w-24 shrink-0 rounded-[0.625rem]" size="lg" variant="outline">
+          <Button asChild className="min-w-24 shrink-0 rounded-[0.625rem] text-[length:var(--conversation-text-font-size)]" size="lg" variant="outline">
             <a
               href={WEBSITE_URL}
               onClick={event => {

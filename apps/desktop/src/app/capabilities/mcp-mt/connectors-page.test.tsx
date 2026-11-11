@@ -120,9 +120,39 @@ it('re-enables an already authorized WPS connector without starting browser auth
   await waitFor(() =>
     expect(localConnectors).toHaveBeenCalledWith({ operation: 'enable', profile: 'work', id: 'wps_mcp' })
   )
-  expect(localConnectors).not.toHaveBeenCalledWith(
-    expect.objectContaining({ operation: 'authorize', id: 'wps_mcp' })
+  expect(localConnectors).not.toHaveBeenCalledWith(expect.objectContaining({ operation: 'authorize', id: 'wps_mcp' }))
+})
+
+it('网页授权连接器的快捷入口会立即开始授权', async () => {
+  renderPage('/capabilities?tab=connectors&recommended=qcc_mcp&connect=1')
+
+  await waitFor(() =>
+    expect(localConnectors).toHaveBeenCalledWith({ operation: 'authorize', profile: 'work', id: 'qcc_mcp' })
   )
+  expect(screen.getByTestId('location').textContent).not.toContain('recommended=')
+  expect(screen.getByTestId('location').textContent).not.toContain('connect=')
+})
+
+it('取消网页授权会停止后台监听并恢复连接操作', async () => {
+  renderPage('/capabilities?tab=connectors&recommended=qcc_mcp&connect=1')
+
+  await waitFor(() =>
+    expect(localConnectors).toHaveBeenCalledWith({ operation: 'authorize', profile: 'work', id: 'qcc_mcp' })
+  )
+  fireEvent.click(screen.getByRole('button', { name: '取消' }))
+
+  await waitFor(() =>
+    expect(localConnectors).toHaveBeenCalledWith({ operation: 'disconnect', profile: 'work', id: 'qcc_mcp' })
+  )
+  expect(screen.getByRole('button', { name: '连接' })).toBeTruthy()
+})
+
+it('API 凭据连接器的快捷入口会直接打开填写凭据的表单', async () => {
+  renderPage('/capabilities?tab=connectors&recommended=youdao_note&connect=1')
+
+  expect(await screen.findByText('填写连接信息')).toBeTruthy()
+  expect(screen.getByLabelText('API Key')).toBeTruthy()
+  expect(localConnectors).not.toHaveBeenCalledWith(expect.objectContaining({ operation: 'authorize' }))
 })
 
 it('标题栏搜索在切换标签时保留占位与输入，MCP 页退出交互和无障碍树', () => {

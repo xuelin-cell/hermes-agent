@@ -35,6 +35,7 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailMode, setDetailMode] = useState<'overview' | 'credentials'>('overview')
+  const [autoConnectId, setAutoConnectId] = useState<ConnectorId | null>(null)
   const connections = useRecommendedConnections(props.profile)
   const panelId = useId()
   const selected = RECOMMENDED_CONNECTORS.find(entry => entry.id === selectedId)
@@ -55,19 +56,55 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
   useEffect(() => {
     const nextParams = new URLSearchParams(location.search)
     const target = nextParams.get('recommended')
+    const connectImmediately = nextParams.get('connect') === '1'
 
     if (!target) {
       return
     }
 
     if (RECOMMENDED_CONNECTORS.some(entry => entry.id === target)) {
-      setDetailMode('overview')
-      setSelectedId(target)
+      const id = target as ConnectorId
+
+      setSelectedId(id)
+
+      if (connectImmediately) {
+        setAutoConnectId(id)
+
+        if (CONNECTOR_SPECS[id].auth === 'oauth2' || CONNECTOR_SPECS[id].auth === 'browser_poll') {
+          setDetailMode('overview')
+        } else {
+          setDetailMode('credentials')
+        }
+      } else {
+        setDetailMode('overview')
+      }
     }
 
     nextParams.delete('recommended')
+    nextParams.delete('connect')
     navigate({ ...location, search: nextParams.toString() ? `?${nextParams.toString()}` : '' }, { replace: true })
   }, [location, navigate])
+
+  useEffect(() => {
+    if (!autoConnectId) {
+      return
+    }
+
+    const auth = CONNECTOR_SPECS[autoConnectId].auth
+
+    if (auth !== 'oauth2' && auth !== 'browser_poll') {
+      setAutoConnectId(null)
+
+      return
+    }
+
+    if (!connections.available) {
+      return
+    }
+
+    setAutoConnectId(null)
+    void connections.request('authorize', autoConnectId)
+  }, [autoConnectId, connections])
 
   // 首次打开后保留原生编辑器，切换推荐页不丢失尚未保存的 MCP 草稿。
   useEffect(() => {
@@ -237,8 +274,18 @@ export function ConnectorsPage({ searchContainer, ...props }: ConnectorsPageProp
         error={connections.error}
         key={selectedId}
         mode={detailMode}
-        onCancel={connections.cancel}
-        onClose={() => setSelectedId(null)}
+        onCancel={() => {
+          if (selected && connections.pending === selected.id) {
+            void connections.cancel(selected.id)
+          }
+        }}
+        onClose={() => {
+          if (selected && connections.pending === selected.id) {
+            void connections.cancel(selected.id)
+          }
+
+          setSelectedId(null)
+        }}
         onConnect={() => {
           if (selected) {
             connect(selected.id)

@@ -13,6 +13,10 @@ metadata:
 
 # PDF Processing Guide
 
+## 已迁移套件的路由
+
+如果当前档案启用了新版 `kits/pdf/skills/pdf`（版本 `1.0.0-workbuddy-hermes.*`），先通过 `skill_view` 完整读取该套件技能，使用其受管 PDF CLI；扫描页使用随套件部署的本地 OCR。此时不安装下文旧依赖、不混用旧提取路线。没有启用新版套件时，才使用下文原有路线。
+
 对 PDF 做真实的读写处理（本技能会**实际执行代码生成文件**，不只是给参考）。基础库为纯 Python（`pypdf` / `pdfplumber` / `reportlab`），跨 Linux(Pro) 与 Windows(Lite) 均可运行；命令行工具（poppler / qpdf / pdftk / tesseract）在 Linux 沙箱通常可用，在 Windows host 可能缺失——**缺失时一律走纯 Python 路径**。
 
 安装依赖（优先 uv）：

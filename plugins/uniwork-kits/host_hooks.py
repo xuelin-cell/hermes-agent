@@ -12,6 +12,9 @@ touched.
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -21,6 +24,12 @@ logger = logging.getLogger(__name__)
 
 PPT_KITS = ("pptx", "ppt-writer")
 _GENERATOR_LEAVES = frozenset({media_slot.UNIAI_IMAGE, media_slot.DEFAULT_IMAGE_TOOL})
+_PPT_SCRIPT_RE = re.compile(r"\.(?:js|mjs|cjs|pptx)\b", re.IGNORECASE)
+_PPT_OCR_RE = re.compile(r"\b(?:rapidocr(?:_onnxruntime)?|paddleocr|easyocr|cnocr|pytesseract|tesseract)\b", re.IGNORECASE)
+_CONTINUE_AFTER_REFUSAL = (
+    "文件没有改成，这一轮不要结束。先用 read_file 把该文件完整读一遍，再用 patch 改要动的地方；"
+    "读完之后也可以 write_file。改的是生成脚本就改完重新生成 pptx。不要告诉用户已经改好。"
+)
 
 
 def is_ppt_skill(tool_name: str, args: Any) -> bool:
@@ -66,12 +75,34 @@ def picture_rules(platform: str) -> str:
 
 
 def on_pre_tool_call(
-    tool_name: str = "", args: Any = None, session_id: str = "", turn_id: str = "", task_id: str = "", **_: Any,
+    tool_name: str = "", args: Any = None, session_id: str = "", turn_id: str = "", task_id: str = "", tool_call_id: str = "", **_: Any,
 ) -> Optional[Dict[str, Any]]:
-    """工具调用前的两件事：终端跑套件脚本时换成带依赖的解释器；同一轮里重复的或超出次数的搜图直接答复，不再调用 MCP。"""
+    """工具调用前：终端跑套件脚本时换成带依赖的解释器；同一轮里重复的或超出次数的搜图直接答复，不再调用 MCP。"""
     try:
+        from . import native_ppt
+
+        turn = turns.current(session_id, turn_id, task_id)
+        if native_ppt.enabled():
+            name = str((args or {}).get("name", "")) if isinstance(args, dict) else ""
+            if tool_name == "TencentPpt" or (tool_name == "skill_view" and name in _NATIVE_SKILL_ALIASES):
+                from . import deck_timing
+
+                deck_timing.begin(turn.session_id, turn.turn_id)
+                turn.native_ppt = turn.deck = True
+                if tool_name == "skill_view":
+                    return {"action": "modify", "args": {"name": native_ppt.SKILL_NAME}}
+        if turn.native_ppt:
+            from . import ppt_visual_evidence
+            ppt_visual_evidence.before(turn, tool_name, args, tool_call_id)
+            key = _image_key(tool_name, args)
+            if key and key in turn.native_images:
+                return {"action": "block", "message": turn.native_images[key]}
         if tool_name == "terminal":
+            if turn.native_ppt and isinstance(args, dict) and _PPT_OCR_RE.search(str(args.get("command", ""))):
+                return {"action": "block", "message": "当前PPT流程不安装、探测或调用OCR。使用已有视觉工具；若上传或识图失败，处理该具体故障并如实说明未确认项，不改用新OCR依赖绕过。"}
             return script_python.on_pre_tool_call(tool_name=tool_name, args=args, task_id=task_id)
+        if turn.native_ppt:
+            return None
         if not image_landing.is_image_search(tool_name):
             return None
         turn = turns.current(session_id, turn_id, task_id)
@@ -82,6 +113,17 @@ def on_pre_tool_call(
         return None
 
 
+def _continue_after_refused_overwrite(tool_name: str, result: str) -> str:
+    """整份覆盖被拒绝时，告诉模型接着读文件再改，不要把这一轮结束掉。"""
+    if tool_name not in {"write_file", "patch"}:
+        return ""
+    if "Refusing to overwrite" not in result and "stale_write_blocked" not in result:
+        return ""
+    if not _PPT_SCRIPT_RE.search(result):
+        return ""
+    return _CONTINUE_AFTER_REFUSAL
+
+
 def on_transform_tool_result(
     tool_name: str = "",
     args: Any = None,
@@ -89,6 +131,7 @@ def on_transform_tool_result(
     session_id: str = "",
     turn_id: str = "",
     task_id: str = "",
+    tool_call_id: str = "",
     **_: Any,
 ) -> Optional[str]:
     """在工具结果后面补上宿主知道的信息：PPT 配图规则、搜图落盘结果、幻灯片检查结论。返回 None 表示原样不动。
@@ -97,8 +140,23 @@ def on_transform_tool_result(
     """
     try:
         turn = turns.current(session_id, turn_id, task_id)
+        if turn.native_ppt:
+            from . import ppt_visual_evidence
+            ppt_visual_evidence.record(turn, tool_name, args, result, tool_call_id)
+            if tool_name == "desktop_read_image":
+                return None
         original = result if isinstance(result, str) else str(result or "")
         text = original
+        if turn.native_ppt:
+            key = _image_key(tool_name, args)
+            if key and len(turn.native_images) < 32:
+                try:
+                    data = json.loads(text)
+                except ValueError:
+                    data = None
+                if isinstance(data, dict) and not (data.get("error") or data.get("isError") or data.get("ok") is False):
+                    turn.native_images[key] = text
+            return None
         ppt_skill = is_ppt_skill(tool_name, args)
         kit_side = not _is_expert_home()  # 数字员工: picture rules and landing are for kits only
         if kit_side and (ppt_skill or deck_check.is_deck_work(args)):
@@ -117,7 +175,25 @@ def on_transform_tool_result(
         checked = deck_check.annotate(tool_name, args, text, turn)
         if checked is not None:
             text = checked
+        note = _continue_after_refused_overwrite(tool_name, original)
+        if note and note not in text:
+            text = text.rstrip() + "\n\n" + note
         return text if text != original else None
     except Exception:
         logger.warning("[uniwork-kits] tool result hook failed", exc_info=True)
         return None
+
+
+_NATIVE_SKILL_ALIASES = {"pptx", "pptx--pptx", "pptx:pptx", "workbuddy-pptx", "ppt-writer--create-ppt", "office/pptx-scripted-decks"}
+
+
+def _image_key(tool_name, args):
+    if media_slot.leaf(tool_name) != "analyze_image" or not isinstance(args, dict):
+        return None
+    value = str(args.get("image_url_or_oss_path") or "")
+    p = Path(value)
+    if not p.is_file():
+        return None
+    data = dict(args)
+    data["image_url_or_oss_path"] = hashlib.sha256(p.read_bytes()).hexdigest()
+    return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest()

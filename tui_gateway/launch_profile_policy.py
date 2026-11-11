@@ -105,6 +105,9 @@ def activate_multi_profile_hosting_eagerly() -> bool:
     if len(homes) < 2:
         return False
     logger.info("Multi-profile hosting activated at startup (%d servable profile homes)", len(homes))
+    from hermes_cli.startup_timing import mark as _startup_mark
+
+    _startup_mark("multi-profile hosting activated", profiles=len(homes))
     activate_multi_profile_hosting()
     return True
 

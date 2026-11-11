@@ -58,7 +58,10 @@ _ABSOLUTE = re.compile(
 _BARE = re.compile(r"(?<![\w./\\-])([\w.-]+\.(?:" + _EXT + r"))(?![A-Za-z0-9])", re.I)
 _QUOTED = re.compile(r"`([^`\n]+)`|\"([^\"\n]+)\"|'([^'\n]+)'|\]\(<?([^)>\n]+)>?\)")
 MEDIA = re.compile(
-    r"^[ \t]*MEDIA:[ \t]*(`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|\S+)[ \t]*(?:\r?\n|$)", re.M
+    # 与桌面支持的强调标记一致，否则加粗的附件会被误当成正文中的已有展示。
+    r"^[ \t]*(?P<emphasis>\*{1,3}|_{1,3})?MEDIA:[ \t]*"
+    r"(?P<path>`[^`\n]+`|\"[^\"\n]+\"|'[^'\n]+'|\S+?)"
+    r"(?(emphasis)(?P=emphasis))[ \t]*(?:\r?\n|$)", re.M
 )
 LINKS = re.compile(r"\]\(\s*<?([^)>\n]+)>?\s*\)")
 _PREVIEW = re.compile(r"::preview\{[^}\n]*?\bfile\s*=\s*([\"'])(.*?)\1[^}\n]*\}")
@@ -188,7 +191,7 @@ def remove_media_lines(text, masked, cwd, moved):
     """按屏蔽后的位置移走独立行，只收拢附近空白；代码、引用及其它段落不压缩。"""
     matches = list(MEDIA.finditer(masked))
     for match in reversed(matches):
-        if resolve_path(match.group(1), cwd) not in moved:
+        if resolve_path(match.group("path"), cwd) not in moved:
             continue
         start, end = match.span()
         left = re.search(r"(?:\r?\n[ \t]*)+$", text[:start])
@@ -245,7 +248,7 @@ def named_paths(text, cwd):
         resolve_path(value, cwd)
         for value in quoted
         + complete_lines
-        + [match.group(1) for match in MEDIA.finditer(text)]
+        + [match.group("path") for match in MEDIA.finditer(text)]
     ]
     folders = [cwd]
     for path in paths:
@@ -318,6 +321,18 @@ def fresh(path, since, roots=(), *, explicit=False):
         )
     except (OSError, ValueError):
         return False
+
+
+# 档案目录里放模型自己读的说明：技能和记忆。模型改完常把路径写进回复，那不是给用户的成品。
+_AGENT_STATE = ("skills", "memories")
+
+
+def agent_state(path):
+    """文件在当前档案的技能或记忆目录里。档案每次现取，一个进程可能服务多个档案。"""
+    from hermes_constants import get_hermes_home
+
+    home = get_hermes_home().resolve()
+    return any(path.is_relative_to(home / name) for name in _AGENT_STATE)
 
 
 def snapshot(root, budget=None):
@@ -448,6 +463,20 @@ def priority(path):
     if extension in {"md", "html", "htm", "csv", "zip"}:
         return 1
     return 2 if extension in IMAGES else 3
+
+
+_DECK_IMAGE_MEDIA = re.compile(
+    r"(?im)^[ \t]*[`'\"]?MEDIA:[ \t]*[^\n]*\.(?:png|jpe?g|gif|webp|bmp|svg)\b[^\n]*\r?\n?"
+)
+_DECK_MARKDOWN_IMAGE = re.compile(r"!\[[^\]]*\]\([^)\n]*\)|<img\b[^>]*>", re.I)
+
+
+def drop_deck_images(text):
+    """做幻灯片时，回复里的图片都是配图。按行删掉，不依赖路径能不能解析。"""
+    if not isinstance(text, str) or not text:
+        return text
+    cleaned = _DECK_MARKDOWN_IMAGE.sub("", _DECK_IMAGE_MEDIA.sub("", text))
+    return re.sub(r"\n{3,}", "\n\n", cleaned)
 
 
 def media_line(path):

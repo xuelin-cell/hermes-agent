@@ -882,7 +882,12 @@ export async function applyUpdates(opts: DesktopUpdateApplyOptions = {}): Promis
 
   dismissNotification(UPDATE_TOAST_ID)
   $updateDownloadFailure.set(null)
-  $updateApply.set({ ...IDLE, applying: true, stage: 'prepare', message: translateNow('updates.startingUpdate') })
+  // A package already on disk is not a download: start on the install leg so
+  // the progress surface never claims bytes are moving over the network. A
+  // real transfer (cache miss, or an install the user started before the
+  // ambient prefetch finished) flips this to 'fetch' as soon as the first
+  // download-progress event lands, which is also when Cancel becomes real.
+  $updateApply.set({ ...IDLE, applying: true, stage: 'update', message: translateNow('updates.preparingInstall') })
 
   try {
     const result = await bridge.apply(opts)
@@ -1469,6 +1474,11 @@ let pollerStarted = false
 let backgroundTimer: ReturnType<typeof setInterval> | null = null
 let connectionUnsub: (() => void) | null = null
 let lastConnectionKey: string | undefined
+// The launch-time pass runs once the backend connection is published, not at
+// mount: main only mints that descriptor after the backend answers HTTP and the
+// WS probe passes, so the check + its background download no longer compete
+// with the backend's own boot for CPU/disk/network.
+let startupCheckDone = false
 
 // mode alone can't tell two remote backends apart — switching directly from
 // remote profile A to remote profile B leaves mode === 'remote' both times.
@@ -1512,14 +1522,14 @@ export function startUpdatePoller(): void {
   }
 
   pollerStarted = true
-  runPassiveChecks()
   void refreshDesktopVersion()
   bridge.onProgress(ingestProgress)
 
   // The poller starts at mount, before the gateway connects — so the first
-  // backend check above sees mode≠remote and no-ops. Re-check once the
-  // connection resolves to remote, and again whenever the remote target
-  // itself changes (switching between two remote profiles).
+  // check waits for the connection descriptor instead of firing here (see
+  // `startupCheckDone`). Re-check backend updates once the connection resolves
+  // to remote, and again whenever the remote target itself changes (switching
+  // between two remote profiles).
   connectionUnsub = $connection.subscribe((conn: HermesConnection | null): void => {
     const key = connectionKey(conn)
 
@@ -1528,6 +1538,15 @@ export function startUpdatePoller(): void {
     }
 
     lastConnectionKey = key
+
+    if (!startupCheckDone && conn) {
+      startupCheckDone = true
+      // Covers both targets: checkUpdates() for the client,
+      // checkBackendUpdates() inside runPassiveChecks() for remote mode.
+      runPassiveChecks()
+
+      return
+    }
 
     if (conn?.mode === 'remote') {
       void checkBackendUpdates()
@@ -1547,6 +1566,7 @@ export function stopUpdatePoller(): void {
   connectionUnsub?.()
   connectionUnsub = null
   lastConnectionKey = undefined
+  startupCheckDone = false
   window.removeEventListener('focus', onFocus)
   pollerStarted = false
 }

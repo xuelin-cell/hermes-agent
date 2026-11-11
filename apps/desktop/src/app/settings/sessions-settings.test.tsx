@@ -94,7 +94,7 @@ describe('SessionsSettings default directory (desktop-mt)', () => {
     mountBridge(true)
     render(<SessionsSettings subpage="default-directory" />)
 
-    expect(await screen.findByText(en.settings.sessions.defaultsTo(workspace))).toBeTruthy()
+    expect(await screen.findByText(workspace)).toBeTruthy()
     expect(screen.getByText(/each new conversation gets its own folder/)).toBeTruthy()
     expect(screen.queryByText(en.settings.sessions.defaultDirDesc)).toBeNull()
   })
@@ -154,7 +154,12 @@ describe('SessionsSettings default directory (desktop-mt)', () => {
     const settings = window.hermesDesktop!.settings
     const saved = 'E:/readonly'
     Object.assign(settings, {
-      getDefaultProjectDir: async () => ({ dir: saved, activeRoot: workspace, defaultLabel: workspace, unusable: true }),
+      getDefaultProjectDir: async () => ({
+        dir: saved,
+        activeRoot: workspace,
+        defaultLabel: workspace,
+        unusable: true
+      }),
       pickDefaultProjectDir: async () => ({ dir: 'D:/work' }),
       setDefaultProjectDir: async () => ({ dir: 'D:/work', activeRoot: workspace, restartRequired: true })
     })
@@ -170,7 +175,14 @@ describe('SessionsSettings default directory (desktop-mt)', () => {
     mountBridge(false)
     render(<SessionsSettings subpage="default-directory" />)
 
-    expect(await screen.findByText(en.settings.sessions.defaultsTo(workspace))).toBeTruthy()
+    expect(await screen.findByText(workspace)).toBeTruthy()
     expect(screen.getByText(en.settings.sessions.defaultDirDesc)).toBeTruthy()
   })
+})
+
+it('renders only archived conversations for the data-management page even with a stale directory link', async () => {
+  render(<SessionsSettings onlyArchived subpage="default-directory" />)
+  expect(await screen.findByRole('button', { name: en.settings.sessions.unarchive })).toBeTruthy()
+  expect(screen.queryByText(en.settings.sessions.defaultDirTitle)).toBeNull()
+  expect(screen.queryByRole('switch', { name: en.settings.sessions.autoArchiveTitle })).toBeNull()
 })
