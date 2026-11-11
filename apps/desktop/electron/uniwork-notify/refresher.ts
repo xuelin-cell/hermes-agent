@@ -47,6 +47,7 @@ export function createPlanRefresher(
       }
 
       if (plan.status === 'empty') {
+        mergeMaasModelConfig(directory, { models: [], mainModelIndex: 0 })
         writeAccountMaasKey(directory, null)
         updateUniaiToolkitConfig(directory, 'empty')
         log('刷新套餐：当前账号没有套餐，已清空专用 Key')

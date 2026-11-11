@@ -248,6 +248,7 @@ class ComputeHost:
                     self._reply("turn.error", sid, request_id, message="session busy")
                     return
                 session.update(running=True, _turn_cancel_requested=False, last_active=time.time())
+                session["uniwork_model_selection"] = frame.get("uniwork_model_selection")
                 server._start_inflight_turn(session, inflight)
                 turn_started_at = time.time()
             self._reply("turn.started", sid, request_id, started_ns=now_ns())
@@ -346,8 +347,12 @@ class ComputeHost:
                 # it. A RAISING _make_agent is the one path where nothing takes it (``owns_db``).
                 session_db = acquire(Path(profile_home) / "state.db")
                 owns_db = True
+            from tui_gateway.uniwork_model_catalog import prepare_deferred_model
+
+            model_args = {"model_override": frame.get("model_override")}
+            prepare_deferred_model(frame, model_args)
             agent = server._make_agent(
-                sid, key, session_id=key, model_override=frame.get("model_override"),
+                sid, key, session_id=key, **model_args,
                 reasoning_config_override=frame.get("reasoning_config_override"),
                 service_tier_override=frame.get("service_tier_override"),
                 platform_override=frame.get("source"),
@@ -398,6 +403,8 @@ class ComputeHost:
         # The host pipe names no login; the record carries the one the gateway stamped at creation.
         session["auth_user_id"] = frame.get("auth_user_id")
         session["profile_home"] = profile_home or session.get("profile_home")
+        if "uniwork_model_before_fallback" in frame:
+            session["uniwork_model_before_fallback"] = frame["uniwork_model_before_fallback"]
         if frame.get("model_override") is not None:
             session["model_override"] = frame.get("model_override")
         return session

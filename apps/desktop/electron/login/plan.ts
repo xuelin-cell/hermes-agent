@@ -26,6 +26,7 @@ export interface MaasPlan {
   apiKey: string
   models: MaasModel[]
   mainModelIndex: number
+  fastModelIndex?: number
   productId?: string
   productName?: string
 }
@@ -116,11 +117,14 @@ function parsePlan(body: unknown): FetchedPlan {
   })
 
   const mainModelIndex = mainId ? models.findIndex(model => model.id === mainId) : -1
+  const fastId = identifier(catalog.fast_model_id)
+  const fastModelIndex = fastId ? models.findIndex(model => model.id === fastId) : -1
 
   return {
     status: 'available',
     plan: {
       apiKey: payload.apiKey.trim(), models, mainModelIndex: Math.max(0, mainModelIndex),
+      ...(fastModelIndex >= 0 && { fastModelIndex }),
       ...(typeof payload.productId === 'string' && payload.productId.trim()
         ? { productId: payload.productId.trim() } : {}),
       ...(typeof payload.productName === 'string' && payload.productName.trim()

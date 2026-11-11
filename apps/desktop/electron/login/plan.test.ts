@@ -4,6 +4,7 @@ import { fetchPlan } from './plan'
 
 const catalog = {
   main_model_id: 'second',
+  fast_model_id: 3,
   models: [
     { id: 'first', model: 'same-model', base_url: 'https://models.invalid/TokenPlan/first/' },
     { id: 'second', model: 'same-model', base_url: 'https://models.invalid/TokenPlan/second/v1/' },
@@ -62,6 +63,7 @@ it('带登录 token 查询固定套餐地址，解析对象或字符串目录并
       plan: {
         apiKey: 'private-model-key',
         mainModelIndex: 1,
+        fastModelIndex: 2,
         models: [
           { id: 'first', name: 'same-model', baseUrl: 'https://models.invalid/TokenPlan/first/v1' },
           { id: 'second', name: 'same-model', baseUrl: 'https://models.invalid/TokenPlan/second/v1' },

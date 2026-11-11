@@ -1011,6 +1011,9 @@ def _deferred_build_agent_kwargs(current: dict, session_db) -> dict:
         kw.update({k: v for k, v in (("reasoning_config_override", current.get("create_reasoning_override")),
                                      ("service_tier_override", current.get("create_service_tier_override")))
                    if v is not None})
+    if current.get("source") == "desktop":
+        from tui_gateway.uniwork_model_catalog import prepare_deferred_model
+        prepare_deferred_model(current, kw)
     return kw
 
 

@@ -1,9 +1,9 @@
+import { useStore } from '@nanostores/react'
 import { Fragment, useContext, useState } from 'react'
 import { useNavigate } from 'react-router'
 
+import { useSessionView } from '@/app/chat/session-view'
 import { SETTINGS_ROUTE } from '@/app/routes'
-import { providerIdOf } from '@/app/settings/models-mt/catalog'
-import { prettifyModelId } from '@/app/settings/models-mt/model-name'
 import { ModelMenuCloseContext } from '@/app/shell/model-menu-panel'
 import { type ModelMenuHostProps, useModelMenuController } from '@/app/shell/use-model-menu-controller'
 import { DropdownMenuItem, dropdownMenuRow, DropdownMenuSearch } from '@/components/ui/dropdown-menu'
@@ -12,7 +12,12 @@ import { currentModelCapabilities } from '@/lib/model-options'
 
 import { formatContextSize } from './context-usage'
 import { useComposerModelCopy } from './copy'
-import { type ComposerModelMeta, useComposerModelMeta } from './model-meta'
+import {
+  type ComposerModelMeta,
+  matchesComposerModel,
+  useComposerModelMeta
+} from './model-meta'
+import { ComposerModelSelectionContext } from './selection-context'
 
 /** 普通模式只列设置中的模型；选择和思考预设仍交给原版会话控制器。 */
 export function ComposerModelList(props: ModelMenuHostProps) {
@@ -20,34 +25,17 @@ export function ComposerModelList(props: ModelMenuHostProps) {
   const navigate = useNavigate()
   const close = useContext(ModelMenuCloseContext)
   const { controller, defaultEffort, modelOptions } = useModelMenuController(props)
-  const { rows, find, loading } = useComposerModelMeta()
+  const { catalog, loading } = useComposerModelMeta(props.profile, props.ownerConnectionId)
   const [search, setSearch] = useState('')
-  const current = controller.current
-  const missing = current.model && !find(current.provider, current.model)
-
-  const visibleRows: ComposerModelMeta[] = missing
-    ? [
-        {
-          key: `current:${current.provider}:${current.model}`,
-          endpointId: providerIdOf(current.provider),
-          provider: current.provider,
-          model: current.model,
-          name: prettifyModelId(current.model),
-          vision: false,
-          plan: false
-        },
-        ...rows
-      ]
-    : rows
+  const selectedKey = useContext(ComposerModelSelectionContext)
+  const view = useSessionView()
+  const model = useStore(view.$model)
+  const provider = useStore(view.$provider)
+  const visibleRows = catalog?.selectable ?? []
 
   const needle = search.trim().toLowerCase()
 
-  const filtered = visibleRows
-    .filter(row => `${row.name}\n${row.model}`.toLowerCase().includes(needle))
-    .sort(
-      (a, b) =>
-        Number(b.key.startsWith('current:')) - Number(a.key.startsWith('current:')) || Number(b.plan) - Number(a.plan)
-    )
+  const filtered = visibleRows.filter(row => `${row.name}\n${row.model}`.toLowerCase().includes(needle))
 
   /** 选中成功才应用该模型支持的预设，不把会话选择写成全局默认。 */
   const select = async (row: ComposerModelMeta) => {
@@ -91,11 +79,11 @@ export function ComposerModelList(props: ModelMenuHostProps) {
         </DropdownMenuItem>
       ) : filtered.length ? (
         filtered.map((row, index) => {
-          const selected = providerIdOf(row.provider) === providerIdOf(current.provider) && row.model === current.model
+          const selected = row.key === selectedKey
 
           return (
             <Fragment key={row.key}>
-            {!row.plan && !row.key.startsWith('current:') && (index === 0 || filtered[index - 1].plan) && <div className="px-3 pb-1 pt-3 text-xs text-muted-foreground">{t('custom')}</div>}
+            {!row.plan && (index === 0 || filtered[index - 1].plan) && <div className="px-3 pb-1 pt-3 text-xs text-muted-foreground">{t('custom')}</div>}
             <DropdownMenuItem
               className={dropdownMenuRow}
               data-current={selected || undefined}
@@ -103,7 +91,7 @@ export function ComposerModelList(props: ModelMenuHostProps) {
               onSelect={event => {
                 event.preventDefault()
 
-                if (selected) {
+                if (matchesComposerModel(row, provider, model)) {
                   close?.()
                 } else {
                   void select(row)

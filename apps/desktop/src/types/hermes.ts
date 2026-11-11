@@ -569,6 +569,7 @@ export interface SessionInfo {
   last_active: number
   message_count: number
   model: null | string
+  model_provider?: string
   output_tokens: number
   /** Parent conversation id. Written for genuine /branch forks *and* for
    *  /new / idle / daily resets (durable lineage). Nesting uses

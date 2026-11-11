@@ -1840,6 +1840,13 @@ export function restoreComposerModelSelection(): void {
   $currentProvider.set(storedComposerString(COMPOSER_PROVIDER_KEY) ?? '')
 }
 
+export function getRememberedComposerModelSelection() {
+  const model = storedComposerString(COMPOSER_MODEL_KEY)
+  const provider = storedComposerString(COMPOSER_PROVIDER_KEY)
+
+  return model && provider ? { model, provider } : undefined
+}
+
 export function rememberComposerModelSelection(model: string, provider: string): void {
   const modelKey = composerSelectionKey(COMPOSER_MODEL_KEY)
   const providerKey = composerSelectionKey(COMPOSER_PROVIDER_KEY)

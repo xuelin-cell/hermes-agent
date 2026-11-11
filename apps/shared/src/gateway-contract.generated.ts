@@ -2454,12 +2454,17 @@ export interface PromptSubmitParams {
   surface?: string | null
   voice_context?: string | null
   title_preview?: string | null
+  uniwork_model_selection?: UniWorkModelSelection | null
   truncate_before_user_ordinal?: number | null
   truncate_before_row_id?: number | null
   truncate_before_message_id?: string | null
   confirm_truncate?: boolean | null
   confirm_empty_truncate?: boolean | null
   rebind_survivor_row_ids?: number[] | null
+}
+export interface UniWorkModelSelection {
+  model?: string | null
+  provider?: string | null
 }
 /** ``status`` is absent only on the typed-stop-phrase reply (``voice_stopped``). After a truncation the survivor row ids let the client rebind its cached ``rowId``s (``None`` map entries: drop the cached id). ``turn_isolation`` marks a compute-host dispatch. */
 export interface PromptSubmitResult {

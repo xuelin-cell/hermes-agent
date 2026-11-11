@@ -32,9 +32,9 @@ export function prepareLocalEnvironment(session: LoginSession, roots: AccountRoo
   const account = prepareLocalAccount(session, roots)
   const result = session.currentPlan()
 
-  if (result.status === 'available') {
+  if (result.status !== 'failed') {
     try {
-      mergeMaasModelConfig(account.home, result.plan)
+      mergeMaasModelConfig(account.home, result.status === 'available' ? result.plan : { models: [], mainModelIndex: 0 })
     } catch (error) {
       throw new LocalStartupError('config', error)
     }

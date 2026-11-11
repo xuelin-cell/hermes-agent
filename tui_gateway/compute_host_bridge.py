@@ -65,6 +65,7 @@ def _compute_host_turn_frame(
         "context_cwd_is_launch_artifact": _context_cwd_is_launch_artifact(session),
         "profile_home": session.get("profile_home") or "",
         "model_override": session.get("model_override"),
+        "uniwork_model_selection": session.get("uniwork_model_selection"),
         "reasoning_config_override": session.get("create_reasoning_override"),
         "service_tier_override": session.get("create_service_tier_override"),
         "source": _session_source(session), "attached_images": attached_images,

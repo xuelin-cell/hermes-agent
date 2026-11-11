@@ -1,6 +1,13 @@
 import { cancelPendingWebPrompts, hasWebPreRead, prepareWebPrompt } from '@/app/contrib/unisearch/prompt'
-import { requestGatewayForAgent, requestGatewayForProfile, retainGatewayForSessionTurn } from '@/store/gateway'
+import { $developerMode } from '@/store/developer-mode'
+import {
+  activeGatewayProfileKey,
+  requestGatewayForAgent,
+  requestGatewayForProfile,
+  retainGatewayForSessionTurn
+} from '@/store/gateway'
 
+import { $connection, getRememberedComposerModelSelection } from './session'
 import { resetBackgroundPollingGuardAfterRebind } from './session-gone-latch'
 
 /**
@@ -239,6 +246,19 @@ export function requestForSessionProfile<T>(
   timeoutMs?: number,
   signal?: AbortSignal
 ): Promise<T> {
+  if (method === 'prompt.submit' && typeof window !== 'undefined' && window.hermesDesktop?.ntfy && !$developerMode.get()) {
+    const connection = $connection.get()
+    const owner = isRoute(ownerProfile) ? ownerProfile : null
+    const local = owner ? owner.connectionId === 'local' : connection?.mode === 'local'
+
+    if (local) {
+      const activeProfile = activeGatewayProfileKey()
+      const profile = owner?.profile ?? (typeof ownerProfile === 'string' ? ownerProfile : activeProfile)
+      const activeOwner = connection?.mode === 'local' && normKey(profile) === normKey(activeProfile)
+      params = { ...params, uniwork_model_selection: (activeOwner && getRememberedComposerModelSelection()) || {} }
+    }
+  }
+
   if (isRoute(ownerProfile) && (method === 'session.interrupt' || method === 'session.close')) {
     cancelPendingWebPrompts(ownerProfile, params)
   }

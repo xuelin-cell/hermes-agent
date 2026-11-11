@@ -34,9 +34,9 @@ import {
   setCurrentBranch,
   setCurrentCwdTransient,
   setCurrentFastMode,
-  setCurrentModel,
+  setCurrentModelTransient,
   setCurrentPersonality,
-  setCurrentProvider,
+  setCurrentProviderTransient,
   setCurrentReasoningEffort,
   setCurrentReasoningEffortWire,
   setCurrentServiceTier,
@@ -2153,11 +2153,11 @@ interface ApplyRuntimeInfoOptions {
  *  renders from. Foreground sessions only — see ApplyRuntimeInfoOptions. */
 function publishRuntimeToComposer(state: SessionRuntimeStatePatch): void {
   if (state.model !== undefined) {
-    setCurrentModel(state.model)
+    setCurrentModelTransient(state.model)
   }
 
   if (state.provider !== undefined) {
-    setCurrentProvider(state.provider)
+    setCurrentProviderTransient(state.provider)
   }
 
   if (state.cwd !== undefined) {
@@ -2282,11 +2282,11 @@ export function applyRuntimeInfo(
 }
 
 export function applyStoredSessionPreviewRuntimeInfo(
-  stored: { cwd?: null | string; model?: null | string } | undefined,
+  stored: { cwd?: null | string; model?: null | string; model_provider?: string } | undefined,
   storedSessionId: null | string
 ) {
-  setCurrentModel(stored?.model || '')
-  setCurrentProvider('')
+  setCurrentModelTransient(stored?.model || '')
+  setCurrentProviderTransient(stored?.model_provider || '')
   setCurrentReasoningEffort('')
   setCurrentServiceTier('')
   setCurrentFastMode(false)

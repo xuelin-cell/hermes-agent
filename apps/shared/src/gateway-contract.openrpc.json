@@ -25499,6 +25499,17 @@
             "default": null,
             "title": "Title Preview"
           },
+          "uniwork_model_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UniWorkModelSelection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
           "truncate_before_user_ordinal": {
             "anyOf": [
               {
@@ -35421,6 +35432,37 @@
           }
         },
         "title": "UiMetaConflict",
+        "type": "object"
+      },
+      "UniWorkModelSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Model"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Provider"
+          }
+        },
+        "title": "UniWorkModelSelection",
         "type": "object"
       },
       "Usage": {

@@ -100,6 +100,18 @@ it('普通模式隐藏手选钉点且无模型时显示加载文字', () => {
   expect(screen.getByText('Loading models…')).toBeTruthy()
 })
 
+it('历史模型待确认时显示加载，已知历史模型直接显示其名称', () => {
+  const profileDefault = modelState({ model: 'cheshi6', provider: 'custom:cheshi6', loading: true })
+  const { rerender } = render(<ModelPill disabled={false} model={{ ...profileDefault, catalogModel: null }} />)
+  expect(screen.getByText('Loading models…')).toBeTruthy()
+  expect(screen.queryByText(/cheshi6/i)).toBeNull()
+
+  const catalogModel = { key: 'historical', model: 'same-model', provider: 'custom:history', name: 'Historical model' }
+  rerender(<ModelPill disabled={false} model={{ ...profileDefault, catalogModel }} />)
+  expect(screen.getByText('Historical model')).toBeTruthy()
+  expect(screen.queryByText(/cheshi6/i)).toBeNull()
+})
+
 function MenuChoice() {
   const close = useContext(ModelMenuCloseContext)
 

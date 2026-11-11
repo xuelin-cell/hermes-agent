@@ -22,10 +22,12 @@ import type { ChatMessage } from '@/lib/chat-messages'
 import { NEW_SESSION_TITLE, quickModelOptions, sessionTitle } from '@/lib/chat-runtime'
 import { useIncrementalExternalStoreRuntime } from '@/lib/incremental-external-store-runtime'
 import { currentModelCapabilities, modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
+import { currentPickerSelection } from '@/lib/model-status-label'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
 import { migrateSessionDraft } from '@/store/composer'
 import { migrateQueuedPrompts, parkQueuedPrompts } from '@/store/composer-queue'
+import { $developerMode } from '@/store/developer-mode'
 import { $introSplash } from '@/store/intro-splash'
 import { $guideOpening, $onboardingGate } from '@/store/onboarding-gate'
 import { $petActive } from '@/store/pet'
@@ -63,6 +65,7 @@ import { ChatBar, ChatBarFallback } from './composer'
 import { FloatingComposerSurface } from './composer/floating-surface'
 import { requestComposerInsert } from './composer/focus'
 import { droppedFileInlineRefs } from './composer/inline-refs'
+import { displayedComposerModel, useComposerModelMeta } from './composer/model-mt/model-meta'
 import {
   ComposerScopeProvider,
   ComposerSurfaceProvider,
@@ -607,10 +610,10 @@ const ChatViewContent = memo(function ChatViewContent({
   // session can't blank the current one.
   const resumeExhausted = isPrimary && isRoutedSessionView && resumeExhaustedSessionId === routedSessionId
 
-  const routedHasHistory = Boolean(
-    routedSessionId &&
-    sessions.some(session => sessionMatchesStoredId(session, routedSessionId) && sessionShouldHaveTranscript(session))
-  )
+  const routedSession = routedSessionId
+    ? sessions.find(session => sessionMatchesStoredId(session, routedSessionId))
+    : undefined
+  const routedHasHistory = Boolean(routedSession && sessionShouldHaveTranscript(routedSession))
 
   const loadingSession = routedSessionIsLoading({
     activeSessionId,
@@ -682,14 +685,43 @@ const ChatViewContent = memo(function ChatViewContent({
   )
 
   const supportsReasoning = currentModelCapabilities(modelOptionsQuery.data, currentProvider, currentModel)?.reasoning
+  const developerMode = useStore($developerMode)
+  const { catalog: composerCatalog, error: composerCatalogError } = useComposerModelMeta(
+    modelOptionsProfile || activeGatewayProfile,
+    modelOptionsOwnerConnectionId,
+    gatewayOpen && !developerMode
+  )
+  const pickerSelection = currentPickerSelection(
+    { model: currentModel, provider: currentProvider },
+    modelOptionsQuery.data
+  )
+  const useStoredModel = isRoutedSessionView && (!activeSessionId || routeSessionMismatch)
+  const runtimeModel = useStoredModel ? '' : currentModel
+  const runtimeProvider = runtimeModel ? currentProvider : ''
+  const previewModel = runtimeModel || routedSession?.model || ''
+  const storedProvider = previewModel === routedSession?.model ? routedSession?.model_provider : undefined
+  const previewProvider = runtimeProvider && runtimeProvider !== 'custom' ? runtimeProvider : storedProvider || runtimeProvider
+  // A generic provider is a runtime identity, not a resume-in-progress signal.
+  // With no provider, an ID absent from the full catalog is enough to fall back.
+  const providerPending = !previewProvider &&
+    (!composerCatalog || composerCatalog.rows.some(row => row.model === runtimeModel))
+  const waitingForModel = isRoutedSessionView &&
+    (!runtimeModel || providerPending || (!composerCatalog && !composerCatalogError))
+  const catalogSelection = isRoutedSessionView ? { model: previewModel, provider: previewProvider } : pickerSelection
+  const catalogModel = developerMode
+    ? undefined
+    : composerCatalog
+      ? displayedComposerModel(composerCatalog, catalogSelection.provider, catalogSelection.model, waitingForModel) ?? null
+      : waitingForModel ? null : undefined
 
   const chatBarState = useMemo<ChatBarState>(
     () => ({
       model: {
         model: currentModel,
         provider: currentProvider,
+        catalogModel,
         canSwitch: gatewayOpen,
-        loading: !gatewayOpen || (!currentModel && !currentProvider),
+        loading: !gatewayOpen || waitingForModel || (!currentModel && !currentProvider),
         modelMenuContent,
         quickModels,
         reasoningMenuContent,
@@ -706,6 +738,7 @@ const ChatViewContent = memo(function ChatViewContent({
       }
     }),
     [
+      catalogModel,
       contextSuggestions,
       currentModel,
       currentProvider,
@@ -714,6 +747,7 @@ const ChatViewContent = memo(function ChatViewContent({
       quickModels,
       reasoningMenuContent,
       supportsReasoning,
+      waitingForModel,
       t.composer.addAttachment
     ]
   )

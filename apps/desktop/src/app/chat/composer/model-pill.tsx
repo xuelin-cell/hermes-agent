@@ -19,6 +19,7 @@ import { $currentModelSource, setModelPickerOpen } from '@/store/session'
 import { useComposerModelPillLabel } from './contrib'
 import { onComposerModelMenuRequest } from './focus'
 import { useComposerModelCopy } from './model-mt/copy'
+import { ComposerModelSelectionContext } from './model-mt/selection-context'
 import { RICH_INPUT_SLOT } from './rich-editor'
 import { useComposerScope } from './scope'
 import type { ChatBarState } from './types'
@@ -59,8 +60,9 @@ export function ModelPill({
   // to the live SessionView atoms so a mid-flight session.info still paints.
   const viewModel = useStore(view.$model)
   const viewProvider = useStore(view.$provider)
-  const currentModel = model.model || viewModel
-  const currentProvider = model.provider || viewProvider
+  const { catalogModel } = model
+  const currentModel = catalogModel === undefined ? model.model || viewModel : catalogModel?.model ?? ''
+  const currentProvider = catalogModel === undefined ? model.provider || viewProvider : catalogModel?.provider ?? ''
   const fastMode = useStore(view.$fast)
   const reasoningEffort = useStore(view.$reasoningEffort)
   const modelSource = useStore($currentModelSource)
@@ -141,7 +143,9 @@ export function ModelPill({
   ) : (
     <>
       {currentModel.trim() ? (
-        <span className="truncate">{pillLabel ?? formatModelPillLabel(currentModel, { fastMode })}</span>
+        <span className="truncate">{catalogModel?.name ?? pillLabel ?? formatModelPillLabel(currentModel, { fastMode })}</span>
+      ) : catalogModel === null && !model.loading ? (
+        <span className="truncate">{modelCopy('empty')}</span>
       ) : developerMode ? (
         <GlyphSpinner className="opacity-50" spinner="braille" />
       ) : (
@@ -232,7 +236,9 @@ export function ModelPill({
         sideOffset={8}
       >
         <ModelMenuCloseContext.Provider value={() => setMenuOpen(false)}>
-          {model.modelMenuContent}
+          <ComposerModelSelectionContext.Provider value={catalogModel?.key ?? null}>
+            {model.modelMenuContent}
+          </ComposerModelSelectionContext.Provider>
         </ModelMenuCloseContext.Provider>
       </DropdownMenuContent>
     </DropdownMenu>

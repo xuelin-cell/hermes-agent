@@ -255,9 +255,9 @@ export function validateProviderCredential(
   })
 }
 
-export function getCustomEndpoints(profile?: null | string): Promise<CustomEndpointsResponse> {
+export function getCustomEndpoints(profile?: ProfileScope): Promise<CustomEndpointsResponse> {
   return hermesApi<CustomEndpointsResponse>({
-    ...profileScoped(profile),
+    ...(profile && typeof profile === 'object' ? capabilityScoped(profile) : profileScoped(profile)),
     path: '/api/providers/custom-endpoints'
   })
 }

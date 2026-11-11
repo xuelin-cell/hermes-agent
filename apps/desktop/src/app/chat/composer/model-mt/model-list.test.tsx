@@ -7,8 +7,15 @@ import { useModelMenuController } from '@/app/shell/use-model-menu-controller'
 import { DropdownMenu, DropdownMenuContent } from '@/components/ui/dropdown-menu'
 import type { CustomEndpointsResponse } from '@/types/hermes'
 
+import { ModelPill } from '../model-pill'
 import { ComposerModelList } from './model-list'
-import { buildComposerModelMeta, type ComposerModelMeta, useComposerModelMeta } from './model-meta'
+import {
+  buildComposerModelMeta,
+  type ComposerModelMeta,
+  displayedComposerModel,
+  useComposerModelMeta
+} from './model-meta'
+import { ComposerModelSelectionContext } from './selection-context'
 
 vi.mock('@/app/shell/use-model-menu-controller', () => ({ useModelMenuController: vi.fn() }))
 vi.mock('./model-meta', async importOriginal => ({
@@ -37,12 +44,14 @@ function modelRow(id: string): ComposerModelMeta {
 
 /** 用真实 Radix 菜单验证点击与搜索，网络元数据保持受控。 */
 function show(rows = [modelRow('a'), modelRow('b')], loading = false) {
+  const catalog = { rows, selectable: rows }
+  const selected = displayedComposerModel(catalog, current.provider, current.model)
   vi.mocked(useComposerModelMeta).mockReturnValue({
+    catalog,
     rows,
     loading,
     error: false,
-    find: (provider, model) =>
-      rows.find(row => (row.provider === provider || row.endpointId === provider) && row.model === model)
+    find: () => undefined
   })
 
   return render(
@@ -50,7 +59,9 @@ function show(rows = [modelRow('a'), modelRow('b')], loading = false) {
       <DropdownMenu open>
         <DropdownMenuContent>
           <ModelMenuCloseContext.Provider value={close}>
-            <ComposerModelList onSelectModel={vi.fn()} requestGateway={vi.fn()} />
+            <ComposerModelSelectionContext.Provider value={selected?.key ?? null}>
+              <ComposerModelList onSelectModel={vi.fn()} requestGateway={vi.fn()} />
+            </ComposerModelSelectionContext.Provider>
           </ModelMenuCloseContext.Provider>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -149,7 +160,7 @@ it.each([
   }
 
   current.model = ''
-  show(buildComposerModelMeta(response, {}, []))
+  show(buildComposerModelMeta(response, {}, undefined).selectable)
   fireEvent.click(screen.getByText(name))
   await waitFor(() => expect(select).toHaveBeenCalledWith(model, `custom:${id}`))
   expect(applyPreset).toHaveBeenCalledWith(expect.anything(), { model, provider: `custom:${id}` })
@@ -168,7 +179,7 @@ it('八项不显示搜索，九项可按名字或模型标识筛选并显示无�
   expect(screen.getByText('No models found')).toBeTruthy()
 })
 
-it('加载和空列表使用禁用说明行，当前模型不在配置时补到首行', () => {
+it('加载和空列表使用对应状态', () => {
   current.model = ''
   const loading = show([], true)
   expect(screen.getByText('Loading models…').getAttribute('aria-disabled')).toBe('true')
@@ -176,9 +187,36 @@ it('加载和空列表使用禁用说明行，当前模型不在配置时补到�
   const empty = show([])
   expect(screen.getByText('No models available').getAttribute('aria-disabled')).toBe('true')
   empty.unmount()
+})
+
+it.each([true, false])('套餐切换移除旧模型后，按钮和下拉共用回退结果（有默认模型：%s）', hasDefault => {
+  const rows = [modelRow('a'), modelRow('b')]
+  const catalog = { rows, selectable: rows, main: hasDefault ? rows[1] : undefined }
+  const fallback = hasDefault ? rows[1] : rows[0]
   current.model = 'missing-model'
-  current.provider = 'missing'
-  show()
-  expect(screen.getAllByRole('menuitem')[0].getAttribute('data-current')).toBe('true')
-  expect(screen.getAllByRole('menuitem')[0].textContent).toContain('Missing Model')
+  current.provider = 'custom'
+  vi.mocked(useComposerModelMeta).mockReturnValue({ catalog, rows, loading: false, error: false, find: () => undefined })
+  render(
+    <MemoryRouter>
+      <ModelPill
+        disabled={false}
+        model={{
+          ...current,
+          canSwitch: true,
+          catalogModel: displayedComposerModel(catalog, current.provider, current.model),
+          modelMenuContent: <ComposerModelList onSelectModel={vi.fn()} requestGateway={vi.fn()} />
+        }}
+      />
+    </MemoryRouter>
+  )
+  fireEvent.keyDown(screen.getByText(fallback.name), { key: 'ArrowDown' })
+  const items = screen.getAllByRole('menuitem')
+  expect(items.slice(0, 2).map(row => row.textContent)).toEqual([
+    expect.stringContaining(rows[0].name),
+    expect.stringContaining(rows[1].name)
+  ])
+  expect(items.filter(row => row.hasAttribute('data-current')).map(row => row.textContent)).toEqual([
+    expect.stringContaining(fallback.name)
+  ])
+  expect(screen.queryByText('Missing Model')).toBeNull()
 })

@@ -21,6 +21,7 @@ export interface ChatBarState {
   model: {
     model: string
     provider: string
+    catalogModel?: { key: string; model: string; provider: string; name: string } | null
     canSwitch: boolean
     loading?: boolean
     quickModels?: QuickModelOption[]

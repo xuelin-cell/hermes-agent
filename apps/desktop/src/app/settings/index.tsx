@@ -509,7 +509,7 @@ export function SettingsView({ onClose, onConfigSaved, onMainModelChanged }: Set
         subpage={subpage}
       />
     ) : activeView === 'models' ? (
-      <ModelsSettings key={scopeProfile} onConfigSaved={onConfigSaved} onMainModelChanged={onMainModelChanged} />
+      <ModelsSettings key={scopeProfile} onConfigSaved={onConfigSaved} />
     ) : activeView === 'providers' ? (
       <ProvidersSettings
         key={scopeProfile}

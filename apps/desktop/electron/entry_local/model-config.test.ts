@@ -117,20 +117,35 @@ it('首次按端点合并模型，固定默认引用；重排重复准备不增�
     expect(fs.existsSync(path.join(home, '.env'))).toBe(false)
     mergeMaasModelConfig(home, catalog)
     expect(fs.readFileSync(file, 'utf8')).toBe(before)
-    mergeMaasModelConfig(home, { models: [catalog.models[2], catalog.models[0], catalog.models[1]], mainModelIndex: 2 })
-    expect(readConfig(file).model).toEqual(config.model)
-    expect(Object.keys(readConfig(file).providers).sort()).toEqual(Object.keys(config.providers).sort())
+    const reordered = [catalog.models[2], catalog.models[0], catalog.models[1]]
+    mergeMaasModelConfig(home, { models: reordered, mainModelIndex: 2, fastModelIndex: 0 })
+    const refreshed = readConfig(file)
+    expect(refreshed.model).toEqual(config.model)
+    expect(Object.keys(refreshed.providers).sort()).toEqual(Object.keys(config.providers).sort())
+    const expected = reordered.map(model => ({
+      id: model.id,
+      model: model.name,
+      provider: `custom:${providers.find(([, value]) => value.api === model.baseUrl)![0]}`
+    }))
+    expect(refreshed.uniwork_model_catalog).toEqual({ models: expected, main: expected[2], fast: expected[0] })
   } finally {
     fs.rmSync(home, { recursive: true, force: true })
   }
 })
 
-it('既有个人默认、MCP、Skills、注释、未知字段及模型选项保留；套餐刷新只移除托管旧端点', () => {
+it('套餐主模型替换旧默认及其路由字段，保留个人端点、其他设置和模型选项', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-user-'))
   const file = path.join(home, 'config.yaml')
 
   const original = `# 用户说明保留
-model: {provider: 'custom:personal', default: my-model}
+model:
+  provider: 'custom:personal'
+  default: my-model
+  base_url: https://personal.invalid/v1
+  api_mode: anthropic_messages
+  key_env: PERSONAL_KEY
+  context_length: 8192
+  persist_switch_by_default: false
 providers:
   personal:
     name: My provider
@@ -151,11 +166,16 @@ future_counter: 900719925474099312345
     let config = readConfig(file)
 
     for (const key of Object.keys(personal)) {
-      if (key !== 'providers') {
+      if (key !== 'providers' && key !== 'model') {
         expect(config[key]).toEqual(personal[key])
       }
     }
 
+    expect(config.model).toEqual({
+      provider: config.uniwork_model_catalog.main.provider,
+      default: catalog.models[catalog.mainModelIndex].name,
+      persist_switch_by_default: false
+    })
     expect(config.providers.personal).toEqual(personal.providers.personal)
     expect(fs.readFileSync(file, 'utf8')).toContain('# 用户说明保留')
     const id = Object.keys(config.providers).find(key => config.providers[key].api === catalog.models[0].baseUrl)!
@@ -178,7 +198,11 @@ future_counter: 900719925474099312345
     })
     expect(config.providers[id].default_model).toBe('other-model')
     expect(config.providers[id].timeout).toBe(90n)
-    expect(config.model).toEqual(personal.model)
+    expect(config.model).toEqual({
+      provider: `custom:${id}`,
+      default: catalog.models[0].name,
+      persist_switch_by_default: false
+    })
     expect(config.future_counter).toEqual(personal.future_counter)
     expect(config.other).toEqual(personal.other)
     const before = fs.readFileSync(file, 'utf8')
@@ -193,7 +217,7 @@ future_counter: 900719925474099312345
   }
 })
 
-it('原版端点保存后的等价地址和协议可再次合并，保留默认与模型选项并清理退出套餐的端点', () => {
+it('原版端点保存后的等价地址和协议可再次合并，恢复套餐默认并保留模型选项', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-model-saved-'))
   const file = path.join(home, 'config.yaml')
 
@@ -220,7 +244,7 @@ it('原版端点保存后的等价地址和协议可再次合并，保留默认�
       fs.writeFileSync(file, stringify(saved))
       mergeMaasModelConfig(home, catalog)
       const refreshed = readConfig(file)
-      expect(refreshed.model).toEqual(saved.model)
+      expect(refreshed.model).toEqual(original.model)
       expect(refreshed.providers[activeId].models['other-model']).toEqual({ extra_option: 'keep' })
 
       for (const entry of Object.values(refreshed.providers) as any[]) {

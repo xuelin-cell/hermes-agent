@@ -13,7 +13,6 @@ import {
   saveHermesConfigRecord,
   validateCustomEndpoint
 } from '@/hermes'
-import { setMainModelAssignment } from '@/store/model-assignment'
 import { notifyError } from '@/store/notifications'
 import { $settingsRequestProfile } from '@/store/settings-scope'
 
@@ -35,10 +34,9 @@ import { useModelsCopy } from './copy'
 
 interface ModelsSettingsProps {
   onConfigSaved?: () => void
-  onMainModelChanged?: (provider: string, model: string) => void
 }
 
-export function ModelsSettings({ onConfigSaved, onMainModelChanged }: ModelsSettingsProps) {
+export function ModelsSettings({ onConfigSaved }: ModelsSettingsProps) {
   const t = useModelsCopy()
   const profile = useStore($settingsRequestProfile)
   const [params, setParams] = useSearchParams()
@@ -157,9 +155,6 @@ export function ModelsSettings({ onConfigSaved, onMainModelChanged }: ModelsSett
       if (patch) {
         await saveHermesConfigRecord(patch, profile)
       }
-      const provider = `custom:${id}`
-      await setMainModelAssignment({ provider, model: write.model }, profile)
-      onMainModelChanged?.(provider, write.model)
       window.localStorage.setItem(
         `${ORDER_KEY}:${profile ?? ''}`,
         JSON.stringify([`custom:${id}`, ...rows.filter(row => row.endpointId !== id).map(row => row.key)])

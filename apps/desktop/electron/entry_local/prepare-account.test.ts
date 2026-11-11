@@ -118,6 +118,7 @@ it('真实账号准备只消费最新成功套餐；失败保留 Key，空套餐
     const noPlan = parse(fs.readFileSync(file, 'utf8'))
     const previous = parse(before)
     delete previous.mcp_servers['UniAI-Toolkit']
+    previous.uniwork_model_catalog = { models: [], main: null, fast: null }
     expect(noPlan).toEqual(previous)
     expect(fs.readFileSync(envFile, 'utf8')).not.toContain('private-model-key')
     request.mockResolvedValueOnce(

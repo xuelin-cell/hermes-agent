@@ -10,12 +10,13 @@ const api = vi.hoisted(() => ({
   getHermesConfigRecord: vi.fn().mockResolvedValue({}),
   validateCustomEndpoint: vi.fn().mockResolvedValue({ ok: true, message: 'OK' }),
   saveCustomEndpoint: vi.fn(),
+  setMainModelAssignment: vi.fn(),
   saveHermesConfigRecord: vi.fn(),
   deleteCustomEndpoint: vi.fn()
 }))
 
 vi.mock('@/hermes', async importOriginal => ({ ...await importOriginal<typeof HermesApi>(), ...api }))
-vi.mock('@/store/model-assignment', () => ({ setMainModelAssignment: vi.fn() }))
+vi.mock('@/store/model-assignment', () => ({ setMainModelAssignment: api.setMainModelAssignment }))
 afterEach(cleanup)
 
 function show() {
@@ -51,4 +52,17 @@ it('tests the draft through the backend and clears the result when credentials c
   })
   fireEvent.change(screen.getByLabelText('Model ID *'), { target: { value: 'another-model' } })
   expect(screen.queryByRole('status')).toBeNull()
+})
+
+it('saves a personal endpoint without changing the package default', async () => {
+  api.saveCustomEndpoint.mockResolvedValueOnce({ id: 'personal' })
+  show()
+  fireEvent.change(await screen.findByLabelText('Endpoint URL *'), { target: { value: 'https://example.com/v1' } })
+  fireEvent.change(screen.getByLabelText('API key *'), { target: { value: 'secret' } })
+  fireEvent.change(screen.getByLabelText('Model ID *'), { target: { value: 'test-model' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save and apply' }))
+  await waitFor(() => expect(screen.queryByLabelText('Model ID *')).toBeNull())
+
+  expect(api.saveCustomEndpoint.mock.calls[0][0]).toMatchObject({ model: 'test-model', make_default: false })
+  expect(api.setMainModelAssignment).not.toHaveBeenCalled()
 })

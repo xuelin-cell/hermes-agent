@@ -52,8 +52,11 @@ function isManaged(id: string, entry: unknown): entry is YAMLMap {
   )
 }
 
-/** 只维护套餐提供方；未设置模型时写入默认，保留用户选择和其他节点。 */
-export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'models' | 'mainModelIndex'>): void {
+/** 同步套餐提供方和主模型，保留独立的自定义提供方及其他配置。 */
+export function mergeMaasModelConfig(
+  home: string,
+  catalog: Pick<MaasPlan, 'models' | 'mainModelIndex' | 'fastModelIndex'>
+): void {
   const file = path.join(home, 'config.yaml')
   let existing: fs.Stats | undefined
   let original: string
@@ -111,7 +114,7 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
 
   const main = catalog.models[catalog.mainModelIndex]
 
-  if (!main) {
+  if (catalog.models.length && !main) {
     throw new Error('缺少有效的 MaaS 主模型。')
   }
 
@@ -191,7 +194,7 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
     doc.setIn(['providers', id], entry)
   }
 
-  if (isMap(providers)) {
+  if (main && isMap(providers)) {
     for (const pair of [...providers.items]) {
       const id = isScalar(pair.key) ? pair.key.value : null
 
@@ -201,8 +204,31 @@ export function mergeMaasModelConfig(home: string, catalog: Pick<MaasPlan, 'mode
     }
   }
 
-  if (!doc.has('model')) {
-    doc.set('model', { provider: `custom:${providerId(main.baseUrl)}`, default: main.name })
+  const target = (model: MaasModel) => ({ id: model.id, provider: `custom:${providerId(model.baseUrl)}`, model: model.name })
+  const fast = catalog.models[catalog.fastModelIndex ?? -1]
+  // Provider grouping is needed for routing. Keep the original cross-provider order alongside it.
+  doc.set('uniwork_model_catalog', {
+    models: catalog.models.map(target),
+    main: main ? target(main) : null,
+    fast: fast ? target(fast) : null
+  })
+
+  if (main) {
+    const { provider, model } = target(main)
+    const current = doc.get('model', true)
+
+    if (!isAlias(current) && (!isMap(current) || (!current.anchor && !hasMerge(current)))) {
+      const assignment = isMap(current) ? current : new YAMLMap(doc.schema)
+      if (assignment.get('provider') !== provider || assignment.get('default') !== model) {
+        // Route overrides belong to the previous model. Resolve the new route and key from its provider.
+        for (const key of ['base_url', 'api_mode', 'api', 'api_key', 'key_env', 'api_key_env', 'context_length']) {
+          assignment.delete(key)
+        }
+        assignment.set('provider', provider)
+        assignment.set('default', model)
+        doc.set('model', assignment)
+      }
+    }
   }
 
   // 默认不借用本机其他应用的登录；用户显式配置和共享节点保持原样。

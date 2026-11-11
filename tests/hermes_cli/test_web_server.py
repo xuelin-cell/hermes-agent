@@ -383,6 +383,27 @@ class TestWebServerEndpoints:
         assert response.json()["sessions"] == []
         assert response.json()["total"] == 0
 
+    def test_get_sessions_exposes_model_provider_in_compact_rows(self):
+        from hermes_constants import get_hermes_home
+        from hermes_state import SessionDB
+
+        db = SessionDB(db_path=get_hermes_home() / "state.db")
+        try:
+            db.create_session(
+                "stored-model", source="desktop", model="shared-model",
+                model_config={"provider": "custom:personal", "api_key": "fixture-secret"},
+            )
+        finally:
+            db.close()
+
+        response = self.client.get("/api/sessions")
+        assert response.status_code == 200
+        row, = response.json()["sessions"]
+        assert row["model"] == "shared-model"
+        assert row["model_provider"] == "custom:personal"
+        assert "model_config" not in row
+        assert "fixture-secret" not in response.text
+
     @pytest.mark.parametrize(
         "missing_column", ["archived", "pinned", "last_activity_at"]
     )

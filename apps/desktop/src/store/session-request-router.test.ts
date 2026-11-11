@@ -65,7 +65,12 @@ vi.mock('@/hermes', () => ({
   },
   setApiRequestConnection: vi.fn()
 }))
-vi.mock('@/store/session', () => ({ setConnection: vi.fn(), setGatewayState: vi.fn() }))
+vi.mock('@/store/session', () => ({
+  $connection: { get: () => ({ mode: 'local' }) },
+  getRememberedComposerModelSelection: () => ({ model: 'last-pick', provider: 'custom:personal' }),
+  setConnection: vi.fn(),
+  setGatewayState: vi.fn()
+}))
 vi.mock('@/store/notify-baseline', () => ({ markNativeNotifyBaseline: vi.fn() }))
 
 const {
@@ -118,6 +123,20 @@ afterEach(() => {
   vi.clearAllMocks()
   resetBackgroundPollingGuard()
   delete (window as unknown as { hermesDesktop?: unknown }).hermesDesktop
+})
+
+it('passes the remembered model as a fallback hint on UniWork prompt submission', async () => {
+  installDesktop()
+  window.hermesDesktop!.ntfy = {} as NonNullable<typeof window.hermesDesktop>['ntfy']
+  const ambient = vi.fn()
+  const prompt = { session_id: 'session', text: 'hello' }
+
+  await requestForSessionProfile(null, ambient, 'prompt.submit', prompt)
+
+  expect(ambient).toHaveBeenCalledWith('prompt.submit', {
+    ...prompt,
+    uniwork_model_selection: { model: 'last-pick', provider: 'custom:personal' }
+  })
 })
 
 describe('$activeGatewayRoute (registry-owned active profile)', () => {

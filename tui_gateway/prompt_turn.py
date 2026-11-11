@@ -616,14 +616,19 @@ def _prepare_turn_input(sid: str, session: dict, st: _TurnRun, text: Any, images
     # The sudo password callback is thread-local: without re-wiring here, sudo prompts
     # fall through to /dev/tty and hang the headless gateway (re-run is a no-op).
     _wire_callbacks(sid)
-    if not st.one_turn_restore:
+    sync_config = not st.one_turn_restore
+    if sync_config:
         # Skip the config-model sync while a /model --once override is active: the once-model is
         # intentionally not pinned as a session model_override (it must not persist), so without this guard
         # the sync would see "agent model != config model" and clobber the once-override back to the config
         # model before the turn runs (#29923 review defect). Any config.yaml change is adopted on the NEXT
         # turn, after the finally-restore below.
         _apply_pending_model_switch(sid, session)
-        _sync_agent_model_with_config(sid, session)
+    from tui_gateway.uniwork_model_catalog import prepare_turn_model
+    handled_model = session.get("source") == "desktop" and prepare_turn_model(session, st)
+    if sync_config:
+        if not handled_model:
+            _sync_agent_model_with_config(sid, session)
         _sync_agent_compression_with_config(sid, session)
     _sync_agent_fallback_with_config(sid, session)  # chain added after the chat opened reaches this turn
     _sync_bot_capabilities(sid, session)  # Bot Chat: adopt Settings->Capabilities edits

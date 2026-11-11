@@ -551,6 +551,7 @@ def _lock_in_submit_turn(
         session["running"] = True
         session["_turn_cancel_requested"] = False
         session["last_active"] = time.time()
+        session["uniwork_model_selection"] = params.get("uniwork_model_selection")
         if hosted_task is not None:
             session["_hosted_room_task"] = dict(hosted_task)
         _start_inflight_turn(session, text, display_kind=display_kind)
@@ -650,7 +651,7 @@ def _(rid, params: dict) -> dict:
             return _err(rid, 4009, "session busy")
         busy_response = _handle_busy_submit(
             rid, sid, session, text, busy_transport, queued=bool(params.get("queued")), turn_author=turn_author,
-            display_kind=display_kind)
+            display_kind=display_kind, uniwork_model_selection=params.get("uniwork_model_selection"))
         if busy_response is not None:
             return busy_response
     raw_rebind_ids = params.get("rebind_survivor_row_ids")

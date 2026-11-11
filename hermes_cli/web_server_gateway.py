@@ -643,7 +643,14 @@ _SESSION_LIST_HEAVY_FIELDS = ("system_prompt", "model_config")
 
 
 def _strip_session_list_rows(sessions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    from hermes_state_sessions import _parse_model_config
+
     for s in sessions:
+        # The desktop can identify a saved model before session.resume, without
+        # downloading the runtime config or confusing equal model IDs on different endpoints.
+        provider = _parse_model_config(s.get("model_config")).get("provider")
+        if isinstance(provider, str) and provider.strip():
+            s["model_provider"] = provider.strip()
         for key in _SESSION_LIST_HEAVY_FIELDS:
             s.pop(key, None)
     return sessions

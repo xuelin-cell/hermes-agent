@@ -360,7 +360,8 @@ def _replace_queued_user_row_for_turn(session: dict, queued: dict) -> dict | Non
 
 
 def _handle_busy_submit(rid, sid: str, session: dict, text: Any, transport: Any, queued: bool = False,
-                        turn_author: dict | None = None, display_kind: str | None = None) -> dict | None:
+                        turn_author: dict | None = None, display_kind: str | None = None,
+                        uniwork_model_selection: dict | None = None) -> dict | None:
     """Apply ``display.busy_input_mode`` to a mid-turn prompt instead of rejecting it (rejection made clients busy-retry
     and drop sends): ``interrupt`` (default) → redirect, falling back to hard interrupt + queue; ``queue`` → queue only;
     ``steer`` → inject after the current atomic action. ``queued=True`` (client queue drain) forces queue mode: a "run
@@ -400,6 +401,8 @@ def _handle_busy_submit(rid, sid: str, session: dict, text: Any, transport: Any,
         # Durable AT ACCEPT (not when the turn runs): a cold resume sees the queued message and a
         # backend restart cannot lose it. Lives on the envelope, never the shared session slot.
         if envelope is not None:
+            if uniwork_model_selection is not None:
+                envelope["uniwork_model_selection"] = uniwork_model_selection
             _persist_queued_user_row(session, envelope, display_kind)
         session["last_active"] = time.time()
     # Attachments need their own model invocation: queue without cancelling so the user gets both results in order.
@@ -423,6 +426,7 @@ def _drain_queued_prompt(rid, sid: str, session: dict) -> bool:
         queue_generation = int(session.get("_queued_prompt_generation", 0))
         _ac_set_queue(session, session.get("queued_prompts") or [])
         session["running"] = True
+        session["uniwork_model_selection"] = queued.get("uniwork_model_selection")
         queued_transport = queued.get("transport")
         # The queuer's transport is pinned so the drained turn reaches the client that sent it — but
         # ATTACHED, not rebound: a mid-turn prompt from a second client used to silence the first for the

@@ -23,6 +23,11 @@ class ClientSurface(WireEnum):
     voice_live = "voice-live"
 
 
+class UniWorkModelSelection(Params):
+    model: str | None = None
+    provider: str | None = None
+
+
 class PromptSubmitParams(SessionParams):
     """``text`` is normally a string; the relay / hosted paths may hand a structured (parts list)
     payload, and the busy path renders it. Truncation (rewind / edit / regenerate) needs explicit
@@ -37,6 +42,7 @@ class PromptSubmitParams(SessionParams):
     voice_context: str | None = None  # recent spoken transcript, model input only (voice-live)
     # Desktop-generated large-paste preview (first ~1000 chars); TITLE input only, never the model turn.
     title_preview: str | None = None
+    uniwork_model_selection: UniWorkModelSelection | None = None
     truncate_before_user_ordinal: int | None = None
     truncate_before_row_id: int | None = None
     truncate_before_message_id: str | None = None
