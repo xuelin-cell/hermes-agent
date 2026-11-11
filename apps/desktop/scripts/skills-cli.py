@@ -14,7 +14,7 @@ def main() -> int:
     environment = dict(os.environ)
     environment.pop("ELECTRON_RUN_AS_NODE", None)
     try:
-        with tempfile.TemporaryDirectory(prefix="uniworker-cli-") as directory:
+        with tempfile.TemporaryDirectory(prefix="uniwork-cli-") as directory:
             request = Path(directory) / "request.json"
             request.write_text(json.dumps(arguments, ensure_ascii=False), encoding="utf-8")
             command = [executable, *([app_path] if app_path else []), "--desktop-skills-cli", str(request)]

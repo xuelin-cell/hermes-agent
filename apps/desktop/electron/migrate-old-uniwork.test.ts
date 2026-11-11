@@ -77,6 +77,22 @@ test('migrateOldUniworkData is a no-op on non-win32', async () => {
   await assert.rejects(() => fs.stat(path.join(newApp, MIGRATION_TARGET_DIR)))
 })
 
+test('migrateOldUniworkData skips when the legacy folder is the app userData root', async () => {
+  // The app's userData root is named uniwork, the legacy folder name: source
+  // and destination are the same directory, so nothing may be copied.
+  const appdataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'appdata-'))
+  const userData = path.join(appdataRoot, 'uniwork')
+  await makeTree(userData, { [path.join('uploads', 'u.txt')]: 'upload\n' })
+
+  const result = await migrateOldUniworkData(userData, {
+    env: { APPDATA: appdataRoot },
+    platform: 'win32'
+  })
+
+  assert.equal(result.migrated, false)
+  await assert.rejects(() => fs.stat(path.join(userData, MIGRATION_TARGET_DIR)))
+})
+
 test('migrateOldUniworkData copies all four subdirs and writes marker + log', async () => {
   // Build a fake old userData tree under a temp dir, simulating %APPDATA%.
   const appdataRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'appdata-'))

@@ -188,12 +188,12 @@ Windows 源码开发版可双击仓库根目录的 `Start-UniWork.cmd`。也可�
 默认位置：
 
 ```text
-%LOCALAPPDATA%\uniworker\<摘要前 12 位>\
+%LOCALAPPDATA%\uniwork\<摘要前 12 位>\
   account-id         账号完整标识，用于核对目录归属
   home\              会话、记忆、配置、Profiles、日志、Python 依赖
   workspace\         账号默认工作区
 
-%APPDATA%\uniworker\
+%APPDATA%\uniwork\
   maas-login.enc       系统加密的恢复登录记录
   maas-logout-pending.json
                       正常运行／退出恢复记录
@@ -206,9 +206,9 @@ Windows 源码开发版可双击仓库根目录的 `Start-UniWork.cmd`。也可�
 
 账号目录由身份域和 UID 的完整摘要决定；浏览器分区摘要还包含用途。窗口位置、外观、托盘等设备偏好保持应用级。AppData 被系统重定向到其他盘时仍使用其实际位置，不扫描或批量重命名各盘文件夹。主动选择的外部项目、下载目录与官方对照版不改变。
 
-账号仍使用 12 位短目录，`hmt` 改为 `uniworker` 仅增加 6 个字符，不保证任意深层依赖或文件名都不会超过路径限制。旧 `%LOCALAPPDATA%\hmt`、`%APPDATA%\hmt` 及更早的 `%LOCALAPPDATA%\hermes-desktop-mt`、`%APPDATA%\HermesDesktopMT` 不迁移、不回退读取，也不删除；首次使用新目录需要重新登录，账号、窗口位置和内置浏览器状态都从新目录开始。升级前请正常退出旧版，让后端和消息网关停止，再使用更新后的启动入口；旧数据由你手动处理，不要手工修改或复制 `account-id`。已有的旧 UniWork 数据复制功能不受本次改名调整。
+账号仍使用 12 位短目录，`hmt` 改为 `uniwork` 仅增加 4 个字符，不保证任意深层依赖或文件名都不会超过路径限制。旧 `%LOCALAPPDATA%\hmt`、`%APPDATA%\hmt` 及更早的 `%LOCALAPPDATA%\hermes-desktop-mt`、`%APPDATA%\HermesDesktopMT` 不迁移、不回退读取，也不删除；首次使用新目录需要重新登录，账号、窗口位置和内置浏览器状态都从新目录开始。升级前请正常退出旧版，让后端和消息网关停止，再使用更新后的启动入口；旧数据由你手动处理，不要手工修改或复制 `account-id`。数据根与老 UniWork 同名后，启动时不再复制同一目录下的旧 UniWork 数据（源目录就是本应用目录）。
 
-本机启动脚本的 `HERMES_DESKTOP_USER_DATA_DIR` 也需指向 `%APPDATA%\uniworker`；显式指定旧路径会覆盖应用默认值。本机入口已同步调整，其他机器的自定义启动脚本需自行同步。非 Windows 默认账号数据位于 `~/.uniworker`，应用状态位于 Electron 的 `appData/uniworker`。
+本机启动脚本的 `HERMES_DESKTOP_USER_DATA_DIR` 也需指向 `%APPDATA%\uniwork`；显式指定旧路径会覆盖应用默认值。本机入口已同步调整，其他机器的自定义启动脚本需自行同步。非 Windows 默认账号数据位于 `~/.uniwork`，应用状态位于 Electron 的 `appData/uniwork`。
 
 登录密文受系统加密保护，模型 Key 在账号 `.env` 中按原版机制明文保存。不要上传登录密文、`.env`、原生 OAuth 文件或浏览器数据库。
 
@@ -220,9 +220,9 @@ Windows 和 macOS 共用桌面账号解析与官方 Profile 选择。`skills` �
 
 源码开发版完成 Electron 构建后，在 `apps/desktop` 执行 `npm run cli:install`。完整安装包（构建清单 `payload: bundled`）第一次启动时自动注册命令，升级或移动应用后再次启动会刷新入口。安装包使用自带 Python、Hermes 和依赖，不需要安装系统 Python 或 Node。缺少 Agent 的精简包不能提供本地技能安装，注册失败记录在 `[skills-cli]` 日志中。
 
-Windows 固定命令位于 `%LOCALAPPDATA%\uniworker\bin`。PowerShell、PowerShell 7、CMD 使用 `hermes.cmd`，Git Bash 使用同目录无扩展名 `hermes`。重新打开终端，PowerShell 用 `Get-Command hermes`、Git Bash 用 `type -a hermes` 核对位置。Windows Terminal 和 VS Code 使用对应 Shell 时仍需取得更新后的 PATH，必要时完整退出终端宿主后重开。WSL 属于独立 Linux 环境，当前自动账号入口未覆盖。
+Windows 固定命令位于 `%LOCALAPPDATA%\uniwork\bin`。PowerShell、PowerShell 7、CMD 使用 `hermes.cmd`，Git Bash 使用同目录无扩展名 `hermes`。重新打开终端，PowerShell 用 `Get-Command hermes`、Git Bash 用 `type -a hermes` 核对位置。Windows Terminal 和 VS Code 使用对应 Shell 时仍需取得更新后的 PATH，必要时完整退出终端宿主后重开。WSL 属于独立 Linux 环境，当前自动账号入口未覆盖。
 
-macOS 固定命令位于 `~/.uniworker/bin/hermes`。注册会为 zsh 的 `.zshrc`（遵循 `ZDOTDIR`）、Bash 的 `.bash_profile` 和 `.bashrc` 写入带标识的 PATH 行，保留原配置，重复注册不累加。打开新的 Terminal 或 iTerm 窗口，用 `type -a hermes` 核对第一项。源码版与安装包使用同一固定命令，最后一次注册的版本生效。
+macOS 固定命令位于 `~/.uniwork/bin/hermes`。注册会为 zsh 的 `.zshrc`（遵循 `ZDOTDIR`）、Bash 的 `.bash_profile` 和 `.bashrc` 写入带标识的 PATH 行，保留原配置，重复注册不累加。打开新的 Terminal 或 iTerm 窗口，用 `type -a hermes` 核对第一项。源码版与安装包使用同一固定命令，最后一次注册的版本生效。
 
 ```sh
 hermes --profile default skills install official/creative/social-media-content-calendar
@@ -237,8 +237,8 @@ hermes --profile <实际专家Profile名称> skills install <技能来源>
 ### macOS 同事验收
 
 1. 记录构建提交、Mac 芯片架构及使用源码版还是完整安装包。安装包先放入 Applications 后正常启动一次；源码版先构建再执行 `npm run cli:install`。
-2. 登录账号 A。新开 zsh 终端，运行 `type -a hermes`，第一项应为 `~/.uniworker/bin/hermes`。测试前检查当前 Shell 的 `HERMES_HOME`，若人为设置了其他 Home，应在测试 Shell 中解除。
-3. 运行上面的安装命令，先输入 `n`，确认没有安装，再运行并输入 `y`。确认生成 `~/.uniworker/<账号摘要>/home/skills/creative/social-media-content-calendar/SKILL.md`，同一 Profile 新对话的 `skills_list`、`skill_view` 能找到并读取。
+2. 登录账号 A。新开 zsh 终端，运行 `type -a hermes`，第一项应为 `~/.uniwork/bin/hermes`。测试前检查当前 Shell 的 `HERMES_HOME`，若人为设置了其他 Home，应在测试 Shell 中解除。
+3. 运行上面的安装命令，先输入 `n`，确认没有安装，再运行并输入 `y`。确认生成 `~/.uniwork/<账号摘要>/home/skills/creative/social-media-content-calendar/SKILL.md`，同一 Profile 新对话的 `skills_list`、`skill_view` 能找到并读取。
 4. 用实际专家 Profile 名称安装另一个测试技能，确认 default 与专家列表隔离。在 Bash 再验证一次取消及确认安装。
 5. 完整退出应用并保留登录，在终端查询技能应继续使用 A。退出账号后命令应要求登录。登录 B 后不重开终端运行命令，检查改为 B；再次登录 A 后原技能保留。
 6. 更新或移动应用后正常打开一次，新终端执行命令应指向新应用。检查旧 Shell 配置保留，PATH 标识没有重复累加。并行运行官方版时确认其 Home 未被写入。

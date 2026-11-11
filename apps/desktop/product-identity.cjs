@@ -43,7 +43,7 @@ const name = variants[store ? 'bundled' : (variant || '')]
 const canary = /\+canary\.20\d{6}T\d{6}Z$/.test(process.env.HERMES_PAYLOAD_TAG || '')
 
 // desktop-mt: 我们的 Windows 安装包（bundled）用固定身份：名字、appId、exe 和安装目录都不带提交号，
-// 装新包就覆盖旧包。上游提交版带提交号是为了并存，可 MT 登录壳把数据目录和单实例锁统一成了 uniworker，
+// 装新包就覆盖旧包。上游提交版带提交号是为了并存，可 MT 登录壳把数据目录和单实例锁统一成了 uniwork，
 // 并存的两版只会互抢。打包入口（scripts/bundles/desktop_inputs.py）默认设 UNIWORK_FIXED_IDENTITY=1；
 // 提交号照样记进构建信息，更新源也照样按提交版处理（不配）。
 const fixedIdentity = variant === 'bundled' && process.env.UNIWORK_FIXED_IDENTITY === '1'

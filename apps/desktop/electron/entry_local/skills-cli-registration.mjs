@@ -33,8 +33,8 @@ export async function installSkillsCli({ executable, appPath = '', python = '', 
   registerPath = true, zshDirectory = process.env.ZDOTDIR || home }) {
   if (!['win32', 'darwin'].includes(platform)) { throw new Error('当前 CLI 入口支持 Windows 和 macOS。') }
   const directory = platform === 'win32'
-    ? path.join(localAppData || path.join(home, 'AppData/Local'), 'uniworker/bin')
-    : path.join(home, '.uniworker/bin')
+    ? path.join(localAppData || path.join(home, 'AppData/Local'), 'uniwork/bin')
+    : path.join(home, '.uniwork/bin')
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 })
   if (platform === 'darwin') {
     if (!python || !fs.existsSync(python)) { throw new Error('当前安装缺少 Python 运行组件。') }

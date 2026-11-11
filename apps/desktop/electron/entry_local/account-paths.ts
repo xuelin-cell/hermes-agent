@@ -18,7 +18,7 @@ export interface AccountPaths {
 const DIRECTORY_DIGEST_LENGTH = 12
 const ACCOUNT_ID_FILE = 'account-id'
 
-/** 账号数据根统一为 uniworker，账号下仍使用短目录以减少 Windows 深层路径长度。 */
+/** 账号数据根统一为 uniwork，账号下仍使用短目录以减少 Windows 深层路径长度。 */
 export function accountDataRoot(
   home: string,
   env: NodeJS.ProcessEnv = process.env,
@@ -27,10 +27,10 @@ export function accountDataRoot(
   if (platform === 'win32') {
     const base = (env.LOCALAPPDATA || '').trim() || path.win32.join(home, 'AppData', 'Local')
 
-    return path.win32.join(base, 'uniworker')
+    return path.win32.join(base, 'uniwork')
   }
 
-  return path.posix.join(home, '.uniworker')
+  return path.posix.join(home, '.uniwork')
 }
 
 /** 用完整身份二元组生成稳定标识，UID 原文不会成为路径组件。 */

@@ -80,9 +80,9 @@ def test_command_is_recognized_with_windows_spaces():
     """原版 PID 检查及退出归属解析都识别带空格的脚本命令。"""
     from gateway.status import gateway_spawn_intent_subcommand, looks_like_gateway_command_line
 
-    argv = [r"C:\Program Files\UniWorker\python.exe", "-I",
-            r"C:\Program Files\UniWorker\resources\python-plugins\desktop-messaging\desktop-gateway.py",
-            r"C:\Program Files\UniWorker\backend"]
+    argv = [r"C:\Program Files\UniWork\python.exe", "-I",
+            r"C:\Program Files\UniWork\resources\python-plugins\desktop-messaging\desktop-gateway.py",
+            r"C:\Program Files\UniWork\backend"]
     command = subprocess.list2cmdline(argv)
     assert looks_like_gateway_command_line(command)
     assert gateway_spawn_intent_subcommand(command) == "run"

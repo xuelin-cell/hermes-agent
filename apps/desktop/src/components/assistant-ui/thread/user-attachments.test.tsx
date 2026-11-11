@@ -22,8 +22,8 @@ import { Thread } from '.'
 stubThreadEnvironment()
 stubThreadViewportSize()
 
-const spreadsheet = String.raw`C:\Users\stan\AppData\Local\uniworker\account\home\attachments\示例表格 (6).xlsx`
-const pdf = String.raw`C:\Users\stan\AppData\Local\uniworker\account\home\attachments\示例文档.pdf`
+const spreadsheet = String.raw`C:\Users\stan\AppData\Local\uniwork\account\home\attachments\示例表格 (6).xlsx`
+const pdf = String.raw`C:\Users\stan\AppData\Local\uniwork\account\home\attachments\示例文档.pdf`
 const normalize = vi.fn(async () => null)
 const writeClipboard = vi.fn(async (_text: string, _html?: string) => true)
 const saveImageBuffer = vi.fn(async () => '/account/home/composer-images/copied.png')

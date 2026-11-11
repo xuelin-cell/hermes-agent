@@ -221,6 +221,12 @@ export async function migrateWinOldUniworkData(newAppUserData, { env, platform, 
     return { migrated: false, target: '', failed }
   }
 
+  // The app's userData root now carries the legacy folder name, so the "old"
+  // directory IS the destination — copying it would duplicate its own tree.
+  if (path.resolve(oldUserData) === path.resolve(newAppUserData)) {
+    return { migrated: false, target: '', failed }
+  }
+
   const target = path.join(newAppUserData, MIGRATION_TARGET_DIR)
   await fs.mkdir(target, { recursive: true })
 
@@ -516,7 +522,12 @@ export async function migrateMacOldUniworkData(
     return { migrated: false, target: '', failed }
   }
 
-  const { hostUserData, limaHome } = await detectMacOldUniwork(env, platform, home)
+  const { hostUserData: detectedHostUserData, limaHome } = await detectMacOldUniwork(env, platform, home)
+  // Same collision as Windows: the legacy host folder is now the app's own
+  // userData root, so it is no longer a migration source (Lima sessions are).
+  const hostUserData = detectedHostUserData !== null && path.resolve(detectedHostUserData) === path.resolve(newAppUserData)
+    ? null
+    : detectedHostUserData
   if (hostUserData === null && limaHome === null) {
     return { migrated: false, target: '', failed }
   }

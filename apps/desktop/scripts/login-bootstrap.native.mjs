@@ -18,7 +18,7 @@ async function launchFixture(cancel = false, devServer, liveCaptcha = false, pla
   const rendererRoot = await prepareLoginRenderer()
   const root = await mkdtemp(path.join(os.tmpdir(), 'hermes-mt-login-'))
   const appData = path.join(root, 'roaming')
-  const userData = path.join(appData, 'uniworker')
+  const userData = path.join(appData, 'uniwork')
   const home = path.join(root, 'hermes-home')
   await mkdir(userData, { recursive: true })
   // 放置旧连接哨兵，验证登录壳既不消费也不覆盖它。
@@ -602,7 +602,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
     const initialPage = await instance.firstWindow()
     await initialPage.getByRole('img', { name: '图形验证码', exact: true }).waitFor()
     assert.equal(await instance.evaluate(() => globalThis.currentFixtureRuntime()), null)
-    await assert.rejects(access(path.join(fixture.env.LOCALAPPDATA, 'uniworker')), {code:'ENOENT'})
+    await assert.rejects(access(path.join(fixture.env.LOCALAPPDATA, 'uniwork')), {code:'ENOENT'})
     // 无账号的旧 UI 提示不能为运行时授权，也不能改变新账号的默认工作目录。
     await writeFile(path.join(fixture.userData, 'active-profile.json'), JSON.stringify({profile:'forged-profile'}))
     await writeFile(path.join(fixture.userData, 'project-dir.json'), JSON.stringify({dir:fixture.home}))
@@ -622,7 +622,7 @@ test('P14 真实登录入口：跨进程 A→B→A 自动准备固定上下文�
       assert.equal(state.source, state.context.installationRoot)
       assert.equal(state.context.python, state.python)
       assert.equal(state.parentHome, fixture.home)
-      assert.equal(state.context.home.startsWith(path.join(fixture.env.LOCALAPPDATA, 'uniworker')), true)
+      assert.equal(state.context.home.startsWith(path.join(fixture.env.LOCALAPPDATA, 'uniwork')), true)
       assert.equal(state.context.desktopState.startsWith(path.join(fixture.userData, 'accounts')), true)
       assert.notEqual(state.context.workspace, fixture.home)
       for (const directory of [state.context.home, state.context.workspace, state.context.desktopState]) {

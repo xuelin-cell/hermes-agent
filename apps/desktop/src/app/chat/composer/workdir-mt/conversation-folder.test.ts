@@ -5,11 +5,11 @@ import { $selectedWorkspaceMode } from '@/store/workspace-category'
 import { applyConversationFolder, isConversationFolder } from './conversation-folder'
 
 describe('isConversationFolder', () => {
-  const workspace = 'C:\\uniworker\\acc\\workspace'
+  const workspace = 'C:\\uniwork\\acc\\workspace'
 
   it('认出默认工作区下一层、按时间命名的文件夹，包括同一秒的后缀', () => {
     expect(isConversationFolder(`${workspace}\\20261019-103015`)).toBe(true)
-    expect(isConversationFolder('c:/uniworker/acc/workspace/20261019-103015-2/')).toBe(true)
+    expect(isConversationFolder('c:/uniwork/acc/workspace/20261019-103015-2/')).toBe(true)
   })
 
   it('其它位置或其它名字的文件夹不算', () => {
@@ -18,14 +18,14 @@ describe('isConversationFolder', () => {
     expect(isConversationFolder(`${workspace}\\20261019-103015\\sub`)).toBe(false)
     expect(isConversationFolder(`${workspace}\\20261019`)).toBe(false)
     expect(isConversationFolder('D:\\other\\20261019-103015')).toBe(true)
-    expect(isConversationFolder('C:\\uniworker\\acc\\elsewhere\\20261019-103015')).toBe(true)
-    expect(isConversationFolder('C:\\uniworker\\acc\\workspace2\\20261019-103015')).toBe(true)
+    expect(isConversationFolder('C:\\uniwork\\acc\\elsewhere\\20261019-103015')).toBe(true)
+    expect(isConversationFolder('C:\\uniwork\\acc\\workspace2\\20261019-103015')).toBe(true)
     expect(isConversationFolder(`${workspace}\\UniWorkSpace`)).toBe(true)
   })
 })
 
 describe('applyConversationFolder', () => {
-  const workspace = 'C:\\uniworker\\acc\\workspace'
+  const workspace = 'C:\\uniwork\\acc\\workspace'
   const folder = `${workspace}\\20261021-090000`
   const inherited = `${workspace}\\20261020-052645`
 

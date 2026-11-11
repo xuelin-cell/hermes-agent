@@ -79,7 +79,7 @@ export function runDesktopSkillsCli(request: string[]): void {
     app.setActivationPolicy('prohibited')
   }
 
-  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker'))
+  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniwork'))
   app.setPath('userData', userData)
   void app
     .whenReady()

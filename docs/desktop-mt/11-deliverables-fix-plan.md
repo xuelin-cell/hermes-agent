@@ -351,7 +351,7 @@
 - 原版 HEAD 的只读副本复现 `.tmp` MEDIA 和 iframe 图表自动补卡；新增桌面用例在修改前复现三张同文件卡及临时卡。
 - 通过 `scripts/run_tests.sh`，使用独立 PM dev/test/web 环境执行交付插件基础、持久化、生成物和消息平台四组：102 项通过，1 项因 Windows 符号链接权限跳过。最后临时引用与依赖五项定向复测通过，不重复累计。
 - 桌面相关七个定向文件共 38 项通过；最后流式状态、历史重开、长回复、路径和格式边界四项复测通过，不重复累计。
-- `node scripts/deliverables.native.mjs --run --dedupe`：最终 1 项通过。受控模型经真实工具、插件和数据库重开生成历史；独立隐藏 Electron 窗口只显示一张卡，点击读取实际 Markdown 文件，关开会话与 Renderer 重载后仍正常。临时文件保留，重复标签保留，页面异常为空，截图已检查。记录在 `%TEMP%/uniworker-delivery-native-MCmNds`。
+- `node scripts/deliverables.native.mjs --run --dedupe`：最终 1 项通过。受控模型经真实工具、插件和数据库重开生成历史；独立隐藏 Electron 窗口只显示一张卡，点击读取实际 Markdown 文件，关开会话与 Renderer 重载后仍正常。临时文件保留，重复标签保留，页面异常为空，截图已检查。记录在 `%TEMP%/uniwork-delivery-native-MCmNds`。
 - 原生夹具首次暴露两处既有假设：回复必须含 MEDIA、简化预览 IPC 能读取 Windows file URL；随后改用实际保留的文件链接及跨写法重复引用验收，没有放宽卡片数和文件可读断言。
 - 相关 ESLint、Prettier、Ruff、Python 编译、脚本语法和 `git diff --check` 通过。完整 Renderer TypeScript 检查仍被未修改的 `src/plugins/my-mail/page.tsx:184` 参数数量错误阻断，本次代码无新增类型诊断；原生构建仍有原有 CSS 选择器及分包警告。
 - 未调用真实 MaaS 或付费模型，未更改用户历史、官方版或 Hermes Python 核心。部署运行的后端需完整退出并重开，才会加载新插件；历史中的已存配套文件列表不会被重新语义分类。

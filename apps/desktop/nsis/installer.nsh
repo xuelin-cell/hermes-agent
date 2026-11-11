@@ -14,11 +14,11 @@
 
 !define UNIWORK_NSIS_DIR "${__FILEDIR__}"
 
-; desktop-mt: 安装目录不叫 UniWork。老 UniWork 按机器装在 %ProgramFiles%\UniWork，appId 不同、认不出是旧版，
-; 同一个目录会混装，卸载其中一个会把整个目录连另一个一起删掉。名字和数据目录 uniworker 对齐；
+; desktop-mt: 安装目录用产品名 UniWork，和数据目录对齐。老 UniWork 已停止分发，该目录只归本应用；
+; appId 与老 UniWork 不同，安装包不会把老版本当成本应用的旧版本去卸载，同机残留需手工清理。
 ; 检查脚本 scripts/bundles/check-windows-installer.ps1 从这一行读安装目录名。
 !undef APP_FILENAME
-!define APP_FILENAME "UniWorker"
+!define APP_FILENAME "UniWork"
 
 !macro customHeader
   ; desktop-mt: 打开安装详情展示。模板在 common.nsh 里写死 ShowInstDetails nevershow（详情按钮和

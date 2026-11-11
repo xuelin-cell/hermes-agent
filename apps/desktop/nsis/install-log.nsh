@@ -4,7 +4,7 @@
 ; 打包用的 NSIS 3.12 编译时没有开 NSIS_CONFIG_LOG，LogSet 是编译期错误
 ; （makensis: "LogSet specified, NSIS_CONFIG_LOG not defined"），加那个开关只会让打包失败。
 ;
-; 位置用 ProgramData（C:\ProgramData\UniWorker\logs\install.log）而不是 $TEMP：辅助安装需要提权时会
+; 位置用 ProgramData（C:\ProgramData\UniWork\logs\install.log）而不是 $TEMP：辅助安装需要提权时会
 ; 再起一个内层实例（templates/nsis/multiUser.nsh 的 UAC_RunElevated），$TEMP 跟着提权账户走，换管理员
 ; 账户授权时普通用户找不到日志；ProgramData 两个实例看到的是同一个，默认继承的权限也允许普通用户读。
 ; NSIS 没有 $COMMONAPPDATA / $PROGRAMDATA 常量（实测 3.12 报 unknown variable），所以用
@@ -32,7 +32,7 @@
 
 ; 供打包前的编译探针覆盖，正常构建用下面两个默认值。日志根目录运行时问 shell 要（见 UniLogPath）。
 !ifndef UNIWORK_INSTALL_LOG_SUBDIR
-  !define UNIWORK_INSTALL_LOG_SUBDIR "UniWorker\logs"
+  !define UNIWORK_INSTALL_LOG_SUBDIR "UniWork\logs"
 !endif
 !ifndef UNIWORK_INSTALL_LOG_NAME
   !define UNIWORK_INSTALL_LOG_NAME "install.log"
@@ -124,7 +124,7 @@ Var UNIWORK_SUBPHASE_END
     FileOpen $9 "$UNIWORK_LOG_FILE" w
     ${IfNot} ${Errors}
       !insertmacro UniNow $UNIWORK_PHASE_STAMP
-      FileWrite $9 "UniWorker 安装日志$\r$\n"
+      FileWrite $9 "UniWork 安装日志$\r$\n"
       FileWrite $9 "开始时间：$UNIWORK_PHASE_STAMP$\r$\n"
       FileWrite $9 "版本：${VERSION}$\r$\n"
       FileWrite $9 "安装目录：$INSTDIR$\r$\n"

@@ -11,7 +11,7 @@ import { build, preview } from 'vite'
 /** 独立浏览器检查正式聊天卡片和文件预览；读取只允许本次临时文件，不启动后端。 */
 test('发送与历史重开显示文档卡片，点击预览真实临时文件', { timeout: 180_000 }, async () => {
   const desktop = path.resolve(import.meta.dirname, '..')
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniworker-sent-files-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniwork-sent-files-'))
   const file = path.join(root, '项目周报 (1).md')
   await fs.writeFile(file, '# 本周完成\n\n这是本次验收的真实文件正文。\n')
   const entry = path.join(root, 'fixture.jsx')

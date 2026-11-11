@@ -12,8 +12,8 @@ export function skillsCliAddress(userData: string, platform = process.platform):
   const digest = createHash('sha256').update(key).digest('hex')
 
   return platform === 'win32'
-    ? `\\\\.\\pipe\\uniworker-skills-${digest}`
-    : `/tmp/uniworker-cli-${digest.slice(0, 32)}.sock`
+    ? `\\\\.\\pipe\\uniwork-skills-${digest}`
+    : `/tmp/uniwork-cli-${digest.slice(0, 32)}.sock`
 }
 
 /** 账号准备完成后发布可用状态；管道只返回摘要，不传登录凭据。 */
