@@ -427,6 +427,34 @@ def test_profile_names_are_valid_and_distinct() -> None:
     assert all(mtent._PROFILE_NAME_RE.match(n) for n in names)  # noqa: SLF001
 
 
+# ---------------------------------------------------------------- 说明文件名不区分大小写（47 号）
+
+def test_skill_md_is_found_whatever_its_case_and_lands_as_SKILL_md(tmp_path: Path) -> None:
+    """平台上传校验（skillPackage.js 的 /SKILL\\.md$/i）和企业版桌面端（_find_skill_md）找说明文件都不区分大小写：
+    云端也认 skill.md、Skill.md，落盘一律叫 SKILL.md（hermes 在 Linux 上只认这个名字）。"""
+    body = "---\nname: ppt-maker\ndescription: 做幻灯片\n---\n步骤"
+    flat = _zip({"skill.md": body, "scripts/build.py": "print(1)\n"})
+    assert mtent._extract_skills(flat, tmp_path / "a", "ppt-maker") == ["ppt-maker"]
+    installed = tmp_path / "a" / "ppt-maker"
+    assert sorted(p.name for p in installed.iterdir()) == ["SKILL.md", "scripts"]
+    assert (installed / "SKILL.md").read_text(encoding="utf-8") == body
+
+    wrapped = _zip({"deck/Skill.md": body, "deck/docs/skill.md": "里面再套的不算新技能，也不改名"})
+    assert mtent._extract_skills(wrapped, tmp_path / "b", "x") == ["deck"]
+    assert sorted(p.name for p in (tmp_path / "b" / "deck").iterdir()) == ["SKILL.md", "docs"]
+    assert [p.name for p in (tmp_path / "b" / "deck" / "docs").iterdir()] == ["skill.md"]
+
+
+def test_both_spellings_in_one_skill_keep_the_SKILL_md_one(tmp_path: Path) -> None:
+    """同一层既有 SKILL.md 又有 skill.md（平台网页上传会拦，别的途径进来的包可能有）：用 SKILL.md 那份。"""
+    body = "---\nname: deck\ndescription: 正本\n---\n正本"
+    both = _zip({"deck/SKILL.md": body, "deck/skill.md": "---\nname: deck\ndescription: 副本\n---\n副本"})
+    assert mtent._extract_skills(both, tmp_path, "x") == ["deck"]
+    assert (tmp_path / "deck" / "SKILL.md").read_text(encoding="utf-8") == body
+    with pytest.raises(mtent.EnterpriseError, match="没有 SKILL.md"):
+        mtent._extract_skills(_zip({"deck/README.md": "不是技能"}), tmp_path / "c", "x")
+
+
 # ---------------------------------------------------------------- 引导时装：下载限时
 
 def test_downloads_at_boot_have_a_per_package_and_a_total_limit(monkeypatch: pytest.MonkeyPatch) -> None:

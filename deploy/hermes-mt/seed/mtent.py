@@ -260,9 +260,15 @@ def _members(data: bytes) -> list[tuple[zipfile.ZipInfo, PurePosixPath]]:
     return out
 
 
+def _is_skill_md(name: str) -> bool:
+    """技能说明文件，文件名不区分大小写：平台上传校验（uniwork_admin 的 skillPackage.js）和企业版桌面端
+    （hexagent_api/routes/skills.py 的 _find_skill_md）都这样认，云端也一样，平台收下的包云端也装得上。"""
+    return name.lower() == "skill.md"
+
+
 def _skill_roots(members: list[tuple[zipfile.ZipInfo, PurePosixPath]]) -> list[PurePosixPath]:
     """包里每个技能的根目录：放着 SKILL.md 的那一层（技能里面再套的 SKILL.md 不算新技能）。"""
-    found = sorted({rel.parent for _, rel in members if rel.name == "SKILL.md"}, key=lambda p: (len(p.parts), str(p)))
+    found = sorted({rel.parent for _, rel in members if _is_skill_md(rel.name)}, key=lambda p: (len(p.parts), str(p)))
     roots: list[PurePosixPath] = []
     for candidate in found:
         if not any(candidate == root or root in candidate.parents for root in roots):
@@ -271,7 +277,10 @@ def _skill_roots(members: list[tuple[zipfile.ZipInfo, PurePosixPath]]) -> list[P
 
 
 def _extract_skills(data: bytes, dest: Path, fallback_name: str) -> list[str]:
-    """把包里的技能解到 ``dest/<技能目录>/``，返回装了哪些目录。包本身就是一个技能（SKILL.md 在最外层）时用 fallback_name。"""
+    """把包里的技能解到 ``dest/<技能目录>/``，返回装了哪些目录。包本身就是一个技能（SKILL.md 在最外层）时用 fallback_name。
+
+    技能根目录下的说明文件不管原来大小写，一律落成 ``SKILL.md``：hermes 在 Linux 上只认这个名字。同一层既有
+    ``SKILL.md`` 又有别的大小写写法时，用 ``SKILL.md`` 那份。"""
     members = _members(data)
     roots = _skill_roots(members)
     if not roots:
@@ -283,12 +292,17 @@ def _extract_skills(data: bytes, dest: Path, fallback_name: str) -> list[str]:
             if dirname in names:
                 continue
             target = dest / dirname
+            exact = any(rel.parent == root and rel.name == "SKILL.md" for _, rel in members)
             for info, rel in members:
                 if root.parts and root not in rel.parents:
                     continue
                 if not root.parts and any(other.parts and other in rel.parents for other in roots if other != root):
                     continue
                 inner = rel.relative_to(root) if root.parts else rel
+                if len(inner.parts) == 1 and _is_skill_md(inner.name) and inner.name != "SKILL.md":
+                    if exact:
+                        continue
+                    inner = PurePosixPath("SKILL.md")
                 out = target.joinpath(*inner.parts)
                 out.parent.mkdir(parents=True, exist_ok=True)
                 out.write_bytes(archive.read(info))

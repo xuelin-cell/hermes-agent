@@ -159,6 +159,8 @@ class _Timing:
     def __init__(self) -> None:
         self.steps: dict[str, float] = {}
         self.killed: list[str] = []
+        # 等就绪时 hermes、API 服务的端口各自第一次连上用了多久（秒，从开始等算起），见 _ready_watch
+        self.up: dict[str, float] = {}
         self._mark = time.monotonic()
 
     def lap(self, step: str) -> None:
@@ -174,7 +176,8 @@ class _Timing:
         self._mark = time.monotonic()
 
     def as_dict(self) -> dict:
-        return {"steps": dict(self.steps), **({"killed": list(self.killed)} if self.killed else {})}
+        return {"steps": dict(self.steps), **({"killed": list(self.killed)} if self.killed else {}),
+                **({"up": dict(self.up)} if self.up else {})}
 
 
 async def _port_alive(port: int) -> bool:
@@ -200,6 +203,21 @@ async def _hermes_alive() -> bool:
 async def _ready() -> bool:
     """hermes 起来了；服务实例还要 gateway 的 API 服务也起来。"""
     return await _hermes_alive() and (not _api_enabled or await _port_alive(API_PORT))
+
+
+async def _ready_watch(timing: _Timing, began: float) -> bool:
+    """同 _ready()，顺带记下 hermes、API 服务的端口各自第一次连上的时刻（距 ``began`` 多少秒）到 ``timing.up``。
+
+    分清启动慢在谁：平台运行环境的 gateway 要先把配置里的 MCP 全连一遍、拿到工具，才开 API 端口
+    （gateway/run.py 的 _discover_gateway_mcp_tools）；11-11 真机平台运行环境要 28 秒，员工实例（没有 gateway）9 秒。"""
+    hermes = await _hermes_alive()
+    api = not _api_enabled or await _port_alive(API_PORT)
+    elapsed = round(time.monotonic() - began, 1)
+    if hermes:
+        timing.up.setdefault("hermes", elapsed)
+    if _api_enabled and api:
+        timing.up.setdefault("api", elapsed)
+    return hermes and api
 
 
 def _reply(writer: asyncio.StreamWriter, status: int, payload: dict) -> None:
@@ -787,10 +805,11 @@ async def _bootstrap(writer: asyncio.StreamWriter, body: bytes) -> None:
             _archiver_task = asyncio.create_task(_archiver(max(30, interval)))
 
     # 等 hermes 真正开始监听，好让入口一收到 200 就能直接转发。
-    deadline = time.monotonic() + float(payload.get("ready_timeout_s", 180))
+    began = time.monotonic()
+    deadline = began + float(payload.get("ready_timeout_s", 180))
     extra = {"enterprise": boot_enterprise} if boot_enterprise is not None else {}
     while time.monotonic() < deadline:
-        if await _ready():
+        if await _ready_watch(timing, began):
             timing.lap("ready")
             reply = {"ok": True, "hermes": True, "written": written, "state": report, **extra,
                      "timing": timing.as_dict()}
@@ -924,9 +943,10 @@ async def _reload(writer: asyncio.StreamWriter, body: bytes) -> None:
         finally:
             _reloading = False
     _log(f"按入口的要求重新加载：写了 {written or '（无变化）'}，hermes 已重启")
-    deadline = time.monotonic() + float(payload.get("ready_timeout_s", 120))
+    began = time.monotonic()
+    deadline = began + float(payload.get("ready_timeout_s", 120))
     while time.monotonic() < deadline:
-        if await _ready():
+        if await _ready_watch(timing, began):
             timing.lap("ready")
             _reply(writer, 200, {"ok": True, "hermes": True, "written": written,
                                  **({"api": True} if _api_enabled else {}), "timing": timing.as_dict()})
@@ -1050,8 +1070,9 @@ async def _enterprise(writer: asyncio.StreamWriter, body: bytes) -> None:
     if report.get("errors"):
         _log(f"企业资源有 {len(report['errors'])} 项没装上：{'; '.join(report['errors'])[:500]}")
     if restarted:
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline and not await _ready():
+        began = time.monotonic()
+        deadline = began + 120
+        while time.monotonic() < deadline and not await _ready_watch(timing, began):
             await asyncio.sleep(0.5)
         timing.lap("ready")
     _reply(writer, 200, {"ok": True, "report": report, "restarted": restarted, "busy": busy,

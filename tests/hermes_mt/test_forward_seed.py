@@ -11,6 +11,7 @@ import secrets
 import time
 from pathlib import Path
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -483,6 +484,7 @@ async def test_bootstrap_installs_enterprise_resources_before_hermes_starts(
     assert reply["ok"] is True and reply["enterprise"]["ok"] is True and reply["enterprise"]["errors"] == []
     assert reply["enterprise"]["changed"]["profiles"]["uw-a1"]
     assert {"seed", "skills", "enterprise", "hermes_exec", "ready"} <= set(reply["timing"]["steps"])
+    assert "hermes" in reply["timing"]["up"] and "api" not in reply["timing"]["up"]  # 成员实例没有 API 服务
 
     # 实例起来后，入口再送同一份清单：什么都没变，不用重启
     stops: list[str] = []
@@ -543,6 +545,34 @@ async def test_bootstrap_starts_hermes_even_if_enterprise_resources_did_not_inst
     reply = writer.body()
     assert reply["ok"] is True and reply["enterprise"]["ok"] is False
     assert ("disk full" if outcome == "raises" else "下载超过时限") in reply["enterprise"]["errors"][0]
+
+
+@pytest.mark.asyncio
+async def test_ready_watch_records_when_each_port_first_answered(forward, monkeypatch: pytest.MonkeyPatch) -> None:
+    """等就绪时分别记下 hermes 端口、API 端口第一次连上的时刻：平台运行环境的 gateway 要先把 MCP 全连一遍
+    才开 API 端口（gateway/run.py 的 _discover_gateway_mcp_tools），11-11 真机要 28 秒，分开记才看得出慢在谁。"""
+    clock = [100.0]
+    open_ports: set[int] = set()
+
+    async def port_alive(port):
+        return port in open_ports
+
+    monkeypatch.setattr(forward, "_port_alive", port_alive)
+    monkeypatch.setattr(forward, "time", SimpleNamespace(monotonic=lambda: clock[0]))  # 只换转发器看到的钟
+    monkeypatch.setattr(forward, "_api_enabled", True)
+    timing = forward._Timing()
+    began = clock[0]
+    assert await forward._ready_watch(timing, began) is False and timing.up == {}
+    clock[0] += 8.0
+    open_ports.add(forward.TARGET_PORT)  # hermes 先起来
+    assert await forward._ready_watch(timing, began) is False and timing.up == {"hermes": 8.0}
+    clock[0] += 20.0
+    open_ports.add(forward.API_PORT)  # gateway 连完 MCP 才开 API 端口
+    assert await forward._ready_watch(timing, began) is True
+    clock[0] += 5.0
+    assert await forward._ready_watch(timing, began) is True
+    assert timing.up == {"hermes": 8.0, "api": 28.0}  # 第一次连上的时刻，之后不改
+    assert timing.as_dict()["up"] == {"hermes": 8.0, "api": 28.0}
 
 
 class _Proc:
