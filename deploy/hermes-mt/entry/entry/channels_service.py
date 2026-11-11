@@ -248,6 +248,8 @@ class Channels:
 
 def main():
     import sys
+    # Without this only WARNING+ reaches docker logs, hiding inbound receipts and connection.replaced.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = Settings()
     if not settings.channels_key: raise RuntimeError('MT_CHANNELS_KEY required')
     config = yaml.safe_load(Path(sys.argv[1]).read_text())
@@ -268,7 +270,8 @@ def main():
         service.task.add_done_callback(stopped)
     app.on_startup.append(supervise)
     app.on_cleanup.append(service.close)
-    web.run_app(app, port=int(config.get('port',9500)))
+    # The 10s healthcheck would flood an INFO access log.
+    web.run_app(app, port=int(config.get('port',9500)), access_log=None)
 
 
 if __name__ == '__main__': main()
