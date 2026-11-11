@@ -205,7 +205,12 @@ try {
         $skillRecord = Join-Path $skillRoot '.bundled-source.json'
         if (Test-Path -LiteralPath $skillRecord -PathType Leaf) {
             $skillSource = Get-Content -LiteralPath $skillRecord -Raw -Encoding UTF8 | ConvertFrom-Json
-            $skillFiles = @(Get-ChildItem -LiteralPath $skillRoot -Recurse -File -Force | Where-Object { $_.FullName -ne $skillRecord })
+            # Native preparation bakes bytecode after recording the source tree; those
+            # reproducible interpreter caches are not part of the provenance inventory.
+            $skillFiles = @(Get-ChildItem -LiteralPath $skillRoot -Recurse -File -Force | Where-Object {
+                $_.FullName -ne $skillRecord -and
+                -not ($_.Extension -eq '.pyc' -and $_.Directory.Name -eq '__pycache__')
+            })
             if ($skillFiles.Count -ne @($skillSource.files.PSObject.Properties).Count) {
                 $problems.Add('Bundled skills file inventory differs from GitCode provenance.')
             }
