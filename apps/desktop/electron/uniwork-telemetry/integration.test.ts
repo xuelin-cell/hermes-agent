@@ -17,7 +17,7 @@ const run = promisify(execFile)
 const repo = path.resolve(import.meta.dirname, '../../../..')
 const python = process.env.HERMES_PYTHON || path.join(repo, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
 
-it('real plugin commands and MCP calls deliver tags, successful capabilities and a completed turn through the bridge', async () => {
+it('real Agent retries preserve confirmed usage while tags and MCP events reach the desktop bridge', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'UniWork-Telemetry-Bridge-'))
   const home = path.join(root, 'AccountHome')
   const empty = path.join(root, 'empty-bundled')
@@ -25,6 +25,7 @@ it('real plugin commands and MCP calls deliver tags, successful capabilities and
   fs.cpSync(path.join(repo, 'apps/desktop/assets/usage-telemetry-plugin'), path.join(home, 'plugins/uniwork-telemetry'), { recursive: true })
   fs.writeFileSync(path.join(home, '.no-bundled-skills'), '')
   const events: Record<string, any>[] = []
+  let failedProviderAttempt = false
 
   const upstream = http.createServer(async (request, response) => {
     // Agent initialization may probe model-discovery endpoints. This fixture implements only the calls below.
@@ -48,10 +49,28 @@ it('real plugin commands and MCP calls deliver tags, successful capabilities and
       return
     }
 
+    const afterTools = body.messages.some((message: { role: string }) => message.role === 'tool')
+
+    if (afterTools && !failedProviderAttempt) {
+      failedProviderAttempt = true
+
+      const failure = JSON.stringify({
+        error: { message: 'fixture provider timeout', type: 'server_error' }
+      })
+
+      if (body.stream) {
+        response.writeHead(200, { 'Content-Type': 'text/event-stream' }).end(`data: ${failure}\n\ndata: [DONE]\n\n`)
+      } else {
+        response.writeHead(504, { 'Content-Type': 'application/json' }).end(failure)
+      }
+
+      return
+    }
+
     const common = { id: 'fixture-completion', model: 'probe-model', created: Math.floor(Date.now() / 1000) }
     const usage = { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16, prompt_tokens_details: { cached_tokens: 3 } }
 
-    const toolCalls = body.messages.some((message: { role: string }) => message.role === 'tool') ? undefined : [
+    const toolCalls = afterTools ? undefined : [
       { id: 'toolkit-ok', name: 'mcp__UniAI_Toolkit__txt2img_generate', arguments: { fail: false } },
       { id: 'toolkit-failed', name: 'mcp__UniAI_Toolkit__txt2img_generate', arguments: { fail: true } },
       { id: 'connector-ok', name: 'mcp__connector_amap__route', arguments: {} }
@@ -130,6 +149,9 @@ it('real plugin commands and MCP calls deliver tags, successful capabilities and
     expect(events.find(event => event.eventName === 'conversation.turn.completed')).toMatchObject({ eventName: 'conversation.turn.completed', conversation: {
       sessionId: 'telemetry-probe-session', userInput: 'bridge migration probe'
     }, usages: [{ modelId: 'probe-model', productId: 'fixture-plan', inputTokens: 24, outputTokens: 8, cachedTokens: 6 }] })
+    expect(failedProviderAttempt).toBe(true)
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'probe-result.json'), 'utf8')).status.coverageGaps)
+      .toMatchObject({ usage_fields_unavailable: 1 })
     const subjects = events.filter(event => event.eventName === 'capability.invoke').map(event => event.subject)
     expect(subjects).toEqual(expect.arrayContaining([
       { type: 'skill_tag', id: 'server-writing-ABC', name: '帮我写作' },
