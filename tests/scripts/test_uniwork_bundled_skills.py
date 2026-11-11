@@ -9,7 +9,7 @@ import pytest
 from scripts.bundles.uniwork_bundled import TARGET
 from scripts.bundles.uniwork_bundled_skills import (
     ESSENTIAL, MARKER, RECORD, SOURCE_ENV, REF_ENV, REQUIRED_ENV,
-    BundledSkillsError, stage_bundled_skills, verify_bundled_skills,
+    BundledSkillsError, _files, stage_bundled_skills, verify_bundled_skills,
 )
 
 
@@ -31,6 +31,19 @@ def snapshot(root):
     skill(root / "skills" / ESSENTIAL, "hermes-agent")
     skill(root / "skills/uniwork/local-only", "local-only")
     return root
+
+
+def write_record(root):
+    """Give a fixture bundle the provenance the installed distribution requires."""
+    files = _files(root)
+    files.pop(RECORD, None)
+    record = {
+        "source": "fixture", "ref": "release", "commit": "a" * 40,
+        "skills": sorted(p.name for p in (root / "uniwork").iterdir()),
+        "files": files,
+    }
+    (root / RECORD).write_text(json.dumps(record), encoding="utf-8")
+    return record
 
 
 def test_pinned_gitcode_tree_drives_offline_install_and_safe_upgrade(tmp_path, monkeypatch):
@@ -70,6 +83,7 @@ def test_pinned_gitcode_tree_drives_offline_install_and_safe_upgrade(tmp_path, m
             for name in names | {"modified-old", "hub-old"} | {f"legacy-{n}" for n in range(11)}:
                 skill(old / "uniwork" / name, name)
             (old / MARKER).touch()
+            write_record(old)
             monkeypatch.setenv("HERMES_BUNDLED_SKILLS", str(old))
             sync_skills(quiet=True)
             installed = home / "skills/uniwork"
@@ -86,15 +100,17 @@ def test_pinned_gitcode_tree_drives_offline_install_and_safe_upgrade(tmp_path, m
             assert "modified-old" in result["retired_modified"]
             assert (home / "skills/.retired-hermes/modified-old/SKILL.md").read_text() == "User changes"
             assert (home / "skills/uniwork/hub-old/SKILL.md").is_file()
-            assert (home / "skills/uniwork/dws/SKILL.md").read_text() == "User dws"
+            assert (home / "skills/uniwork/dws/SKILL.md").read_text() == (
+                stage / "skills/uniwork/dws/SKILL.md").read_text()
+            assert "dws" in result["updated"]
         else:
             assert set(result["copied"]) == names | {"hermes-agent"}
         for name in names:
             assert (home / "skills/uniwork" / name / "scripts/run.py").read_bytes() == (
                 stage / "skills/uniwork" / name / "scripts/run.py").read_bytes()
         shutil.rmtree(home / "skills/uniwork/video-frames")
-        assert not sync_skills(quiet=True)["copied"]
-        assert not (home / "skills/uniwork/video-frames").exists()
+        assert "video-frames" in sync_skills(quiet=True)["copied"]
+        assert (home / "skills/uniwork/video-frames/SKILL.md").is_file()
     monkeypatch.setenv("HERMES_HOME", str(homes[0]))
     assert not sync_skills(quiet=True)["copied"]
     assert not (homes[0] / "skills/uniwork/local-only").exists()
@@ -124,7 +140,7 @@ def test_pinned_gitcode_tree_drives_offline_install_and_safe_upgrade(tmp_path, m
     assert verify_bundled_skills(out / "agent/skills", record) == record
     # A later resource override must not replace GitCode with local skills.
     inputs.resources["skills"] = tmp_path / "old/skills"
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(BundledSkillsError, match="provenance"):
         assemble(inputs, out)
     assert not (out / "manifest.json").exists()
     # Final payload checks catch both extra skills and changed resource bytes.

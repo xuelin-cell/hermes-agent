@@ -189,7 +189,9 @@ def test_command_dispatch_and_cli(codex, kits, tmp_path, monkeypatch):
 @pytest.mark.parametrize("edited", [False, True])
 def test_retired_skill_removed_by_native_sync(tmp_path, monkeypatch, edited):
     """原生发行升级删除旧卡片；用户编辑副本移入隐藏归档，其他技能保留。"""
+    import json
     import shutil
+    from scripts.bundles.uniwork_bundled_skills import _files
     import tools.skills_sync as sync
     from agent.skill_commands import reload_skills, scan_skill_commands
 
@@ -206,13 +208,29 @@ def test_retired_skill_removed_by_native_sync(tmp_path, monkeypatch, edited):
     (other / "SKILL.md").write_text(
         "---\nname: Kept\ndescription: Keep this skill.\n---\nPreserve.\n"
     )
+    essential = bundled / "autonomous-ai-agents/hermes-agent"
+    essential.mkdir(parents=True)
+    (essential / "SKILL.md").write_text(
+        "---\nname: hermes-agent\ndescription: Essential agent guidance.\n---\nKeep.\n"
+    )
     (bundled / "UNIWORK_BUNDLED_ONLY").write_text("enabled")
+
+    def write_record(skills):
+        files = _files(bundled)
+        files.pop(".bundled-source.json", None)
+        (bundled / ".bundled-source.json").write_text(json.dumps({
+            "source": "fixture", "ref": "release", "commit": "a" * 40,
+            "skills": sorted(skills), "files": files,
+        }), encoding="utf-8")
+
+    write_record({"codex", "kept"})
     monkeypatch.setattr(sync, "_get_bundled_dir", lambda: bundled)
     sync.sync_skills(quiet=True)
     target = home / "skills/uniwork/codex/SKILL.md"
     if edited:
         target.write_text(target.read_text() + "User-owned edit.\n")
     shutil.rmtree(old)
+    write_record({"kept"})
     for _ in range(2):
         sync.sync_skills(quiet=True)
         reload_skills()

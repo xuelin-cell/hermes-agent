@@ -111,19 +111,30 @@ class TestDiscoverBundledSkills:
 
 class TestUniWorkBundledDistribution:
     def test_keeps_uniwork_and_internal_skill_while_retiring_hermes_skills(self, tmp_path):
-        """发行切换后仅同步 UniWork，原生技能删除或按修改状态安全归档。"""
+        """A package update retires stale package paths and preserves other sources."""
+        from scripts.bundles.uniwork_bundled_skills import _files
+
         bundled = tmp_path / "bundled"
         skill_files = {
             "uniwork/doc": "---\nname: doc\n---\n# Doc",
             "uniwork/legacy": "---\nname: legacy\n---\n# Legacy",
             "autonomous-ai-agents/hermes-agent": "---\nname: hermes-agent\n---\n# Internal",
-            "devops/pristine": "---\nname: pristine\n---\n# Pristine",
-            "creative/edited": "---\nname: edited\n---\n# Edited",
         }
         for relative, content in skill_files.items():
             directory = bundled / relative
             directory.mkdir(parents=True)
             (directory / "SKILL.md").write_text(content, encoding="utf-8")
+        (bundled / "UNIWORK_BUNDLED_ONLY").write_text("enabled", encoding="utf-8")
+
+        def write_record(names):
+            files = _files(bundled)
+            files.pop(".bundled-source.json", None)
+            (bundled / ".bundled-source.json").write_text(json.dumps({
+                "source": "fixture", "ref": "release", "commit": "a" * 40,
+                "skills": sorted(names), "files": files,
+            }), encoding="utf-8")
+
+        write_record({"doc", "legacy"})
 
         skills_dir = tmp_path / "home" / "skills"
         manifest = skills_dir / ".bundled_manifest"
@@ -135,7 +146,7 @@ class TestUniWorkBundledDistribution:
             patch("agent.skill_utils.get_external_skills_dirs", return_value=[]),
         ):
             first = sync_skills(quiet=True)
-            assert set(first["copied"]) == {"doc", "legacy", "hermes-agent", "pristine", "edited"}
+            assert set(first["copied"]) == {"doc", "legacy", "hermes-agent"}
             hub_skill = skills_dir / "community" / "hub-keep"
             hub_skill.mkdir(parents=True)
             (hub_skill / "SKILL.md").write_text("---\nname: hub-keep\n---\n# Hub", encoding="utf-8")
@@ -161,22 +172,16 @@ class TestUniWorkBundledDistribution:
                 }}),
                 encoding="utf-8",
             )
-            (skills_dir / "creative" / "edited" / "SKILL.md").write_text(
-                "---\nname: edited\n---\n# User changed", encoding="utf-8"
-            )
-            (bundled / "UNIWORK_BUNDLED_ONLY").write_text("enabled", encoding="utf-8")
             shutil.rmtree(bundled / "uniwork" / "legacy")
+            write_record({"doc"})
 
             result = sync_skills(quiet=True)
             tracked = _read_manifest()
 
         assert set(tracked) == {"doc", "hermes-agent"}
-        assert set(result["retired_pristine"]) == {"pristine", "legacy", "old-optional"}
-        assert result["retired_modified"] == ["edited"]
-        assert not (skills_dir / "devops" / "pristine").exists()
-        assert not (skills_dir / "creative" / "edited").exists()
+        assert set(result["retired_pristine"]) == {"legacy", "old-optional"}
+        assert result["retired_modified"] == []
         assert not (skills_dir / "uniwork" / "legacy").exists()
-        assert (skills_dir / ".retired-hermes" / "edited" / "SKILL.md").is_file()
         assert (skills_dir / "uniwork" / "doc" / "SKILL.md").is_file()
         assert (skills_dir / "autonomous-ai-agents" / "hermes-agent" / "SKILL.md").is_file()
         assert (skills_dir / "community" / "hub-keep" / "SKILL.md").is_file()

@@ -486,13 +486,29 @@ def sync_skills(quiet: bool = False) -> dict:
     """Sync bundled skills into ~/.hermes/skills/ using the manifest; returns the per-category
     result dict. Opted-out profiles seed ONLY ESSENTIAL_SKILLS (the system prompt always
     points at ``hermes-agent``)."""
-    essential_only = (_hermes_home() / NO_BUNDLED_SKILLS_MARKER).exists()
-    if essential_only and not quiet:
-        print("  (profile opted out of bundled skills via .no-bundled-skills — seeding essential skills only)")
     bundled_dir = _get_bundled_dir()
     if not bundled_dir.exists():
         return {"copied": [], "updated": [], "skipped": 0, "user_modified": [], "cleaned": [],
                 "suppressed": [], "total_bundled": 0, "optional_provenance_backfilled": []}
+    if (bundled_dir / UNIWORK_BUNDLED_ONLY_MARKER).is_file():
+        from tools.skills_sync_uniwork import sync_uniwork_skills
+
+        # The GitCode payload owns this namespace. Distribution policy takes
+        # precedence over profile opt-out, curator suppression, and external
+        # name deferral; unrelated user/hub sources remain untouched.
+        result = sync_uniwork_skills(bundled_dir, quiet=quiet)
+        try:
+            removed, archived = retire_backfilled_optional_skills()
+        except Exception as exc:
+            logger.warning("Could not retire backfilled optional skills: %s", exc)
+            result["optional_retirement_error"] = str(exc)
+        else:
+            result["retired_pristine"] = result["retired_pristine"] + removed
+            result["retired_modified"] = result["retired_modified"] + archived
+        return result
+    essential_only = (_hermes_home() / NO_BUNDLED_SKILLS_MARKER).exists()
+    if essential_only and not quiet:
+        print("  (profile opted out of bundled skills via .no-bundled-skills — seeding essential skills only)")
     _skills_dir().mkdir(parents=True, exist_ok=True)
     all_bundled_skills = _discover_bundled_skills(bundled_dir)
     bundled_skills, excluded_bundled_skills = _select_distribution_skills(bundled_dir, all_bundled_skills)
