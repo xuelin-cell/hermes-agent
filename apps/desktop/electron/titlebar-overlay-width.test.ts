@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'vitest'
 
 import {
+  desktopPlatformKind,
   MACOS_TAHOE_DARWIN_MAJOR,
   macTitleBarOverlayHeight,
   nativeOverlayWidth,
@@ -17,6 +18,14 @@ import {
 
 test('Windows reserves the overlay fallback width', () => {
   assert.equal(nativeOverlayWidth({ isWindows: true }), OVERLAY_FALLBACK_WIDTH)
+})
+
+test('desktopPlatformKind maps every host to one overlay branch', () => {
+  // 登录窗与主窗都走这条判定；两处各写一份三元表达式就迟早会分叉。
+  assert.equal(desktopPlatformKind('darwin', false), 'mac')
+  assert.equal(desktopPlatformKind('win32', false), 'windows')
+  assert.equal(desktopPlatformKind('linux', false), 'linux')
+  assert.equal(desktopPlatformKind('linux', true), 'wslg')
 })
 
 test('WSLg custom controls reserve the same fallback width', () => {

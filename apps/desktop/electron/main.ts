@@ -104,6 +104,7 @@ import {
 import { isWindowsBinaryPathInWsl, isWslEnvironment } from './bootstrap-platform'
 import { decideBootstrapRepair } from './bootstrap-repair-guard'
 import { bootstrapSnapshot } from './bootstrap-state'
+import { bootWindowBackgroundColor } from './boot-window-appearance'
 import {
   BROWSER_WINDOW_HEIGHT,
   BROWSER_WINDOW_MIN_HEIGHT,
@@ -400,6 +401,7 @@ import {
 } from './native-oauth'
 import { runNativeLogin } from './native-oauth-login'
 import { loadNativeTokenSet, type NativeTokenStoreIo, persistNativeTokenSet } from './native-token-store'
+import { isThemeSourceMode, readThemeSource, writeThemeSource } from './native-theme-source'
 import { planNoConsoleGitSpawn, setNoConsoleGitRoots, windowsGitHost } from './no-console-git'
 import { registerNativeNotifications } from './notification-ipc'
 import { isExpectedOauthNavigationAbort } from './oauth-navigation'
@@ -555,7 +557,11 @@ import { createSshTeardownTracker } from './ssh-teardown'
 import { createStreamThrottle } from './stream-throttle'
 import { installSystemCaTrust } from './system-ca'
 import { registerTerminalIpc } from './terminal-ipc'
-import { nativeOverlayWidth as computeNativeOverlayWidth, titleBarOverlayOptions } from './titlebar-overlay-width'
+import {
+  desktopPlatformKind,
+  nativeOverlayWidth as computeNativeOverlayWidth,
+  titleBarOverlayOptions
+} from './titlebar-overlay-width'
 import {
   backgroundMaterialFor,
   defaultTranslucencyState,
@@ -1176,28 +1182,15 @@ let rendererTitleBarTheme = null
 // new window until the renderer covers it. The renderer reports its mode via
 // 'hermes:native-theme' ('dark' | 'light' | 'system'); we pin
 // nativeTheme.themeSource to it and persist the value so cold launches paint
-// correctly before the renderer has even loaded.
-const NATIVE_THEME_CONFIG_PATH = path.join(app.getPath('userData'), 'native-theme.json')
-const THEME_SOURCES = new Set(['dark', 'light', 'system'])
-
+// correctly before the renderer has even loaded. The login shell reads the same
+// file through native-theme-source.ts so both boot windows paint one appearance.
 function readPersistedThemeSource() {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(NATIVE_THEME_CONFIG_PATH, 'utf8'))
-
-    if (parsed && THEME_SOURCES.has(parsed.themeSource)) {
-      return parsed.themeSource
-    }
-  } catch {
-    // Missing / malformed → use the shipped light appearance.
-  }
-
-  return 'light'
+  return readThemeSource(app.getPath('userData'))
 }
 
 function writePersistedThemeSource(mode) {
   try {
-    fs.mkdirSync(path.dirname(NATIVE_THEME_CONFIG_PATH), { recursive: true })
-    fs.writeFileSync(NATIVE_THEME_CONFIG_PATH, JSON.stringify({ themeSource: mode }, null, 2), 'utf8')
+    writeThemeSource(app.getPath('userData'), mode)
   } catch (error) {
     rememberLog(`[theme] write native theme failed: ${error.message}`)
   }
@@ -1373,7 +1366,7 @@ function getWindowBackgroundColor() {
     return rendererTitleBarTheme.background
   }
 
-  return nativeTheme.shouldUseDarkColors ? '#111111' : '#f7f7f7'
+  return bootWindowBackgroundColor(nativeTheme.shouldUseDarkColors)
 }
 
 // Transparent WCO — renderer chrome shows through. rgba(0,0,0,0) can fall back
@@ -1386,7 +1379,7 @@ const TITLEBAR_OVERLAY_COLOR = 'rgba(1, 0, 0, 0)'
 // hermes:window-control IPC channel. See titleBarOverlayOptions.
 function getTitleBarOverlayOptions() {
   return titleBarOverlayOptions({
-    platform: IS_MAC ? 'mac' : IS_WINDOWS ? 'windows' : IS_WSL ? 'wslg' : 'linux',
+    platform: desktopPlatformKind(process.platform, IS_WSL),
     darwinMajor: DARWIN_MAJOR,
     titlebarHeight: TITLEBAR_HEIGHT,
     color: TITLEBAR_OVERLAY_COLOR,
@@ -1622,6 +1615,10 @@ function registerMediaProtocol(): void {
 let mainWindow = null
 const artifactShareWindows = new WeakSet<BrowserWindow>()
 let firstDesktopWindowReady: Promise<BrowserWindow> | null = null
+// 首个窗口真正上屏（ready-to-show 或兜底 reveal）后结算；登录壳层据此决定何时
+// 关闭自己的窗口，避免两窗之间露出一帧空桌面。
+let desktopWindowRevealed = false
+let desktopWindowRevealWaiters: Array<() => void> = []
 const backendConnectionState = createBackendConnectionState<ReturnType<typeof spawn>, any>()
 
 const localBackendLifecycle = createLocalBackendLifecycle<ChildProcess>({
@@ -15020,6 +15017,7 @@ function createWindow() {
 
   const revealController = wireWindowReveal(createdMainWindow, {
     onRevealed: () => {
+      markDesktopWindowRevealed()
       rememberLog(
         `[startup] main window visible at +${Math.round(Date.now() - MAIN_PROCESS_STARTED_AT)}ms (since main process start)`
       )
@@ -18007,9 +18005,9 @@ ipcMain.on('hermes:titlebar-theme', (_event, payload) => {
   }
 })
 
-// Pin the native appearance to the app theme (see NATIVE_THEME_CONFIG_PATH).
+// Pin the native appearance to the app theme (see native-theme-source.ts).
 ipcMain.on('hermes:native-theme', (_event, mode) => {
-  if (!THEME_SOURCES.has(mode)) {
+  if (!isThemeSourceMode(mode)) {
     return
   }
 
@@ -19342,6 +19340,34 @@ export async function openAccountDesktop(): Promise<BrowserWindow> {
   }
 
   return firstDesktopWindowReady
+}
+
+/**
+ * 首个桌面窗口真正上屏后才 resolve。
+ *
+ * 登录壳层用它在销毁自身窗口之前确认主窗已经可见——顺序反了就会在两窗之间露出
+ * 一帧只有桌面的画面。已经上屏（或被首窗的兜底 reveal 拉起来）时立即 resolve。
+ */
+export function whenDesktopWindowRevealed(): Promise<void> {
+  if (desktopWindowRevealed) {
+    return Promise.resolve()
+  }
+
+  return new Promise<void>(resolve => desktopWindowRevealWaiters.push(resolve))
+}
+
+function markDesktopWindowRevealed(): void {
+  if (desktopWindowRevealed) {
+    return
+  }
+
+  desktopWindowRevealed = true
+  const waiting = desktopWindowRevealWaiters
+  desktopWindowRevealWaiters = []
+
+  for (const resolve of waiting) {
+    resolve()
+  }
 }
 
 // Seed Chromium's spellchecker with the system locale (falling back to en-US).

@@ -185,3 +185,5 @@ export {
   MIN_WIDTH,
   sanitizeWindowState
 }
+
+export type { SanitizedWindowState }

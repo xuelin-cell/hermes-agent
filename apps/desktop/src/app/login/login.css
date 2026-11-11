@@ -13,6 +13,17 @@
   background: var(--dt-background);
 }
 
+/* 免登录恢复路径的登录窗与主窗同形（无边框 + 原生覆盖层按钮），没有原生标题栏
+   可拖。这一条只在窗口真正无边框时才有意义，有边框的登录窗里它落在标题栏下方的
+   空白处，不影响任何点击。 */
+.login-container::before {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 34px;
+  content: '';
+  -webkit-app-region: drag;
+}
+
 @keyframes login-fade-in-up {
   from {
     opacity: 0;
