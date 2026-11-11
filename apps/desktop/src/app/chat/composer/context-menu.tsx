@@ -1,5 +1,5 @@
 import { useStore } from '@nanostores/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { withEnabled } from '@/app/capabilities/mcp/mcp-doc'
@@ -25,10 +25,8 @@ import { Tip } from '@/components/ui/tooltip'
 import {
   getHermesConfigRecord,
   getSkills,
-  reloadMcpServers,
   saveMcpServers,
-  setSkillEnabled,
-  testMcpServer
+  setSkillEnabled
 } from '@/hermes'
 import { useI18n } from '@/i18n'
 import { Brain, FileText, FolderOpen, type IconComponent, MessageSquareText, Plug, Plus, Settings } from '@/lib/icons'
@@ -148,9 +146,9 @@ export function ContextMenu({ state, onInsertText, onPickFiles, onPickFolders }:
 /**
  * The quick capability layer mirrors HexAgent's input-settings menu: it loads
  * the active profile only while the composer menu is open; skill switches
- * persist immediately. Standard MCPs are checked before enabling. Desktop
- * connectors instead go through their owned OAuth/credential flow, rather
- * than being incorrectly probed as a standalone MCP URL.
+ * persist immediately for future conversations. Desktop connectors instead go
+ * through their owned OAuth/credential flow, rather than being incorrectly
+ * probed as a standalone MCP URL.
  */
 function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useNavigate> }) {
   const { t } = useI18n()
@@ -158,10 +156,25 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
   const profile = useStore($activeGatewayProfile)
   const [skills, setSkills] = useState<SkillInfo[] | null>(null)
   const [servers, setServers] = useState<McpServers | null>(null)
-  const [pending, setPending] = useState<null | string>(null)
+  const [pending, setPending] = useState<Set<string>>(new Set())
+  const desiredServersByProfile = useRef(new Map<string, McpServers>())
+  const saveQueuesByProfile = useRef(new Map<string, Promise<void>>())
+  const profileGeneration = useRef(0)
+
+  const pendingKey = (kind: 'connector' | 'skill', name: string, target = profile) => `${target}\u0000${kind}\u0000${name}`
+  const setPendingState = (key: string, active: boolean) => {
+    setPending(current => {
+      const next = new Set(current)
+
+      active ? next.add(key) : next.delete(key)
+
+      return next
+    })
+  }
 
   useEffect(() => {
     let current = true
+    const generation = ++profileGeneration.current
     setSkills(null)
     setServers(null)
 
@@ -171,8 +184,21 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
       .catch(() => current && setSkills([]))
     void Promise.resolve()
       .then(() => getHermesConfigRecord(profile))
-      .then(config => current && setServers(getServers(config)))
-      .catch(() => current && setServers({}))
+      .then(config => {
+        if (!current || generation !== profileGeneration.current) {
+          return
+        }
+
+        const next = getServers(config)
+        desiredServersByProfile.current.set(profile, next)
+        setServers(next)
+      })
+      .catch(() => {
+        if (current && generation === profileGeneration.current) {
+          desiredServersByProfile.current.set(profile, {})
+          setServers({})
+        }
+      })
 
     return () => {
       current = false
@@ -180,11 +206,13 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
   }, [profile])
 
   const setSkill = async (skill: SkillInfo, enabled: boolean) => {
-    if (pending) {
+    const key = pendingKey('skill', skill.name)
+
+    if (pending.has(key)) {
       return
     }
 
-    setPending(`skill:${skill.name}`)
+    setPendingState(key, true)
     setSkills(current => current?.map(row => (row.name === skill.name ? { ...row, enabled } : row)) ?? null)
 
     try {
@@ -195,16 +223,24 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
         .then(setSkills)
         .catch(() => undefined)
     } finally {
-      setPending(null)
+      setPendingState(key, false)
     }
   }
 
   const setConnector = async (name: string, enabled: boolean) => {
-    if (!servers || pending) {
+    if (!servers) {
       return
     }
 
-    setPending(`connector:${name}`)
+    const targetProfile = profile
+    const generation = profileGeneration.current
+    const key = pendingKey('connector', name, targetProfile)
+
+    if (pending.has(key)) {
+      return
+    }
+
+    setPendingState(key, true)
 
     try {
       const connectorId = desktopConnectorId(name, servers[name])
@@ -214,11 +250,11 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
 
         const local =
           typeof desktop?.localConnectors === 'function' &&
-          (await desktop.getConnectionConfig(profile)).mode === 'local'
+          (await desktop.getConnectionConfig(targetProfile)).mode === 'local'
 
         const connected =
           local &&
-          (await desktop.localConnectors({ operation: 'list', profile })).connectors.some(
+          (await desktop.localConnectors({ operation: 'list', profile: targetProfile })).connectors.some(
             row => row.id === connectorId && row.connected
           )
 
@@ -228,30 +264,41 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
           return
         }
 
-        await desktop.localConnectors({ operation: 'enable', profile, id: connectorId })
-        const config = await getHermesConfigRecord(profile)
-        setServers(getServers(config))
-        await reloadMcpServers(profile)
+        await desktop.localConnectors({ operation: 'enable', profile: targetProfile, id: connectorId })
+        const next = getServers(await getHermesConfigRecord(targetProfile))
+        desiredServersByProfile.current.set(targetProfile, next)
+        if (generation === profileGeneration.current) {
+          setServers(next)
+        }
 
         return
       }
 
-      if (enabled) {
-        const probe = await testMcpServer(name, profile)
-
-        if (!probe.ok) {
-          throw new Error(probe.error || `Could not connect to ${name}.`)
-        }
+      const next = {
+        ...(desiredServersByProfile.current.get(targetProfile) ?? servers),
+        [name]: withEnabled((desiredServersByProfile.current.get(targetProfile) ?? servers)[name], enabled)
+      }
+      desiredServersByProfile.current.set(targetProfile, next)
+      if (generation === profileGeneration.current) {
+        setServers(next)
       }
 
-      const next = { ...servers, [name]: withEnabled(servers[name], enabled) }
-      await saveMcpServers(next, profile)
-      setServers(next)
-      await reloadMcpServers(profile)
+      const previous = saveQueuesByProfile.current.get(targetProfile) ?? Promise.resolve()
+      const write = previous.catch(() => undefined).then(() => {
+        const intended = desiredServersByProfile.current.get(targetProfile)
+
+        return intended ? saveMcpServers(intended, targetProfile) : undefined
+      })
+      saveQueuesByProfile.current.set(targetProfile, write)
+      await write
+
+      if (saveQueuesByProfile.current.get(targetProfile) === write) {
+        saveQueuesByProfile.current.delete(targetProfile)
+      }
     } catch (error) {
       notifyError(error, c.manageConnectors)
     } finally {
-      setPending(null)
+      setPendingState(key, false)
     }
   }
 
@@ -278,7 +325,7 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
                   <Switch
                     aria-label={skill.name}
                     checked={skill.enabled}
-                    disabled={pending !== null}
+                    disabled={pending.has(pendingKey('skill', skill.name))}
                     onCheckedChange={enabled => void setSkill(skill, enabled)}
                     onClick={event => event.stopPropagation()}
                     size="xs"
@@ -310,7 +357,7 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
                 .filter(([name]) => !HIDDEN_QUICK_CONNECTORS.has(name))
                 .map(([name, entry]) => {
                   const enabled = serverEnabled(entry)
-                  const busy = pending === `connector:${name}`
+                  const busy = pending.has(pendingKey('connector', name))
                   const connectorId = desktopConnectorId(name, entry)
                   const nameKey = QUICK_CONNECTOR_NAMES[name as keyof typeof QUICK_CONNECTOR_NAMES]
 
@@ -326,7 +373,7 @@ function CapabilitySubmenus({ onNavigate }: { onNavigate: ReturnType<typeof useN
                       <Switch
                         aria-label={label}
                         checked={enabled}
-                        disabled={pending !== null}
+                        disabled={busy}
                         onCheckedChange={next => void setConnector(name, next)}
                         onClick={event => event.stopPropagation()}
                         pending={busy}
