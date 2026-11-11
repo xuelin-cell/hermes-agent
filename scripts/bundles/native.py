@@ -80,7 +80,13 @@ def stage_uv_cache(source: Path, destination: Path) -> None:
     def ignore(directory: str, names: list[str]) -> set[str]:
         path = Path(directory)
         parts = path.relative_to(source).parts
-        if not parts or not parts[0].startswith("sdists-v"):
+        if not parts:
+            # The native PPT sidecar checkout is a build input, not an offline
+            # rebuild seed: the shipped runtime is the unpacked copy under
+            # tencent-ppt-runtime, and the checkout's own tree plus its git
+            # objects would double ~500 MB inside the installer payload.
+            return {"native-ppt"} if "native-ppt" in names else set()
+        if not parts[0].startswith("sdists-v"):
             return set()
         # Source trees live under a revision selected by a sibling pointer.
         if "src" in names and (path / "src").is_dir() and any(

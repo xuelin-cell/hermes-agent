@@ -686,3 +686,46 @@ def test_native_dispatch_child_environment(tmp_path, monkeypatch, cache_source, 
     assert (cache / "reused").read_text(encoding="utf-8-sig") == "xx"
     assert all(not home.exists() for home in homes)
     assert dict(os.environ) == before
+
+def test_staged_cache_never_ships_the_native_ppt_checkout(tmp_path):
+    """The PPT sidecar checkout is a build input: shipping it would double
+    ~500 MB of the installer payload (its tree plus its git objects)."""
+    cache = tmp_path / "uv-cache"
+    checkout = cache / "native-ppt" / "revision"
+    (checkout / "runtimes/tencent-ppt/windows-x64").mkdir(parents=True)
+    (checkout / "runtimes/tencent-ppt/windows-x64/manifest.json").write_text("{}", encoding="utf-8")
+    (cache / "archive-v0/entry").mkdir(parents=True)
+    (cache / "archive-v0/entry/keep.whl").write_bytes(b"wheel")
+
+    shipped = tmp_path / "payload/uv-cache"
+    native.stage_uv_cache(cache, shipped)
+
+    assert not (shipped / "native-ppt").exists()
+    assert (shipped / "archive-v0/entry/keep.whl").read_bytes() == b"wheel"
+
+
+@pytest.mark.platforms("windows")
+def test_native_ppt_checkout_drops_git_metadata(tmp_path, monkeypatch):
+    """Nothing downstream reads the clone's git objects, and the 32-bit NSIS
+    installer cannot carry them."""
+    from scripts.bundles import native_ppt
+
+    cache = tmp_path / "uv-cache"
+    cache.mkdir()
+
+    def fake_fetch(source, revision, into, builder_home):
+        (into / "runtimes/tencent-ppt/windows-x64").mkdir(parents=True)
+        (into / "runtimes/tencent-ppt/windows-x64/manifest.json").write_text("{}", encoding="utf-8")
+        (into / ".git/objects/pack").mkdir(parents=True)
+        (into / ".git/objects/pack/pack.idx").write_bytes(b"objects")
+
+    monkeypatch.setattr(native_ppt, "_fetch", fake_fetch)
+    monkeypatch.setattr(native_ppt, "unpack_distribution", lambda *args, **kwargs: None)
+
+    staged = native_ppt.stage_native_ppt(
+        tmp_path / "repo", cache, {"UNIWORK_BUNDLED_PLUGINS": "https://example.invalid/repo.git"})
+
+    assert staged is True
+    checkout = cache / "native-ppt" / native_ppt.REVISION
+    assert not (checkout / ".git").exists()
+    assert (checkout / native_ppt.DISTRIBUTION / "manifest.json").is_file()

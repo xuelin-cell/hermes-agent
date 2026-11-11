@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,11 @@ def stage_native_ppt(repo_dir: Path, cache: Path, env: dict) -> bool:
                 _fetch(DEFAULT_SOURCE, REVISION, fresh, env.get(BUILDER_HOME_ENV, ""))
                 fresh.rename(checkout)
         unpack_distribution(repo_dir, checkout / DISTRIBUTION, repo_dir / "tencent-ppt-runtime")
+        # The clone's git metadata duplicates the whole distribution (~275 MB of
+        # objects) and nothing downstream reads it: the shipped runtime is the
+        # unpacked copy under tencent-ppt-runtime. Dropping it keeps the build
+        # cache small enough for the 32-bit NSIS installer's 2 GiB payload.
+        shutil.rmtree(checkout / ".git", ignore_errors=True)
     return True
 
 
