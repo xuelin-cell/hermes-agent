@@ -90,6 +90,7 @@ import {
   getCurrentModelSource,
   getSessionOwnerHint,
   type NewChatWorkspaceTarget,
+  requestSessionResume,
   resolveComposerSessionKey,
   restoreComposerModelSelection,
   sessionPinId,
@@ -2774,11 +2775,12 @@ export function useSessionActions({
         // already open there — branching a background/sidebar session must
         // not yank the user's current view away from what they're looking at
         // (the #69750 focus-stealing bug, reintroduced if this fires
-        // unconditionally). resumeSession reuses the runtime warm-cached above
-        // (ensureSessionState/updateSessionState) instead of an extra resume RPC.
+        // unconditionally).
         if (parentStoredId !== null && selectedStoredSessionIdRef.current === parentStoredId) {
+          // 创建已完成，由新路由统一恢复；旧路由下立即恢复会被导航判为过期。
+          creatingSessionRef.current = false
           navigate(sessionRoute(routedSessionId), { replace: true })
-          await resumeSession(routedSessionId)
+          requestSessionResume(routedSessionId, ownerRoute)
         } else {
           // Carry the exact owner onto the tile: its persisted ownerRoute is
           // what pins the owning backend's socket in the gateway keep-set
@@ -2804,9 +2806,7 @@ export function useSessionActions({
 
         return false
       } finally {
-        window.setTimeout(() => {
-          creatingSessionRef.current = false
-        }, 0)
+        creatingSessionRef.current = false
       }
     },
     [
@@ -2815,7 +2815,6 @@ export function useSessionActions({
       ensureSessionState,
       navigate,
       requestGateway,
-      resumeSession,
       selectedStoredSessionIdRef,
       updateSessionState
     ]

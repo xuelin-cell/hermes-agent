@@ -5,8 +5,9 @@ import { usePreparePreview } from '@/app/chat/right-rail/formats/prepare'
 import { useSessionView } from '@/app/chat/session-view'
 import { ArtifactLibraryUpload, libraryArtifact } from '@/components/chat/artifact-library-upload'
 import { Button } from '@/components/ui/button'
+import { Tip } from '@/components/ui/tooltip'
 import { useI18n } from '@/i18n'
-import { Download, FileText, FolderOpen } from '@/lib/icons'
+import { Check, Download, FileText, FolderOpen } from '@/lib/icons'
 import { localPreviewTarget, normalizeOrLocalPreviewTarget } from '@/lib/local-preview'
 import { downloadGatewayMediaFile } from '@/lib/media'
 import { previewName } from '@/lib/preview-targets'
@@ -165,6 +166,9 @@ export function PreviewAttachment({ target }: { target: string }) {
     }
   }
 
+  // 按钮只显示图标，文案统一放进悬停提示；保存成功后提示短暂改为“已保存”。
+  const saveLabel = downloaded ? t.fileMenu.downloadSaved : t.preview.saveAs
+
   return (
     // 窄窗时操作按钮整体换到第二行，文件名保留整行宽度。
     <span className="relative flex w-full max-w-160 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-(--ui-stroke-tertiary) bg-background px-3.5 py-2.5 text-sm transition-colors hover:bg-muted/50">
@@ -190,15 +194,34 @@ export function PreviewAttachment({ target }: { target: string }) {
       <span className="relative ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">
         <ArtifactLibraryUpload artifact={artifact} />
         {folderPath && (
-          <Button onClick={() => void revealFile(folderPath)} size="sm" type="button" variant="outline">
-            <FolderOpen className="size-3.5" />
-            {t.fileMenu.revealFileManager}
-          </Button>
+          <Tip label={t.fileMenu.revealFileManager}>
+            <Button
+              aria-label={t.fileMenu.revealFileManager}
+              onClick={() => void revealFile(folderPath)}
+              size="icon-sm"
+              type="button"
+              variant="outline"
+            >
+              <FolderOpen aria-hidden="true" className="size-4" />
+            </Button>
+          </Tip>
         )}
-        <Button disabled={downloading} onClick={() => void downloadFile()} size="sm" type="button" variant="outline">
-          <Download className="size-3.5" />
-          {downloaded ? t.fileMenu.downloadSaved : t.preview.saveAs}
-        </Button>
+        <Tip label={saveLabel}>
+          <Button
+            aria-label={saveLabel}
+            disabled={downloading}
+            onClick={() => void downloadFile()}
+            size="icon-sm"
+            type="button"
+            variant="outline"
+          >
+            {downloaded ? (
+              <Check aria-hidden="true" className="size-4" />
+            ) : (
+              <Download aria-hidden="true" className="size-4" />
+            )}
+          </Button>
+        </Tip>
       </span>
     </span>
   )
