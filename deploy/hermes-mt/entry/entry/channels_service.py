@@ -250,6 +250,8 @@ def main():
     import sys
     # Without this only WARNING+ reaches docker logs, hiding inbound receipts and connection.replaced.
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # httpx logs every 20s HTTP heartbeat per connection at INFO (~245 lines/s at 4900 bindings).
+    logging.getLogger('httpx').setLevel(logging.WARNING)
     settings = Settings()
     if not settings.channels_key: raise RuntimeError('MT_CHANNELS_KEY required')
     config = yaml.safe_load(Path(sys.argv[1]).read_text())
