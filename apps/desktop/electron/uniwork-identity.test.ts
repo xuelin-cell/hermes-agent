@@ -44,7 +44,7 @@ test('a fixed-identity commit build keeps one name, appId and executable across 
   assert.deepEqual(a, b)
   assert.equal(a.displayName, 'UniWork')
   // 不是老 UniWork 的 com.uniwork.app：NSIS 会把那个应用当成本应用的旧版本。
-  assert.equal(a.appId, 'com.uniwork.desktop')
+  assert.equal(a.appId, 'com.uniwork.app')
   assert.equal(a.windowsExecutableName, 'UniWork')
   assert.equal(a.appNamePascal, a.artifactNamePascal)
   assert.equal(a.cliName, 'hermes')
@@ -57,7 +57,7 @@ test('the fixed identity reaches the NSIS packaging inputs', (): void => {
   const selectors: Selectors = { HERMES_DESKTOP_VARIANT: 'bundled', HERMES_BUILD_COMMIT: COMMIT_A, UNIWORK_FIXED_IDENTITY: '1' }
   const config: Configuration & { extraMetadata: Record<string, unknown> } = fresh('../electron-builder.config.cjs', selectors)
 
-  assert.equal(config.appId, 'com.uniwork.desktop')
+  assert.equal(config.appId, 'com.uniwork.app')
   assert.equal(config.productName, 'UniWork')
   assert.equal(config.win?.executableName, 'UniWork')
   assert.equal(config.extraMetadata.productName, undefined)
@@ -67,7 +67,7 @@ test('the fixed identity reaches the NSIS packaging inputs', (): void => {
   const appInfo: BuilderAppInfo = new AppInfo({ config, metadata: { ...pkg, ...config.extraMetadata } } as Packager, null, config.win)
 
   // NSIS 的注册表 GUID 由 appId 算出，安装目录名取产品文件名。
-  assert.equal(appInfo.id, 'com.uniwork.desktop')
+  assert.equal(appInfo.id, 'com.uniwork.app')
   assert.equal(appInfo.productFilename, 'UniWork')
 })
 

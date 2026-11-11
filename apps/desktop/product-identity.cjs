@@ -47,8 +47,8 @@ const canary = /\+canary\.20\d{6}T\d{6}Z$/.test(process.env.HERMES_PAYLOAD_TAG |
 // 并存的两版只会互抢。打包入口（scripts/bundles/desktop_inputs.py）默认设 UNIWORK_FIXED_IDENTITY=1；
 // 提交号照样记进构建信息，更新源也照样按提交版处理（不配）。
 const fixedIdentity = variant === 'bundled' && process.env.UNIWORK_FIXED_IDENTITY === '1'
-// 不用老 UniWork 的 com.uniwork.app：NSIS 按 appId 认旧版，会把老 UniWork 当成本应用的旧版本去卸载。
-const UNIWORK_APP_ID = 'com.uniwork.desktop'
+
+const UNIWORK_APP_ID = 'com.uniwork.app'
 
 // Nonstable installs own their package family and local desktop state. The
 // seven-character commit suffix also names the CLI and fits MSIX's name cap.
