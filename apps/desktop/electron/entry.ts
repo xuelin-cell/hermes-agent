@@ -57,7 +57,7 @@ if (['win32', 'darwin'].includes(process.platform) && process.argv.includes('--d
   // 登录前不加载会初始化账号路径、连接和后端的原版主进程。
   // The login shell runs before the chat runtime, so it logs its own phases to a
   // login-scoped file; the runtime hands the path over once it loads.
-  setDesktopLogPath(path.join(resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker')), 'logs', 'desktop-login.log'))
+  setDesktopLogPath(path.join(resolveDesktopUserData(path.join(app.getPath('appData'), 'uniwork')), 'logs', 'desktop-login.log'))
   startupMark('login shell entry')
   const { startDesktopLogin } = await import('./login/bootstrap')
   // Electron 必须先完成 ESM 入口求值，才能触发 ready，不能在顶层等待窗口就绪。

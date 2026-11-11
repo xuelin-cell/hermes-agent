@@ -47,8 +47,8 @@ try {
     } elseif ($product.Contains($Commit.Substring(0, 7)) -and $env:UNIWORK_FIXED_IDENTITY -ne '0') {
         $problems.Add("The product name '$product' carries the commit, so every build would install as another app.")
     }
-    # apps/desktop/nsis/installer.nsh names the install folder (APP_FILENAME). It must not be UniWork:
-    # the earlier UniWork app installs to %ProgramFiles%\UniWork, and sharing it mixes and uninstalls both apps.
+    # apps/desktop/nsis/installer.nsh names the install folder (APP_FILENAME). It must match the
+    # product name: the installer now owns %ProgramFiles%\UniWork, the legacy UniWork app's folder.
     $nsisInclude = Join-Path $PSScriptRoot '..\..\apps\desktop\nsis\installer.nsh'
     $installName = ''
     if (Test-Path -LiteralPath $nsisInclude -PathType Leaf) {
@@ -58,8 +58,6 @@ try {
     if ([string]::IsNullOrWhiteSpace($installName)) {
         $problems.Add("Cannot read the install folder name (!define APP_FILENAME) from $nsisInclude.")
         $installName = $product
-    } elseif ($installName -eq 'UniWork') {
-        $problems.Add('The install folder is UniWork, which the earlier UniWork app also uses.')
     }
     $facts.Add("Product: $product (administrator installation to %ProgramFiles%\$installName)")
 

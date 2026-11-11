@@ -86,3 +86,35 @@ it('真实准备 A→B→A 的未运行助手，跳过运行中、删除及外�
     fs.rmSync(root, { recursive: true, force: true })
   }
 })
+
+it('准备期间开始运行的助手不被改写', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-profile-busy-race-'))
+  const app = path.join(root, 'app')
+  const home = path.join(root, 'account')
+  const original = 'model: personal\n'
+  const busyCalls = new Map<string, number>()
+
+  try {
+    fs.mkdirSync(path.join(app, 'assets'), { recursive: true })
+    fs.mkdirSync(path.join(home, 'profiles', 'expert'), { recursive: true })
+    fs.writeFileSync(path.join(home, 'profiles', 'expert', 'config.yaml'), original)
+
+    await prepareAllProfiles({
+      home,
+      appRoot: app,
+      interrupted: { claim: vi.fn() },
+      prepareDrive: async () => true,
+      // The expert is idle during the upfront scan and busy by the time the pool reaches it.
+      busy: profile => {
+        const seen = (busyCalls.get(profile) ?? 0) + 1
+        busyCalls.set(profile, seen)
+        return profile === 'expert' && seen > 1
+      },
+      log: vi.fn()
+    })
+
+    expect(fs.readFileSync(path.join(home, 'profiles', 'expert', 'config.yaml'), 'utf8')).toBe(original)
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})

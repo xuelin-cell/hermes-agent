@@ -11,7 +11,7 @@ import { build, preview } from 'vite'
 /** 用独立 Chromium 验证正式 CSS 下的 Diff 高度，不打开用户桌面或启动后端。 */
 test('本轮三次编辑的代码差异有真实高度并可滚动查看', { timeout: 180_000 }, async () => {
   const desktop = path.resolve(import.meta.dirname, '..')
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniworker-turn-diff-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniwork-turn-diff-'))
   const entry = path.join(root, 'fixture.tsx')
   const resolve = createRequire(import.meta.url).resolve
   console.log('布局验收记录：' + root)

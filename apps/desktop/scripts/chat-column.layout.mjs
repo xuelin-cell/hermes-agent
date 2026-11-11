@@ -11,7 +11,7 @@ import { build, preview } from 'vite'
 /** 使用正式聊天和输入组件检查列宽、边界及响应式变化，不启动用户应用或后端。 */
 test('聊天阅读列与输入框在宽窗、预览及窄窗下保持居中对齐', { timeout: 180_000 }, async () => {
   const desktop = path.resolve(import.meta.dirname, '..')
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniworker-chat-column-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniwork-chat-column-'))
   const entry = path.join(root, 'fixture.jsx')
   const resolve = createRequire(import.meta.url).resolve
   /** 临时入口直接引用正式组件和样式，不复制产品布局规则。 */

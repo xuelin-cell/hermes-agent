@@ -62,6 +62,9 @@ export function localProfileNames(home: string, log: PreparationOptions['log']):
     .sort()
 }
 
+/** 并发准备上限：每个档案都要落盘配置并准备云盘 MCP，全开会同时拉起一批本地服务。 */
+const PREPARATION_CONCURRENCY = 4
+
 /** 主后端启动前补齐未运行助手的配置；恢复时不改写仍在启动、运行或停止中的专家。 */
 export async function prepareAllProfiles(options: PreparationOptions): Promise<Set<string>> {
   let names: string[] = []
@@ -73,27 +76,37 @@ export async function prepareAllProfiles(options: PreparationOptions): Promise<S
     options.log('[profiles] could not enumerate profiles for preparation')
   }
 
-  for (const profile of ['default', ...names]) {
-    if (options.busy(profile)) {
-      continue
-    }
+  const targets = ['default', ...names].filter(profile => !options.busy(profile))
+  let cursor = 0
 
-    const home = profile === 'default' ? options.home : path.join(options.home, 'profiles', profile)
-
-    try {
-      enableDesktopPlugins(home, ['desktop-deliverables', 'uniwork-telemetry'])
-      options.interrupted.claim(home)
-      installArtifactSharePlugin(home, options.appRoot)
-
-      if (!(await options.prepareDrive(profile))) {
-        options.log(`[profiles] drive preparation unavailable profile=${profile}`)
-      } else {
-        prepared.add(profile)
+  const worker = async () => {
+    while (cursor < targets.length) {
+      const profile = targets[cursor++]
+      // Re-check at the moment we take the profile: one can start running while the pool works
+      // through the queue, and a running expert must not be rewritten.
+      if (options.busy(profile)) {
+        continue
       }
-    } catch {
-      options.log(`[profiles] preparation failed profile=${profile}`)
+      const home = profile === 'default' ? options.home : path.join(options.home, 'profiles', profile)
+
+      try {
+        enableDesktopPlugins(home, ['desktop-deliverables', 'uniwork-telemetry'])
+        options.interrupted.claim(home)
+        installArtifactSharePlugin(home, options.appRoot)
+
+        if (!(await options.prepareDrive(profile))) {
+          options.log(`[profiles] drive preparation unavailable profile=${profile}`)
+        } else {
+          prepared.add(profile)
+        }
+      } catch {
+        options.log(`[profiles] preparation failed profile=${profile}`)
+      }
     }
   }
+
+  // 每个档案的准备彼此独立（各自 home 的落盘与云盘准备），串行只是把耗时相加。
+  await Promise.all(Array.from({ length: Math.min(PREPARATION_CONCURRENCY, targets.length) }, worker))
 
   return prepared
 }

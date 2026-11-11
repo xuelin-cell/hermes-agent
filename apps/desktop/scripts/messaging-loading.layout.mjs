@@ -11,7 +11,7 @@ import { build, preview } from 'vite'
 /** 使用正式页面、缓存和桥接调用入口检查首屏；网络响应受控，不访问用户账号或网关。 */
 test('连接手机在慢响应前显示卡片，返回页面复用缓存', { timeout: 180_000 }, async () => {
   const desktop = path.resolve(import.meta.dirname, '..')
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniworker-messaging-loading-'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'uniwork-messaging-loading-'))
   const entry = path.join(root, 'fixture.jsx')
   const resolve = createRequire(import.meta.url).resolve
   /** 让隔离入口引用正式组件，不复制产品展示或加载逻辑。 */

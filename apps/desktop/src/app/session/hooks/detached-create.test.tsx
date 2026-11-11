@@ -57,7 +57,7 @@ function deferredCreate(pauseYolo = false) {
     }
 
     if (method === 'config.get' && params?.key === 'project') {
-      return { cwd: 'C:\\uniworker\\acc\\workspace' }
+      return { cwd: 'C:\\uniwork\\acc\\workspace' }
     }
 
     if (method === 'session.create') {
@@ -181,7 +181,7 @@ beforeEach(() => {
   setYoloActive(false)
   setConnection({ baseUrl: 'http://127.0.0.1:9119', mode: 'local' } as never)
   window.hermesDesktop = {
-    createConversationFolder: vi.fn(async () => 'C:\\uniworker\\acc\\workspace\\20261022-120000'),
+    createConversationFolder: vi.fn(async () => 'C:\\uniwork\\acc\\workspace\\20261022-120000'),
     discardConversationFolder: vi.fn(async () => undefined)
   } as never
 })

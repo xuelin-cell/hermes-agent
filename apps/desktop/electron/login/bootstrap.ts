@@ -45,8 +45,8 @@ function initializeLoginShell(): void {
 
   initialized = true
   app.setName('元景数字员工')
-  // 与账号数据根同名，Local 和 Roaming 两处都是 uniworker。
-  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniworker'))
+  // 与账号数据根同名，Local 和 Roaming 两处都是 uniwork。
+  const userData = resolveDesktopUserData(path.join(app.getPath('appData'), 'uniwork'))
   mkdirSync(userData, { recursive: true })
   app.setPath('userData', userData)
   prepareDesktopLaunch()

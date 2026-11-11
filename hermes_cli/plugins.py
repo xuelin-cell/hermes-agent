@@ -1738,7 +1738,7 @@ def has_enabled_agent_plugin_mcp(raw_config: Mapping[str, Any]) -> bool:
 def discover_plugins(force: bool = False) -> None:
     """Discover and load all plugins (idempotent; ``force=True`` rescans). Joins an in-flight
     background discovery instead of racing a second scan."""
-    _join_background_discovery()
+    wait_for_plugin_discovery()
     get_plugin_manager().discover_and_load(force=force)
 
 
@@ -1747,7 +1747,7 @@ _background_discovery_lock = threading.Lock()
 
 
 def start_background_plugin_discovery() -> None:
-    """Run discovery in a daemon thread to overlap the rest of CLI startup (~150ms). Every
+    """Run discovery in a daemon thread to overlap the rest of startup (~150ms). Every
     synchronous consumer joins it via :func:`discover_plugins`, so no one sees a half-loaded
     registry. No-op when already done or in flight."""
     global _background_discovery_thread
@@ -1757,19 +1757,28 @@ def start_background_plugin_discovery() -> None:
     with _background_discovery_lock:
         if _background_discovery_thread is not None and _background_discovery_thread.is_alive():
             return
+        # A bare thread starts with an EMPTY context: carry the arming thread's profile override so
+        # register() bodies resolve the same home the manager was keyed on.
+        armed = dict(contextvars.copy_context().items())
 
-        def _run() -> None:
+        def _sweep() -> None:
             try:
                 manager.discover_and_load()
                 _persist_plugin_toolset_keys()
             except Exception:
                 logger.warning("background plugin discovery failed", exc_info=True)
 
+        def _run() -> None:
+            ctx = contextvars.copy_context()
+            for var, value in armed.items():
+                ctx.run(var.set, value)
+            ctx.run(_sweep)
+
         _background_discovery_thread = threading.Thread(target=_run, name="plugin-discovery", daemon=True)
         _background_discovery_thread.start()
 
 
-def _join_background_discovery(timeout: float = 30.0) -> None:
+def wait_for_plugin_discovery(timeout: float = 30.0) -> None:
     """Wait for an in-flight background discovery (no-op from its own thread or a plugin-load worker it
     spawned — that worker's parent is blocked waiting on it)."""
     t = _background_discovery_thread
@@ -1837,7 +1846,7 @@ def _delivery_manager() -> PluginManager:
     """
     manager = get_plugin_manager()
     if not getattr(manager, "_discovered", True):
-        _join_background_discovery()
+        wait_for_plugin_discovery()
         manager.discover_and_load()
     return manager
 
@@ -2281,7 +2290,7 @@ def unload_plugins(
     Wait for background discovery first so teardown cannot race an in-flight
     registration sweep introduced by the warm-start discovery path.
     """
-    _join_background_discovery()
+    wait_for_plugin_discovery()
     return get_plugin_manager().unload(plugin)
 
 

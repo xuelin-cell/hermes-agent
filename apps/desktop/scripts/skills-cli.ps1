@@ -1,6 +1,6 @@
 # Electron 路径和桌面路径由注册脚本写在此文件前面。
 $ErrorActionPreference = 'Stop'
-$requestFile = Join-Path ([IO.Path]::GetTempPath()) ('uniworker-cli-' + [Guid]::NewGuid().ToString('N') + '.json')
+$requestFile = Join-Path ([IO.Path]::GetTempPath()) ('uniwork-cli-' + [Guid]::NewGuid().ToString('N') + '.json')
 $resultFile = $requestFile + '.result'
 $resultCode = 1
 try {

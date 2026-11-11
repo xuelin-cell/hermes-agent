@@ -2726,14 +2726,29 @@ def _dashboard_prepare_runtime(args, headless_backend) -> bool:
                      exc_info=True)
 
     _resolve_dashboard_web_dist(args, headless_backend)
+    desktop = _is_desktop_owned_backend()
     # Load plugins so any DashboardAuthProvider plugin registers BEFORE
     # start_server's fail-closed gate check. Argparse setup skips discovery
     # for built-in subcommands (~500ms), but the dashboard's server-side
     # runtime depends on plugin-registered providers (image_gen, web,
     # dashboard_auth, …).
+    #
+    # Desktop `serve` runs the sweep in the background instead: it is the
+    # longest single stage of the backend's boot (~13s, mostly plugin module
+    # imports) and the shell is idle without it. The two consumers that cannot
+    # wait hold the join themselves — start_server's auth gate (only for a bind
+    # that actually engages it) and any synchronous registry reader
+    # (discover_plugins); every request path tolerates the gap for a few seconds.
     try:
-        from hermes_cli.plugins import discover_plugins
-        discover_plugins()
+        if headless_backend and desktop:
+            from hermes_cli.plugins import start_background_plugin_discovery
+
+            start_background_plugin_discovery()
+            _startup_timing.mark("plugin discovery backgrounded")
+        else:
+            from hermes_cli.plugins import discover_plugins
+
+            discover_plugins()
     except Exception as exc:
         # Must not block startup; the gate's fail-closed branch surfaces a
         # missing provider if it matters.
@@ -2750,7 +2765,6 @@ def _dashboard_prepare_runtime(args, headless_backend) -> bool:
     # wait_for_mcp_discovery covers a server still connecting at first turn.
     # A standalone (non-Desktop) dashboard may sit idle and unvisited for days
     # (#58733): it arms discovery instead and the first /api/ws client fires it.
-    desktop = _is_desktop_owned_backend()
     if headless_backend and desktop:
         return True
     try:

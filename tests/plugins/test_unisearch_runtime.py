@@ -28,6 +28,7 @@ def test_prepare_does_not_install_dependencies_for_unrelated_providers(
     """第三方／远端Provider与禁用插件不触发本机依赖或浏览器准备。"""
     import hermes_bootstrap
     import pm
+    import pm.client
 
     home = get_hermes_home()
     home.mkdir(parents=True, exist_ok=True)
@@ -40,18 +41,22 @@ def test_prepare_does_not_install_dependencies_for_unrelated_providers(
     )
     ensure = Mock()
     sync = Mock()
+    tools = Mock()
     monkeypatch.setattr(pm, "ensure", ensure)
     monkeypatch.setattr(pm, "sync_venv", sync)
+    monkeypatch.setattr(pm.client, "ensure_tools_for_sync", tools)
     monkeypatch.setattr(sys, "argv", [str(SOURCE / "prepare.py"), str(home)])
     runpy.run_path(str(SOURCE / "prepare.py"), run_name="__main__")
     ensure.assert_not_called()
     sync.assert_not_called()
+    tools.assert_not_called()
 
 
 def test_prepare_builtin_uses_declared_pm_candidates(monkeypatch):
     """本机抓取缺依赖时使用PM候选声明，浏览器仍由PM准备。"""
     import hermes_bootstrap
     import pm
+    import pm.client
 
     home = get_hermes_home()
     home.mkdir(parents=True, exist_ok=True)
@@ -59,9 +64,12 @@ def test_prepare_builtin_uses_declared_pm_candidates(monkeypatch):
         get_config_path(), {"web": {"extract_backend": "builtin_parse"}}
     )
     ensure = Mock()
-    sync = Mock()
+    order: list[str] = []
+    sync = Mock(side_effect=lambda *args, **kwargs: order.append("sync"))
+    tools = Mock(side_effect=lambda: order.append("tools"))
     monkeypatch.setattr(pm, "ensure", ensure)
     monkeypatch.setattr(pm, "sync_venv", sync)
+    monkeypatch.setattr(pm.client, "ensure_tools_for_sync", tools)
 
     # 只模拟缺包事实，依赖声明与PM调用参数均执行真实路径。
     def missing(name):
@@ -74,6 +82,8 @@ def test_prepare_builtin_uses_declared_pm_candidates(monkeypatch):
     ensure.assert_called_once_with("chromium")
     assert sync.call_args.kwargs["explicit"] is True
     assert SOURCE in sync.call_args.kwargs["plugins"].dirs
+    # 依赖解析要拉 core 锁里的 git 源，工具必须先于同步就位。
+    assert order == ["tools", "sync"]
 
 
 def test_native_chromium_resolver_keeps_a_b_a_profile_scope(monkeypatch, tmp_path):

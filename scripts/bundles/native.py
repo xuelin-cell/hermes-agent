@@ -230,11 +230,14 @@ def prune_windows_release_tools(store_dir: Path, target: str) -> tuple[int, int]
 
 
 def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
-                   tools: Path | None = None, env: dict | None = None) -> Path:
+                   tools: Path | None = None, env: dict | None = None,
+                   plugin_assets: tuple[str, ...] = ()) -> Path:
     """Prepare final payload dependencies inside the caller's isolated PM process.
 
     The caller supplies its compiler environment; only the full standalone
     wrapper provisions machine prerequisites and isolates HOME.
+    ``plugin_assets`` names the desktop-only plugin assets this build ships;
+    their Python dependencies are bundled into the payload environment.
     """
     from scripts.bundles.native_prepared import preparation_lock, prepared_path
     from scripts.build.retry import retry_on_permission_error
@@ -262,11 +265,13 @@ def prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         prepared_path(out).unlink(missing_ok=True)
         (out / "manifest.json").unlink(missing_ok=True)
         return _prepare_native(out=out, ref=ref, source=Path(source).resolve(),
-                               cache=Path(cache).resolve(), tools=tools, env=env)
+                               cache=Path(cache).resolve(), tools=tools, env=env,
+                               plugin_assets=plugin_assets)
 
 
 def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
-                    tools: Path | None, env: dict | None) -> Path:
+                    tools: Path | None, env: dict | None,
+                    plugin_assets: tuple[str, ...] = ()) -> Path:
     from pm import paths
     from pm.package import InstallError
 
@@ -375,6 +380,14 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         print(f"  uv-cache: copying {src_cache} → payload...", flush=True)
         stage_uv_cache(src_cache, payload_cache)
         pruned = prune_uv_cache_to_lock(payload_cache, repo_dir)
+        # desktop-mt: the shipped plugins' own dependencies are not in core's lock;
+        # bundle them into the payload environment so the first launch installs nothing.
+        from scripts.bundles.plugin_dependencies import bundle_plugin_dependencies
+        bundled = bundle_plugin_dependencies(
+            source=source, venv_dir=venv_dir, cache=payload_cache, env=env,
+            personal=list(plugin_assets))
+        if bundled:
+            print(f"✓ plugin dependencies ({bundled} requirement(s) in the payload environment)")
         # desktop-mt: kit script dependencies are not in core's lock; add them after the prune so they ship.
         from scripts.bundles.uniwork_bundled import warm_script_wheels
         warm_script_wheels(repo_dir, payload_cache, python_bin, env)

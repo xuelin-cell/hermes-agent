@@ -158,6 +158,35 @@ def _start_desktop_cron_ticker(stop_event: "threading.Event", interval: int = 60
     provider.start(stop_event, **start_kwargs)
 
 
+def _start_desktop_cron_ticker_after_ready() -> None:
+    """Desktop `serve`: start the cron ticker behind the READY sentinel.
+
+    The ticker's import chain (``cron.scheduler_provider`` and the store/adapter modules
+    under it) is cold-start expensive and runs on its own thread, so starting it before the
+    bind only stole GIL from the path to the sentinel — measured ~4.7s of import work on a
+    cold install, against a sentinel budget of 90s. The desktop never waits for the ticker
+    (it fires jobs on its own 60s cadence), so it starts once the sentinel is out, and it
+    waits for a quiet request window first so the import burst cannot starve the first
+    hydration reads.
+    """
+    stop = getattr(app.state, "desktop_cron_stop", None)
+    if stop is None:
+        return
+
+    def _start() -> None:
+        try:
+            from hermes_cli.mcp_startup import wait_for_quiet_request_window
+
+            wait_for_quiet_request_window()
+        except Exception:
+            _log.debug("Desktop cron ticker: quiet window unavailable", exc_info=True)
+        if stop.is_set():
+            return
+        _start_desktop_cron_ticker(stop)
+
+    threading.Thread(target=_start, daemon=True, name="desktop-cron-ticker").start()
+
+
 # Desktop `serve` only (start_server(start_mcp_discovery_after_bind=True)):
 # seconds after the READY sentinel before the MCP discovery thread starts.
 _DESKTOP_MCP_DISCOVERY_DELAY_S = 1.0
@@ -234,7 +263,6 @@ async def _lifespan(app: "FastAPI"):
     # gateway running the scheduler. Server `hermes dashboard` is unaffected —
     # it relies on its own gateway.
     cron_stop: "threading.Event | None" = None
-    cron_thread: "threading.Thread | None" = None
     desktop_owned = is_desktop_owned_backend()
     if desktop_owned:
         # Reap an orphaned gateway from an abnormal previous exit (reparented to
@@ -251,14 +279,13 @@ async def _lifespan(app: "FastAPI"):
         except Exception:
             _log.exception("Desktop startup: orphan gateway reap failed")
 
+        # The cron ticker itself starts behind the READY sentinel (see
+        # _start_desktop_cron_ticker_after_ready): its import chain is cold-start
+        # expensive and the desktop never waits for it — the ticker fires jobs on
+        # its own 60s cadence. The stop event is created here so the lifespan's
+        # shutdown still stops the ticker whenever it ends up running.
         cron_stop = threading.Event()
-        cron_thread = threading.Thread(
-            target=_start_desktop_cron_ticker,
-            args=(cron_stop,),
-            daemon=True,
-            name="desktop-cron-ticker",
-        )
-        cron_thread.start()
+        app.state.desktop_cron_stop = cron_stop
 
     # Reap idle/dead keep-alive PTY sessions (30-min TTL).
     pty_reaper_task = asyncio.create_task(run_reaper(PTY_REGISTRY))
@@ -815,6 +842,38 @@ async def _startup_first_api_middleware(request: Request, call_next):
     return response
 
 
+# In-flight HTTP request counter. The MCP discovery's heavy phase (SDK import,
+# JSON-RPC schema parsing, tool registration) is CPU/GIL-bound; running it on
+# top of a client's first request burst starves the loop that has to answer
+# those requests, so the whole boot window degrades into client timeouts. The
+# counter lets the discovery wait for a quiet gap instead of colliding.
+_INFLIGHT_REQUESTS = 0
+
+
+@app.middleware("http")
+async def _inflight_request_middleware(request: Request, call_next):
+    """Outermost middleware (registered last): count requests in flight."""
+    global _INFLIGHT_REQUESTS
+    _INFLIGHT_REQUESTS += 1
+    try:
+        return await call_next(request)
+    finally:
+        _INFLIGHT_REQUESTS -= 1
+
+
+def server_has_inflight_requests() -> bool:
+    """Whether the server is currently serving at least one HTTP request."""
+    return _INFLIGHT_REQUESTS > 0
+
+
+try:
+    from hermes_cli.mcp_startup import set_mcp_discovery_idle_gate
+
+    set_mcp_discovery_idle_gate(server_has_inflight_requests)
+except Exception:  # pragma: no cover - the gate is an optimization, never a gate on serving
+    _log.debug("MCP discovery idle gate unavailable", exc_info=True)
+
+
 # Authenticated-route self-test: one in-process request per minute against a
 # cheap DB-touching route, catching "liveness fine but every authed request 500s".
 _DASHBOARD_SELFTEST_INTERVAL_SECONDS = 60.0
@@ -1207,6 +1266,12 @@ def _configure_auth_gate(
         # No escape hatch serves a gated dashboard without a provider.
         from hermes_cli.dashboard_auth import list_providers
         if not list_providers():
+            # Providers are registered BY plugins, and a Desktop `serve` sweeps plugins in the
+            # background (it is the longest boot stage). A gated bind must not fail closed on a
+            # sweep that is merely still running.
+            from hermes_cli.plugins import wait_for_plugin_discovery
+            wait_for_plugin_discovery()
+        if not list_providers():
             raise SystemExit(_no_auth_provider_message(host))
         _log.info(
             "Dashboard binding to %s with auth gate enabled. Providers: %s",
@@ -1437,6 +1502,11 @@ def _on_server_started(
     else:
         print(f"  Hermes Web UI → http://{host}:{actual_port}")
     _maybe_open_browser(host, actual_port, open_browser, initial_profile)
+
+    if is_desktop_owned_backend():
+        # Behind the sentinel: the desktop only needs the port to start hydrating, and
+        # the ticker's cold import chain would otherwise hold the GIL on the way to it.
+        _start_desktop_cron_ticker_after_ready()
 
     if start_mcp_discovery_after_bind:
         # Desktop `serve`: the ~350ms `mcp` SDK import holds the GIL while the

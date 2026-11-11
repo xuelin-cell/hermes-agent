@@ -11,7 +11,7 @@ const directories: string[] = []
 
 /** 所有安装入口与 Shell 配置均写入独立临时目录。 */
 function fixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "uniworker-cli-mac space's-"))
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "uniwork-cli-mac space's-"))
   directories.push(root)
   const python = path.join(root, 'python')
   fs.writeFileSync(python, '')
@@ -47,7 +47,7 @@ it('macOS 注册保留用户 Shell 配置，重复注册不重复加 PATH，升�
   expect(fs.readFileSync(profile, 'utf8').match(/UniWork desktop skills CLI PATH/g)).toHaveLength(1)
 
   for (const name of ['.zshrc', '.bash_profile', '.bashrc']) {
-    expect(fs.readFileSync(path.join(options.home, name), 'utf8')).toContain(path.join('.uniworker', 'bin'))
+    expect(fs.readFileSync(path.join(options.home, name), 'utf8')).toContain(path.join('.uniwork', 'bin'))
   }
 
   const launcher = fs.readFileSync(path.join(directory, 'hermes'), 'utf8')
@@ -95,7 +95,7 @@ it('Windows 安装包不携带源码参数，仍生成 CMD、PowerShell 和 Git 
 it('长 macOS 路径使用短 Socket 地址，并保留大小写身份区别', () => {
   const address = skillsCliAddress('/Users/' + '很长目录'.repeat(100), 'darwin')
   expect(address.length).toBeLessThan(100)
-  expect(address).toMatch(/^\/tmp\/uniworker-cli-[a-f0-9]+\.sock$/)
+  expect(address).toMatch(/^\/tmp\/uniwork-cli-[a-f0-9]+\.sock$/)
   expect(skillsCliAddress('/Users/A', 'darwin')).not.toBe(skillsCliAddress('/Users/a', 'darwin'))
   expect(skillsCliAddress('C:\\Users\\A', 'win32')).toBe(skillsCliAddress('c:\\users\\a', 'win32'))
 })

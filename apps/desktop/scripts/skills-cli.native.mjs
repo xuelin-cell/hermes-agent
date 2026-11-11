@@ -12,7 +12,7 @@ const repo = path.resolve(desktop, '../..')
 const require = createRequire(path.join(desktop, 'package.json'))
 const electron = require('electron')
 const windows = process.platform === 'win32'
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'uniworker-skills-cli-'))
+const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'uniwork-skills-cli-'))
 const userData = path.join(temporary, 'roaming')
 const env = { ...process.env, LOCALAPPDATA: temporary, HERMES_DESKTOP_USER_DATA_DIR: userData,
   HERMES_DESKTOP_HERMES_ROOT: repo, PYTHONIOENCODING: 'utf-8', COLUMNS: '180' }

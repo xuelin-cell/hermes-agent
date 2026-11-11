@@ -101,10 +101,14 @@ async def get_defaults():
 async def get_schema(profile: Optional[str] = None):
     # Discovery-driven provider options (voice command providers + memory
     # provider plugins) are merged per-request so providers added after server
-    # start still show up, scoped to the requested profile's config.
-    with _config_profile_scope(profile):
-        fields = _schema_with_dynamic_provider_options()
-    return {"fields": fields, "category_order": _CATEGORY_ORDER}
+    # start still show up, scoped to the requested profile's config. Off-loop:
+    # the merge joins a plugin sweep still running on a Desktop `serve` boot,
+    # and that wait must not freeze the event loop.
+    def _build() -> Dict[str, Dict[str, Any]]:
+        with _config_profile_scope(profile):
+            return _schema_with_dynamic_provider_options()
+
+    return {"fields": await asyncio.to_thread(_build), "category_order": _CATEGORY_ORDER}
 
 
 @config_router.get("/api/egress/status")

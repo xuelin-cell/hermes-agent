@@ -1,0 +1,8 @@
+{
+  "comment": "The Python plugins the desktop bundle ships. The staging script copies these into the app resources; the build-time dependency collector reads the same list, so what ships and what gets bundled cannot drift apart.",
+  "personal": [
+    { "source": "uniagentgate-plugin", "target": "uniagentgate" },
+    { "source": "unisearch-plugin", "target": "unisearch" },
+    { "source": "usage-telemetry-plugin", "target": "uniwork-telemetry" }
+  ]
+}

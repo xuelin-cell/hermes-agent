@@ -23,7 +23,7 @@ function fixture(): AccountRoots {
 
   return {
     data: accountDataRoot(root, { LOCALAPPDATA: root }),
-    userData: path.join(root, 'roaming', 'uniworker')
+    userData: path.join(root, 'roaming', 'uniwork')
   }
 }
 
@@ -149,13 +149,13 @@ it('受管根、accounts、账号及叶目录的链接或文件占位均拒绝�
   }
 })
 
-it('数据根统一使用 uniworker，遵循 AppData 所在盘且不改变短账号目录', () => {
-  expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: 'D:\\Local' }, 'win32')).toBe('D:\\Local\\uniworker')
+it('数据根统一使用 uniwork，遵循 AppData 所在盘且不改变短账号目录', () => {
+  expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: 'D:\\Local' }, 'win32')).toBe('D:\\Local\\uniwork')
   expect(accountDataRoot('C:\\Users\\stan', { LOCALAPPDATA: ' ' }, 'win32')).toBe(
-    'C:\\Users\\stan\\AppData\\Local\\uniworker'
+    'C:\\Users\\stan\\AppData\\Local\\uniwork'
   )
-  expect(accountDataRoot('/Users/stan', {}, 'darwin')).toBe('/Users/stan/.uniworker')
-  expect(accountDataRoot('/home/stan', {}, 'linux')).toBe('/home/stan/.uniworker')
+  expect(accountDataRoot('/Users/stan', {}, 'darwin')).toBe('/Users/stan/.uniwork')
+  expect(accountDataRoot('/home/stan', {}, 'linux')).toBe('/home/stan/.uniwork')
 })
 
 it('短目录名相同的另一账号、伪造或缺失的身份标识均拒绝，不写入原目录', () => {
