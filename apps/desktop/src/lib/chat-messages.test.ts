@@ -454,6 +454,85 @@ describe('toChatMessages', () => {
     }
   })
 
+  it('unwraps the OOB steer marker and shows only the user text', () => {
+    // A mid-turn steer persisted during tool execution arrives as a
+    // display_kind='steer' user row whose content is wrapped in the OOB
+    // protocol marker (agent/prompt_builder.py::steer_user_row). The user
+    // bubble must show only the text the user typed.
+    const steerOpen =
+      '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]'
+    const steerClose = '[/OUT-OF-BAND USER MESSAGE]'
+    const wrappedContent = `${steerOpen}\n今天AI业界热点新闻\n${steerClose}`
+
+    const messages = toChatMessages([
+      { role: 'user', content: 'go', timestamp: 1 },
+      { role: 'assistant', content: 'Working on it.', timestamp: 2 },
+      { role: 'user', content: wrappedContent, display_kind: 'steer', timestamp: 3 }
+    ])
+
+    expect(messages.map(chatMessageText)).toEqual([
+      'go',
+      'Working on it.',
+      '今天AI业界热点新闻'
+    ])
+  })
+
+  it('leaves a plain-text steer row untouched (native steer / display_content)', () => {
+    // Some steer rows carry plain user text without the OOB wrapper (native
+    // Codex steer, or a backend that already projected display_content).
+    // These must pass through unchanged — the unwrapper only acts on the
+    // full OOB-wrapped format.
+    const messages = toChatMessages([
+      { role: 'user', content: 'go', timestamp: 1 },
+      { role: 'assistant', content: 'Working on it.', timestamp: 2 },
+      { role: 'user', content: '今天AI业界热点新闻', display_kind: 'steer', timestamp: 3 }
+    ])
+
+    expect(chatMessageText(messages[2])).toBe('今天AI业界热点新闻')
+  })
+
+  it('does not unwrap OOB marker text a user pasted into a plain (non-steer) message', () => {
+    // A user could paste the literal OOB marker text into a normal message.
+    // Without display_kind='steer', the unwrapper must not touch it.
+    const steerOpen =
+      '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]'
+    const steerClose = '[/OUT-OF-BAND USER MESSAGE]'
+    const pastedContent = `${steerOpen}\n今天AI业界热点新闻\n${steerClose}`
+
+    const messages = toChatMessages([
+      { role: 'user', content: pastedContent, timestamp: 1 }
+    ])
+
+    expect(chatMessageText(messages[0])).toBe(pastedContent)
+  })
+
+  it('preserves multi-line steer text inside the OOB wrapper', () => {
+    const steerOpen =
+      '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]'
+    const steerClose = '[/OUT-OF-BAND USER MESSAGE]'
+    const multiLineText = 'line one\nline two\nline three'
+    const wrappedContent = `${steerOpen}\n${multiLineText}\n${steerClose}`
+
+    const messages = toChatMessages([
+      { role: 'user', content: wrappedContent, display_kind: 'steer', timestamp: 1 }
+    ])
+
+    expect(chatMessageText(messages[0])).toBe(multiLineText)
+  })
+
+  it('does not unwrap a malformed steer wrapper (missing close marker)', () => {
+    const steerOpen =
+      '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]'
+    const malformedContent = `${steerOpen}\n今天AI业界热点新闻`
+
+    const messages = toChatMessages([
+      { role: 'user', content: malformedContent, display_kind: 'steer', timestamp: 1 }
+    ])
+
+    // Malformed wrapper → content is returned as-is (no crash, no data loss).
+    expect(chatMessageText(messages[0])).toBe(malformedContent)
+  })
+
   it('projects persisted composite compaction carriers to their live user turn', () => {
     const messages = toChatMessages([
       {

@@ -47,6 +47,46 @@ const CONTEXT_REF_RE = /@(file|folder|url|image|tool|terminal):(?:"[^"\n]+"|'[^'
 // [screenshot] + 附加内容”。显示前还原成看不到图的模型那样的“文字 + @image:路径”，附加内容不显示；存档和模型续聊不变。
 const NATIVE_IMAGE_TURN_RE = /^([\s\S]*?)\n\n((?:\[Image attached(?: at)?: [^\n]+\]\n)+)((?:\[screenshot\](?:\n|$))+)/
 const NATIVE_IMAGE_HINT_RE = /^\[Image attached(?: at)?: ([^\n]+)\]$/
+// The OOB steer marker wraps a mid-turn user steer in a self-describing
+// protocol frame (agent/prompt_builder.py::format_steer_marker). The backend
+// persists the full wrapped text with display_kind='steer'; this projection
+// unwraps it so the user bubble shows only what the user typed.
+const STEER_OPEN_PREFIX = '[OUT-OF-BAND USER MESSAGE'
+const STEER_CLOSE_MARKER = '[/OUT-OF-BAND USER MESSAGE]'
+
+/**
+ * Unwrap the OOB steer marker for display. Only acts on display_kind='steer'
+ * rows whose content is the full `[OUT-OF-BAND USER MESSAGE …]…[/OUT-OF-BAND
+ * USER MESSAGE]` wrapper. Plain-text steer rows (native Codex steer, new
+ * backend display_content) pass through unchanged. Non-steer messages are
+ * never touched — a user may paste the literal marker text.
+ */
+function visibleSteerText(content: string, displayKind?: string): string {
+  if (displayKind !== 'steer') {
+    return content
+  }
+
+  if (!content.startsWith(STEER_OPEN_PREFIX) || !content.endsWith(STEER_CLOSE_MARKER)) {
+    return content
+  }
+
+  // The open marker `[OUT-OF-BAND USER MESSAGE — …]` is on its own line.
+  // Skip past it and its trailing newline to reach the user's text.
+  const openLineEnd = content.indexOf(']\n')
+
+  if (openLineEnd === -1) {
+    return content
+  }
+
+  const innerStart = openLineEnd + 2
+  const innerEnd = content.length - STEER_CLOSE_MARKER.length
+
+  if (innerStart > innerEnd) {
+    return content
+  }
+
+  return content.slice(innerStart, innerEnd).trim()
+}
 // 只发图不写字时 Hermes 自己补的问句（agent/image_routing.py::build_native_content_parts），不是用户写的。
 const NATIVE_IMAGE_DEFAULT_CAPTION = 'What do you see in this image?'
 
@@ -197,7 +237,15 @@ function transcriptContent(
     return null
   }
 
-  return role === 'user' && LEGACY_HEARTBEAT_ROW_RE.test(content.trim()) ? null : content
+  if (role === 'user' && LEGACY_HEARTBEAT_ROW_RE.test(content.trim())) {
+    return null
+  }
+
+  if (role === 'user' && displayKind === 'steer') {
+    return visibleSteerText(content, displayKind)
+  }
+
+  return content
 }
 
 /**
