@@ -1,32 +1,7 @@
 export const OVERLAY_FALLBACK_WIDTH = 144
 
-export type DesktopPlatformKind = 'linux' | 'mac' | 'windows' | 'wslg'
-
-/**
- * 平台 → 标题栏覆盖层分支。
- *
- * 启动期有两个窗口（登录壳层与主窗）要拿到同一份覆盖层选项；判定写在两处迟早会
- * 漂移，而漂移的结果就是两窗按钮位置/高度不同，交接时看得见。
- *
- * @param {{ platform?: NodeJS.Platform, isWsl?: boolean }} opts
- */
-export function desktopPlatformKind(
-  platform: NodeJS.Platform = process.platform,
-  isWsl = false
-): DesktopPlatformKind {
-  if (platform === 'darwin') {
-    return 'mac'
-  }
-
-  if (platform === 'win32') {
-    return 'windows'
-  }
-
-  return isWsl ? 'wslg' : 'linux'
-}
-
 interface TitleBarOverlayOptionsInput {
-  platform?: DesktopPlatformKind
+  platform?: 'linux' | 'mac' | 'windows' | 'wslg'
   darwinMajor?: number
   titlebarHeight?: number
   color?: string
