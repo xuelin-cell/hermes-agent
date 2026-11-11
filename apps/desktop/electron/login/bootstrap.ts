@@ -1,17 +1,9 @@
 import { mkdirSync } from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import { app, BrowserWindow, dialog, nativeTheme, net, screen } from 'electron'
+import { app, BrowserWindow, dialog, net } from 'electron'
 
-import {
-  bootWindowAppearanceOptions,
-  bootWindowBackgroundColor,
-  bootWindowStartsMaximized,
-  readBootWindowStateFrom
-} from '../boot-window-appearance'
-import { isWslEnvironment } from '../bootstrap-platform'
 import { resolveDesktopUserData } from '../data-paths'
 import { markDesktopLaunchSuccessful, prepareDesktopLaunch } from '../desktop-launch'
 import { startupMark } from '../desktop-startup-log'
@@ -25,9 +17,7 @@ import { registerPackagedSkillsCli } from '../entry_local/skills-cli-install'
 import { LocalStartupError, showLocalStartupFailure } from '../entry_local/startup-failure'
 import { createUniAgentGateBindingUpdate } from '../entry_local/uniagentgate-control'
 import { migrateOldUniworkData, migrateOldUniworkToWorkspace } from '../migrate-old-uniwork'
-import { readThemeSource } from '../native-theme-source'
 import { ensureLoginShellPath } from '../shell-path'
-import { desktopPlatformKind, titleBarOverlayOptions } from '../titlebar-overlay-width'
 import { createWindowOpenHandler } from '../window-open-policy'
 
 import type { LoginAccount } from './contract'
@@ -46,29 +36,6 @@ let startupFailed = false
 let recovery: Promise<void> | null = null
 /** Plan A 迁移 Promise；登录成功后 Plan B 复制时 await 它。 */
 let migrationPromise: Promise<void> | null = null
-
-/** 与主窗一致的标题栏高度（见 main.ts 的 TITLEBAR_HEIGHT）。 */
-const TITLEBAR_HEIGHT = 34
-
-/** 与主窗一致的透明覆盖层底色；不透明值会在某些 Electron 版本上退回系统框色。 */
-const TITLEBAR_OVERLAY_COLOR = 'rgba(1, 0, 0, 0)'
-
-/**
- * 登录窗的沙箱偏好：只暴露已批准的登录动作，不给文件／进程桥接能力。
- *
- * 写成函数是因为 `app.getAppPath()` 依赖已经初始化的 app；模块加载期求值会在
- * 单实例锁之前就把路径钉死。
- */
-function loginWindowPreferences() {
-  return {
-    nodeIntegration: false,
-    contextIsolation: true,
-    sandbox: true,
-    webviewTag: false,
-    preload: path.join(app.getAppPath(), 'dist', 'login-preload.js'),
-    partition: 'desktop-mt-login'
-  }
-}
 
 /** 先取得单实例锁，再安排上次账号清理；完成前不开放登录或桌面。 */
 function initializeLoginShell(): void {
@@ -192,58 +159,24 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
     ? new URL('/login.html', devServer).href
     : pathToFileURL(path.join(app.getAppPath(), 'dist', 'login.html')).href
 
-  // 冷启动首帧的底色/原生标题栏/`prefers-color-scheme` 都跟着 nativeTheme 走，
-  // 而主窗读的是同一个 native-theme.json。不在这里先钉住，登录画面就会跟随系统
-  // 深浅，与用户选的应用主题对不上。
-  nativeTheme.themeSource = readThemeSource(app.getPath('userData'))
-
-  // 账号能本地恢复时，用户不需要看见登录表单——这一路只需要一个承载品牌启动
-  // 画面的窗口。它必须与随后出现的主窗同形，否则「销毁登录窗、显示主窗」这个
-  // 交接本身就是一次可见跳变（几何、边框、底色任一不同都会闪）。
-  const restorable = accountRuntime!.login.restore().ok
-  const savedState = restorable ? readBootWindowStateFrom(app.getPath('userData')) : null
-  startupMark(`login window mode: ${restorable ? 'boot' : 'interactive'}`)
-
-  const window = restorable
-    ? new BrowserWindow({
-        ...bootWindowAppearanceOptions({
-          savedState,
-          displays: screen.getAllDisplays(),
-          titleBarOverlay: titleBarOverlayOptions({
-            platform: desktopPlatformKind(process.platform, isWslEnvironment()),
-            darwinMajor: process.platform === 'darwin' ? Number.parseInt(os.release(), 10) || 0 : 0,
-            titlebarHeight: TITLEBAR_HEIGHT,
-            color: TITLEBAR_OVERLAY_COLOR,
-            dark: nativeTheme.shouldUseDarkColors
-          }),
-          platform: process.platform,
-          titlebarHeight: TITLEBAR_HEIGHT,
-          backgroundColor: bootWindowBackgroundColor(nativeTheme.shouldUseDarkColors)
-        }),
-        show: false,
-        autoHideMenuBar: true,
-        webPreferences: loginWindowPreferences()
-      })
-    : new BrowserWindow({
-        // 需要人工输入验证码：保留一个可移动、带标题栏的常规窗口，用户能拖动、
-        // 关闭它。这一路不追求与主窗同形——用户看到的是表单，不是品牌启动画面。
-        width: 1080,
-        height: 760,
-        minWidth: 400,
-        minHeight: 300,
-        show: false,
-        autoHideMenuBar: true,
-        webPreferences: loginWindowPreferences()
-      })
+  const window = new BrowserWindow({
+    width: 1080,
+    height: 760,
+    minWidth: 400,
+    minHeight: 300,
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webviewTag: false,
+      preload: path.join(app.getAppPath(), 'dist', 'login-preload.js'),
+      partition: 'desktop-mt-login'
+    }
+  })
 
   loginWindow = window
-
-  if (restorable && bootWindowStartsMaximized(savedState)) {
-    // 与主窗一致：必须在首帧绘制前最大化，等显示后再最大化会播一段可见的
-    // 「小窗→全屏」zoom 动画。
-    window.maximize()
-  }
-
   window.removeMenu()
   startupMark('login window created')
   window.webContents.setWindowOpenHandler(createWindowOpenHandler())
@@ -279,16 +212,7 @@ async function openLoginWindow(): Promise<BrowserWindow | null> {
       installArtifactSharePlugin(context.home, app.getAppPath())
       startupMark('account desktop starting')
       desktopStarting ??= startAccountDesktop(context, currentDesktopIdentity)
-        .then(async () => {
-          if (stopping || window.isDestroyed()) {
-            return
-          }
-
-          // 主窗在 ready-to-show（或兜底计时）之后才真正上屏。先等它可见，再销毁
-          // 登录窗——反过来的顺序会在两窗之间露出一帧只有桌面的画面。
-          const { whenDesktopWindowRevealed } = await import('../main')
-          await whenDesktopWindowRevealed()
-
+        .then(() => {
           if (stopping || window.isDestroyed()) {
             return
           }
