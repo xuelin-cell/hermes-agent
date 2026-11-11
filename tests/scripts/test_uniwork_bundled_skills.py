@@ -115,6 +115,11 @@ def test_pinned_gitcode_tree_drives_offline_install_and_safe_upgrade(tmp_path, m
                          placement="contained", target="win32-x64", python=python,
                          site_packages=site, environment=site.parent, pm_runtime=pm,
                          resources={"skills": stage / "skills"})
+    # Native preparation compiles skill scripts after recording source bytes.
+    # Exercise real bytecode generation before the shared assembler runs.
+    import compileall
+    assert compileall.compile_dir(stage / "skills", quiet=1)
+    assert list((stage / "skills").rglob("__pycache__/*.pyc"))
     assemble(inputs, out)
     assert verify_bundled_skills(out / "agent/skills", record) == record
     # A later resource override must not replace GitCode with local skills.

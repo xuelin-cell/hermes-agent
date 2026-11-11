@@ -54,6 +54,10 @@ def _files(root: Path) -> dict[str, str]:
             raise BundledSkillsError(f"case-colliding resource: {relative}")
         seen.add(relative.casefold())
         if path.is_file():
+            # Native preparation bakes bytecode after recording the source tree;
+            # assembly may also omit these reproducible interpreter caches.
+            if path.parent.name == "__pycache__" and path.suffix == ".pyc":
+                continue
             result[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     return result
 
@@ -95,7 +99,14 @@ def verify_bundled_skills(root: Path, expected: dict | None = None) -> dict:
     files = _files(root)
     files.pop(RECORD, None)
     if files != record["files"]:
-        raise BundledSkillsError("bundled skills payload differs from source file inventory")
+        expected_files = record["files"]
+        missing = sorted(expected_files.keys() - files.keys())
+        extra = sorted(files.keys() - expected_files.keys())
+        changed = sorted(key for key in files.keys() & expected_files.keys()
+                         if files[key] != expected_files[key])
+        raise BundledSkillsError(
+            f"bundled skills payload differs from source file inventory: {root}; "
+            f"missing={missing}, extra={extra}, changed={changed}")
     # Nested reference examples are resources, not standalone installed skills.
     from agent.skill_utils import is_excluded_skill_path
     discovered = {p.parent.relative_to(root).as_posix() for p in root.rglob("SKILL.md")
