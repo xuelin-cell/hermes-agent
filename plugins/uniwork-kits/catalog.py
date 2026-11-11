@@ -141,7 +141,7 @@ def _row(home: Path, name: str, entry: Dict[str, Any]) -> Dict[str, Any]:
 
 def describe(home: Path) -> Dict[str, Any]:
     """套件页的全部卡片：已装的套件和专家。"""
-    plugins = [_row(home, name, entry) for name, entry in installer.list_entries(home)]
+    plugins = [_row(home, name, entry) for name, entry in installer.list_entries(home) if not entry.get("native_retired")]
     return {"plugins": plugins}
 
 

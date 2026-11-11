@@ -13,6 +13,10 @@ metadata:
 
 # Excel / 电子表格
 
+## 已迁移套件的路由
+
+如果当前档案启用了新版 `kits/xlsx/skills/xlsx`（版本 `1.0.0-workbuddy-hermes.*`），先通过 `skill_view` 完整读取该套件技能。新建使用其受管 openpyxl 与原版重算；现有表的数据相关编辑使用 `WorkBuddySheet`，宿主保存并验证。此时下文的旧 helpers 仅作兼容参考，不执行、不安装依赖。没有启用新版套件时，才使用下文原有路线。
+
 **一句话选型：分析/重塑/CSV 用 pandas；要保留公式/样式/多表/合并单元格/模板保真用 openpyxl。**
 
 安装：uv pip install openpyxl pandas || python -m pip install openpyxl pandas

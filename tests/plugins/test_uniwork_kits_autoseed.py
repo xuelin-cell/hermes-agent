@@ -69,8 +69,8 @@ def test_a_new_account_gets_the_bundled_kits_and_experts_once(kits, autoseed, pr
     assert kits.store.load_index(profile_env)["plugins"]["demo-expert"]["kind"] == "expert"
     _wait(autoseed)
     status = autoseed.status()
-    assert status["installed"] == 2 and status["failed"] == [] and status["error"] == ""
     plugins = kits.store.load_index(profile_env)["plugins"]
+    assert status["installed"] == len(plugins) and status["failed"] == [] and status["error"] == ""
     assert plugins["demo-kit"]["kind"] == "kit" and plugins["demo-expert"]["kind"] == "expert"
     assert not (kits.store.imported_root(profile_env) / autoseed.LOCK_NAME).exists()
     # 装完接着准备套件脚本的运行环境，第一次跑专家脚本时不用等。
@@ -87,6 +87,7 @@ def test_a_kit_the_user_uninstalled_stays_out_while_new_built_ins_still_arrive(
     assert autoseed.start(profile_env) is True
     _wait(autoseed)
     kits.installer.uninstall(profile_env, "demo-kit")
+    previous = set(kits.store.load_index(profile_env)["plugins"])
 
     # An app update ships one more kit.
     other = tmp_path / "pkgs" / "other-kit"
@@ -103,8 +104,9 @@ def test_a_kit_the_user_uninstalled_stays_out_while_new_built_ins_still_arrive(
     plugins = kits.store.load_index(profile_env)["plugins"]
     assert "demo-kit" not in plugins, "an uninstalled built-in came back"
     assert "other-kit" in plugins and "demo-expert" in plugins
+    assert set(plugins) == previous | {"other-kit"}
     status = autoseed.status()
-    assert (status["installed"], status["unchanged"], status["failed"]) == (1, 1, [])
+    assert (status["installed"], status["unchanged"], status["failed"]) == (1, len(previous), [])
 
 
 def test_an_expert_backend_and_a_home_without_a_bundle_do_nothing(kits, autoseed, profile_env, bundle, tmp_path):

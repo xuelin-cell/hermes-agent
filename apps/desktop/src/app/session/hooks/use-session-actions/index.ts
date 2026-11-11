@@ -39,6 +39,8 @@ import {
 import { markReasoningEffortPending } from '@/lib/chat-runtime'
 import { isMissingRpcMethod } from '@/lib/gateway-rpc'
 import { recoverInFlightTurnJournal } from '@/lib/inflight-turn-journal'
+import { requestModelOptions } from '@/lib/model-options'
+import { pptDefaultModel } from '@/lib/ppt-model-choice'
 import { latestSessionTodoSnapshot } from '@/lib/todos'
 import { setSessionYolo } from '@/lib/yolo-session'
 import { $clarifyRequests, clearClarifyRequest } from '@/store/clarify'
@@ -696,9 +698,30 @@ export function useSessionActions({
         const capturedProfile = $newChatProfile.get() || normalizeProfileKey($activeGatewayProfile.get())
         const legacyProfileIntent = isLegacyNewChatProfile(capturedProfile)
 
-        const params = {
+        const params: Record<string, unknown> = {
           ...(await desktopSessionCreateParams(cwd, capturedRoute, capturedProfile, legacyProfileIntent)),
           ...sessionCreateOverrideParams(createOverrides, seedMessages)
+        }
+
+        if (!createOverrides && !seedMessages?.length && capturedProfile === 'default' &&
+            !params.model && preview && /pptx?|powerpoint|幻灯片|演示文稿|课件/i.test(preview)) {
+          try {
+            const options = await requestModelOptions({
+              profile: capturedProfile,
+              request: (method, body) => capturedRoute
+                ? requestGatewayForAgent(capturedRoute.connectionId, capturedRoute.profile, method, body)
+                : requestGateway(method, body)
+            })
+
+            const choice = pptDefaultModel(
+              preview, getCurrentModelSource() === 'manual', options,
+              typeof params.reasoning_effort === 'string' ? params.reasoning_effort : ''
+            )
+
+            if (choice) {Object.assign(params, choice)}
+          } catch {
+            // An unavailable catalog leaves session creation on its existing default.
+          }
         }
 
         // desktop-mt: 未选目录的新对话改用账号工作区下的专属文件夹；新手引导对话不建。

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from . import deck_check, delivery, media_slot, naming, store, turns
+from . import deck_check, deck_timing, delivery, media_slot, naming, store, turns
 
 logger = logging.getLogger(__name__)
 
@@ -323,7 +323,10 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
         text = _user_text(kwargs.get("user_message")).strip()
         platform = str(kwargs.get("platform") or "")
         catalog, is_expert = _load(Path(get_hermes_home()))
-        deck = not is_expert and deck_requested(text, kwargs.get("conversation_history"))
+        from . import native_ppt, native_ppt_runtime
+
+        native = native_ppt.installed(Path(get_hermes_home())) and native_ppt_runtime.available()
+        deck = not native and not is_expert and deck_requested(text, kwargs.get("conversation_history"))
         turn = turns.begin(
             str(kwargs.get("session_id") or ""),
             str(kwargs.get("turn_id") or ""),
@@ -347,12 +350,22 @@ def on_pre_llm_call(**kwargs: Any) -> Optional[Dict[str, str]]:
             extra = "\n\n".join(item for item in extras if item)
             return {"context": extra} if extra else None
         parts: List[str] = []
+        if native and names_a_deck(text) and native_ppt.enabled():
+            deck_timing.begin(turn.session_id, turn.turn_id)
+            parts.append(
+                "本轮PPT任务先用skill_view加载pptx--pptx，按原生设计和逐页流程使用TencentPpt。"
+                "主题创作/报告提炼用prepare、create和write-page，逐页写入并检查，无需重复lint；"
+                "材料忠实可编辑重建先material-info再build-material，按原文、图形、连线和顺序制作，宿主一次预览后交付；"
+                "失败只修改当前.slide，传回原page_index替换；finalize生成独立最终版。"
+                "不使用旧pptxgenjs构建、自检或整稿AI返工规则；素材使用当前实际可用工具。"
+            )
         if _router_enabled() and catalog:
             hint = build_hint(text, catalog)
             if hint:
                 parts.append(hint)
         if deck:
             if not turn.subagent:  # 子任务只写父任务交代的那一份，整份 PPT 的写法规则会让它去写公共文件
+                deck_timing.begin(turn.session_id, turn.turn_id)
                 parts.append(deck_check.BUILD_RULES)
             if _pictures_enabled():
                 parts.append(media_slot.picture_rules(delivery=delivery.deck_line(platform)))

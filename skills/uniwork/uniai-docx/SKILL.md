@@ -13,6 +13,10 @@ metadata:
 
 # DOCX 文档
 
+## 已迁移套件的路由
+
+如果当前档案启用了新版 `kits/docx/skills/docx`（版本 `1.0.0-workbuddy-hermes.*`），先通过 `skill_view` 完整读取该套件技能，并使用其 WorkBuddy Word 转换/SDK 流程。此时下文的 python-docx/helpers 创建路线仅作兼容参考，不执行、不安装依赖。没有启用新版套件时，才使用下文原有路线。
+
 用 `python-docx` 做结构化创建与编辑，用 `scripts/docx_helpers.py` 保证排版，
 用 `scripts/check_docx.py` 自检，用 `scripts/render_docx.py` 做**视觉复检**——
 版式类文档“看起来对”才算对，抽文字对不够。

@@ -8,6 +8,8 @@
 """
 
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+import contextvars
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -34,6 +36,10 @@ UPLOAD_PATH = "/app-agent-prod/temp/"
 MAX_BYTES = 64 * 1024 * 1024
 MAIL_ATTACHMENTS_MAX_BYTES = 10 * 1024 * 1024
 TIMEOUT = 120
+# 上传由执行中间件处理，不占 pre_tool_call 的全局钩子期限。
+# 每次调用仍有自己的等待预算；后台成功的结果进缓存，重试不会重复上传。
+HOOK_WAIT_SECONDS = 20
+_uploader = ThreadPoolExecutor(max_workers=4, thread_name_prefix="deliverables-upload")
 CACHE_SECONDS = 24 * 3600
 # 原链接离过期不足这么多秒就不再换回，改为上传本机副本，免得元景处理到一半链接失效。
 LINK_MARGIN = 600
@@ -96,6 +102,8 @@ _lock = RLock()
 _sessions = OrderedDict()
 _cache = OrderedDict()
 _downloads = OrderedDict()
+# 缓存键 -> 正在后台上传的 Future；同一个文件重试时等同一次上传，不再传第二遍。
+_inflight = {}
 
 
 class Refusal(Exception):
@@ -496,11 +504,40 @@ def downloaded_link(path):
     return url
 
 
-def convert(prefix, value, session_id, cwd, leaf=""):
-    """参数值是插件下载的成品就换回原链接，是允许的本机文件就上传并返回 ossPath；不是本机文件返回 None。
+def _upload_and_cache(prefix, path, key):
+    """后台上传一个文件，成功就记进缓存；不管成败都从进行中的名单里拿掉。"""
+    try:
+        oss_path = upload(prefix, path)
+        with _lock:
+            _cache[key] = (oss_path, time.time())
+            _cache.move_to_end(key)
+            while len(_cache) > 256:
+                _cache.popitem(last=False)
+        return oss_path
+    finally:
+        with _lock:
+            _inflight.pop(key, None)
 
-    leaf 是元景工具名（如 analyze_image）：附件、工作目录以外的文件按它能用的类型决定传不传。
-    """
+
+def _upload_in_time(prefix, path, key, deadline):
+    """在后台线程上传，最多等到 deadline。来不及就拦下这次调用、请模型稍后重试，后台照常传完。"""
+    with _lock:
+        future = _inflight.get(key)
+        if future is None:
+            # 带上当前上下文：多账号进程里查注册表、调上传工具都按这个账号来。
+            future = _uploader.submit(contextvars.copy_context().run, _upload_and_cache, prefix, path, key)
+            _inflight[key] = future
+    try:
+        return future.result(timeout=max(0.1, deadline - time.monotonic()))
+    except FutureTimeout:
+        raise Refusal(
+            f"本机文件 {path} 还在上传到元景（网络较慢），这次工具调用没有执行。"
+            "先做别的事，稍后用同样的参数再调用一次，上传好的结果会直接用上。"
+        ) from None
+
+
+def convert(prefix, value, session_id, cwd, leaf="", *, deadline=None):
+    """允许的本机文件换成ossPath；工作目录外按leaf核验类型，整批共用等待预算。"""
     if (
         not isinstance(value, str)
         or "\n" in value
@@ -532,13 +569,7 @@ def convert(prefix, value, session_id, cwd, leaf=""):
         hit = _cache.get(key)
         if hit and time.time() - hit[1] < CACHE_SECONDS:
             return hit[0]
-    oss_path = upload(prefix, path)
-    with _lock:
-        _cache[key] = (oss_path, time.time())
-        _cache.move_to_end(key)
-        while len(_cache) > 256:
-            _cache.popitem(last=False)
-    return oss_path
+    return _upload_in_time(prefix, path, key, deadline or time.monotonic() + HOOK_WAIT_SECONDS)
 
 
 def uploaded_mail_attachments(attachments, session_id, task_id):
@@ -615,15 +646,16 @@ def uploaded_args(tool_name, args, session_id, task_id):
         return None
     cwd = working_folder(task_id)
     changed = {}
+    deadline = time.monotonic() + HOOK_WAIT_SECONDS
     for name, value in args.items():
         if isinstance(value, list):
-            items = [convert(prefix, item, session_id, cwd, leaf) for item in value[:16]]
+            items = [convert(prefix, item, session_id, cwd, leaf, deadline=deadline) for item in value[:16]]
             if any(items):
                 changed[name] = [
                     new or old for new, old in zip(items, value)
                 ] + value[16:]
         else:
-            new = convert(prefix, value, session_id, cwd, leaf)
+            new = convert(prefix, value, session_id, cwd, leaf, deadline=deadline)
             if new:
                 changed[name] = new
     return changed or None

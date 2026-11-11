@@ -10,8 +10,9 @@ import re
 from threading import RLock
 import time
 
-from . import background, interrupted
+from . import background, interrupted, native_ppt, office_delivery
 from .paths import (
+    agent_state,
     changed,
     DOCUMENTS,
     IMAGES,
@@ -21,6 +22,7 @@ from .paths import (
     is_dir,
     mask_examples,
     media_line,
+    drop_deck_images,
     named_paths,
     remove_media_lines,
     resolve_path,
@@ -33,6 +35,43 @@ from .paths import (
 _turns = OrderedDict()
 _lock = RLock()
 WRITERS = {"terminal", "execute_code", "write_file", "patch"}
+# 用户要做幻灯片：配图是页面素材，不是另一份要下载的成品。只提到 PPT 不算，
+# 「照着上次 PPT 的封面风格生成一张海报」要的是海报，所以要有做、写、生成之类的动作落在 PPT 上。
+_DECK_RE = re.compile(
+    r"(?:做|写|生成|制作|出|弄|搞|整理|改|转|排|来)[^。！？!?\n]{0,16}"
+    r"(?:幻灯片|演示文稿|(?<![A-Za-z])PPT(?![A-Za-z])|\.pptx\b)",
+    re.I,
+)
+_DECK_FILE_RE = re.compile(r"\.(?:pptx?|pptx\.building)$", re.I)
+_DECK_REPLY_RE = re.compile(r"\.pptx?\b", re.I)
+# 用户这句自己点名要的东西照常交付：要 PDF 时同名 PDF 是成品，要存技能、记忆时那份说明就是成品。
+_PDF_RE = re.compile(r"pdf", re.I)
+_STATE_RE = re.compile(r"技能|记忆|skill|memor", re.I)
+_OFFICE = {".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx"}
+
+
+def _document(path: Path) -> bool:
+    """这份是不是文档成品。图片、网页不算。"""
+    return path.suffix.lower().lstrip(".") in DOCUMENTS
+
+
+def _image(path: Path) -> bool:
+    """这份是不是图片。"""
+    return path.suffix.lower().lstrip(".") in IMAGES
+
+
+def _during(path: Path, when: float) -> bool:
+    """文件是不是这次命令开始以后写的。不留余量，别的会话前一刻写的文件不能算进来。"""
+    try:
+        info = path.stat()
+    except OSError:
+        return False
+    return info.st_mtime >= when
+
+
+def _mentions_deck(value) -> bool:
+    """用户这句话是不是要做幻灯片。"""
+    return bool(_DECK_RE.search(as_text(value)))
 
 
 @dataclass
@@ -58,6 +97,13 @@ class Turn:
     notice: bool = False
     downloads: dict = field(default_factory=dict)
     image_runtime: dict = field(default_factory=dict)
+    owned: set = field(default_factory=set)
+    commands: list = field(default_factory=list)
+    deck: bool = False
+    wants_pdf: bool = False
+    wants_state: bool = False
+    native_ppt: bool = False
+    native_finals: dict = field(default_factory=dict)
 
 
 def scope(session_id):
@@ -145,6 +191,8 @@ def scratch_reminder(cwd):
         "（没有就新建），装依赖也在这里装。只有交给用户的成品放在工作目录或用户指定的位置，"
         "每个成品在回复里单独一行写 `MEDIA:<绝对路径>`。"
         "如果技能要求脚本和成品放在同一目录，就在 .tmp 里做完，再把成品复制到工作目录。"
+        "PPT、Word、Excel、PDF只交用户需要的最终成品；旧版、草稿、核对稿和预览留在本地，"
+        "不要列入MEDIA或下载链接。未完成时说明状态与原因，不把工作稿当成品。"
     )
 
 
@@ -181,6 +229,11 @@ def before_turn(
         turn = _turns[key]
         while len(_turns) > 128:
             _turns.popitem(last=False)
+        if _mentions_deck(user_message):
+            turn.deck = True
+        asked = as_text(user_message)
+        turn.wants_pdf = bool(_PDF_RE.search(asked))
+        turn.wants_state = bool(_STATE_RE.search(asked))
         if turn.background:
             return
         # 后台完成通知带回的成品在本轮回复时补出；被打断就留到下一轮。
@@ -263,7 +316,7 @@ def before_tool(
                 if pending[0].is_relative_to(root) or root.is_relative_to(pending[0]):
                     pending[1] = before = None
         if tool_call_id and tool_name in {"terminal", "execute_code"}:
-            turn.pending[tool_call_id] = [root, before]
+            turn.pending[tool_call_id] = [root, before, time.time()]
 
 
 def after_tool(
@@ -291,6 +344,8 @@ def after_tool(
             data = json.loads(result) if isinstance(result, str) else result
         except ValueError:
             data = None
+        if native_ppt.observe(turn, tool_name, data, status):
+            return
         if not completed(data, status, args):
             if tool_name in WRITERS:
                 turn.guess = False
@@ -300,15 +355,34 @@ def after_tool(
             if pending
             else local_cwd(kwargs.get("task_id") or turn.task_id) or turn.cwd
         )
-        candidates = named_paths(as_text(result), root)
-        if tool_name in {"write_file", "patch"}:
-            candidate = resolve_path((args or {}).get("path"), root)
-            if candidate:
-                candidates.insert(0, candidate)
+        # 文档只认这次调用改过的文件。目录列表里出现的、别的会话刚写的 PPT 不算。
+        command_started = pending[2] if pending and len(pending) > 2 else None
+        named = named_paths(as_text(result), root)
+        written = []
         if pending and pending[1] is not None:
             after = snapshot(pending[0])
             if after is not None:
-                candidates += changed(pending[1], after)
+                written = changed(pending[1], after)
+        if tool_name in {"write_file", "patch"}:
+            target = resolve_path((args or {}).get("path"), root)
+            if target:
+                named.insert(0, target)
+                if _document(target):
+                    written.append(target)
+        owned = {path for path in written if _document(path)}
+        turn.owned.update(owned)
+        # 自检没过的稿会被挪成 .pptx.building，同样说明这一轮在做幻灯片。
+        if any(_DECK_FILE_RE.search(path.name) for path in written):
+            turn.deck = True
+        candidates = list(written)
+        for path in named:
+            if not _document(path):
+                candidates.append(path)
+            elif path in owned or (command_started is not None and _during(path, command_started)):
+                candidates.append(path)
+                turn.owned.add(path)
+        if command_started is not None:
+            turn.commands.append(command_started)
         # 素材目录名只在这些工作目录里面判断，目录本身叫什么不影响。
         roots = {*turn.roots, turn.cwd, root}
         for path in candidates:
@@ -364,31 +438,58 @@ def choose(key, turn, response_text):
     declared = turn.declared | set(named_paths(mask_examples(response_text, inline=False), cwd))
     waiting = background.unreturned_results(key)
     # 子代理只交付两项工具已缓存的成品，其他子代理的普通回复不新增卡片。
-    paths = dict.fromkeys(
-        turn.paths if turn.background else [*turn.paths, *declared]
-    )
+    named = named_paths(masked, cwd)
+    mentioned = [] if turn.background else declared
+    if turn.cwd in turn.ambiguous:
+        mentioned = [path for path in mentioned if not _document(path) or path in turn.owned]
+    paths = dict.fromkeys([*turn.paths, *mentioned])
+    # 模型顺手改的技能、记忆文件，和渲染出来自查的同名 PDF，都不出卡，回复里的 MEDIA 行一并去掉。
+    stems = {path.stem for path in [*paths, *named] if path.suffix.lower() in _OFFICE}
+    dropped = {
+        path
+        for path in [*paths, *named]
+        if (agent_state(path) and not turn.wants_state)
+        or native_ppt.unpublished(turn, path)
+        or (path.suffix.lower() == ".pdf" and path.stem in stems and not turn.wants_pdf)
+    }
     paths = [
         path
         for path in paths
         if path not in turn.uploads
         and path not in waiting
+        and path not in dropped
         and not background.managed_video(path)
         and fresh(path, turn.started, roots, explicit=path in declared)
     ]
     # 后台带回的成品早于本轮生成，不按“本轮新建”判断。
     paths += [path for path in returned if path not in paths]
-    if not paths:
+    office_dropped = office_delivery.blocked(turn, set(paths) | set(named), masked, cwd, returned, paths)
+    dropped.update(office_dropped)
+    paths = [path for path in paths if path not in office_dropped]
+    # 做幻灯片时，生成图和搜来的图都是配图。PPT 被收起来没交出时也不单独发卡。
+    # 回复里交出了 .pptx 文件，同轮的图就是配图（模型常把 pptx 路径直接写进回复）。
+    # 只说到「PPT」这个词不算：用户只要一张图、模型顺口说「也可以放进 PPT」时，那张图仍是成品。
+    deck = (
+        turn.deck
+        or any(path.suffix.lower() in {".ppt", ".pptx"} for path in paths)
+        or bool(_DECK_REPLY_RE.search(as_text(response_text)))
+    )
+    image_mentions = [path for path in named if deck and _image(path)]
+    if deck:
+        paths = [path for path in paths if not _image(path)]
+    # 配图行即使解析不出路径也要删。没有幻灯片、也没有可交付或要去掉的文件时才保持原文。
+    if not deck and not paths and not image_mentions and not dropped:
         return response_text if response_text != original_response else None
     managed = set(paths)
     shown = shown_paths(masked, cwd)
-    # 明确交付保留；报告直接引用的本机图片、图表网页不再自动补卡。
-    # 元景生成的图片是成品本身，结果里已没有链接，不出卡用户就看不到。
+    # 有文档时图片多是文档的素材；网页和 Markdown 报告只去掉它引用到的图片。
+    # 元景生成的图片单独要的时候是成品。做幻灯片时上面已经拿掉配图。
     suffixes = {path.suffix.lower().lstrip(".") for path in paths}
     generated = {path for path in turn.downloads.values() if path} | set(returned)
     reports = [path for path in paths if path.suffix.lower() in {".md", ".html", ".htm"}]
     dependencies = set().union(*map(embedded, reports))
     explicit_cards = shown | {
-        resolve_path(match.group(1), cwd)
+        resolve_path(match.group("path"), cwd)
         for match in MEDIA.finditer(masked)
     } | turn.declared
     if suffixes & DOCUMENTS:
@@ -411,7 +512,7 @@ def choose(key, turn, response_text):
 
     # 前几轮复制的副本不算本轮新建，但回复里写了 MEDIA 就照样出卡，也要参与比对；
     # 本轮目录里新冒出的副本排在明确交付之后。
-    written = {path for match in MEDIA.finditer(masked) if (path := resolve_path(match.group(1), cwd))}
+    written = {path for match in MEDIA.finditer(masked) if (path := resolve_path(match.group("path"), cwd))}
     copies = copied_downloads(
         paths, generated, explicit_cards & (set(paths) | shown | written), shown, extra=set(paths)
     )
@@ -420,9 +521,12 @@ def choose(key, turn, response_text):
     delivered = set(appended) | shown
     replaced = {path for path, target in copies.items() if target in delivered}
     background.forget_results(key, set(returned) & (delivered | replaced))
-    moved = set(appended) | (managed & shown) | replaced
+    moved = set(appended) | (managed & shown) | replaced | set(image_mentions) | dropped
     # 只移走将追加或已有另一展示位置的独立行，未选中卡片不能被误删。
     text = remove_media_lines(response_text, masked, cwd, moved)
+    if deck:
+        text = drop_deck_images(text)
+    text = office_delivery.suppress_cards(text, cwd, office_dropped)
     return appended_reply(original_response, text, appended)
 
 
@@ -535,7 +639,7 @@ def media_targets(masked, cwd, desktop):
     """回复里最终会出卡片（桌面）或被网关作为附件发出（消息平台）的本机文件。"""
     from gateway.platforms.base import MEDIA_TAG_CLEANUP_RE
 
-    found = {resolve_path(match.group(1), cwd) for match in MEDIA.finditer(masked)}
+    found = {resolve_path(match.group("path"), cwd) for match in MEDIA.finditer(masked)}
     if desktop:
         found |= shown_paths(masked, cwd)
     else:
@@ -615,7 +719,7 @@ async def download_result(
     root = turn.cwd if turn.background else workspace(turn.task_id) or turn.cwd
     # 同批最多四个并行，避免顺序等待突破原生钩子的三十秒上限；描述参数用于起文件名。
     fetched = await asyncio.gather(
-        *(fetch(url, root, tool_name, args) for url in wanted)
+        *(fetch(url, root, tool_name, args, deck=turn.deck) for url in wanted)
     )
     with _lock:
         active = current(key, turn_id) is turn
@@ -625,7 +729,8 @@ async def download_result(
                 url: turn.downloads[url] for url in urls if turn.downloads.get(url)
             }
             for path in saved.values():
-                turn.paths[path] = None
+                if not turn.deck:
+                    turn.paths[path] = None
     if not active:
         for path in fetched:
             if path:
@@ -638,7 +743,7 @@ async def download_result(
     if turn.background:
         background.remember_results(session_id, list(saved.values()))
     missing = [url for url in urls if url not in saved]
-    return annotate(result, data, root, saved, missing, platform=turn.platform)
+    return annotate(result, data, root, saved, missing, platform=turn.platform, deck=turn.deck)
 
 
 def end_turn(*, session_id="", turn_id="", **kwargs):
