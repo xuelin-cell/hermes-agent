@@ -86,12 +86,19 @@ def seed(
     triggers: Optional[Dict[str, Any]] = None,
     progress: Optional[Callable[[str, int, int], None]] = None,
     removed: Collection[str] = (),
+    native_ppt: bool = False,
 ) -> List[SeedItem]:
     """安装新的或字节变了的包，字节相同的不动，也从不卸载；命令按旧写法转换的包例外，重装一次。
 
     启用开关、.env 里的值、用户手改过的专家 SOUL.md 都按 installer.install 的规则保留。触发词默认用插件自带的已校验表，新账号装这些包不调模型。progress 在每装一个包前收到（名字, 已完成, 总数）。removed 里的包如果已经不在了就不再装回（用户卸载过）；还装着的照常更新。
     """
     archives = iter_archives(directory)
+    if native_ppt:
+        from . import native_ppt_seed
+
+        archives = native_ppt_seed.overlay(home, archives, removed)
+    from .office.seed import overlay as office_overlay
+    archives = office_overlay(home, archives, removed)
     if not archives:
         return [SeedItem("empty", detail="目录里没有 zip，已装的套件和专家保持原样")]
     if triggers is None:
@@ -150,4 +157,6 @@ def seed(
             index = store.load_index(home).get("plugins") or index
         else:
             items.append(SeedItem("failed", name=name, path=archive.name, detail=receipt.error))
+    if native_ppt:
+        native_ppt_seed.hide_competing_builtins(home)
     return items

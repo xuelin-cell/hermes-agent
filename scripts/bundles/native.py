@@ -286,6 +286,10 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
     stage_bundled_plugins(repo_dir, env)
     from scripts.bundles.uniwork_bundled_skills import stage_bundled_skills
     stage_bundled_skills(repo_dir, env)
+    from scripts.bundles.native_ppt import stage_native_ppt
+    stage_native_ppt(repo_dir, cache, os.environ if env is None else env)
+    from scripts.bundles.native_office import stage_native_office
+    stage_native_office(repo_dir, os.environ if env is None else env)
     # PM's provider code reads its adjacent lock. Never combine that tool graph
     # with a revision selecting different pins.
     snapshot_lock = json.loads((repo_dir / "pm/lock.json").read_text(encoding="utf-8-sig"))
@@ -374,6 +378,10 @@ def _prepare_native(*, out: Path, ref: str, source: Path, cache: Path,
         # desktop-mt: kit script dependencies are not in core's lock; add them after the prune so they ship.
         from scripts.bundles.uniwork_bundled import warm_script_wheels
         warm_script_wheels(repo_dir, payload_cache, python_bin, env)
+        from scripts.bundles.native_ppt import warm_material_wheels
+        warm_material_wheels(repo_dir, payload_cache, python_bin, env)
+        from scripts.bundles.native_office import warm_office_wheels
+        warm_office_wheels(repo_dir, payload_cache, env)
         files, original_bytes = pack_uv_cache(payload_cache, payload_cache_archive)
         remove_build_tree(payload_cache)
         print(f"✓ uv-cache.zip ({files} files, {original_bytes / 1024 / 1024:.1f} MiB before compression; "

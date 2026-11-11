@@ -332,3 +332,7 @@ apps/desktop/.dist-build*
 # desktop-mt: built-in kits and experts are copied in from the gitcode config repo at
 # packaging time (scripts/bundles/uniwork_bundled.py); a local copy for development stays out of git.
 plugins/uniwork-kits/bundled/
+# Native PPT SDK is a build resource, never source or account state.
+/tencent-ppt-runtime/
+# Operator-provisioned, manifest-verified WorkBuddy Office binaries and resources.
+/workbuddy-office-runtime/

@@ -27,7 +27,7 @@ Enable with ``hermes plugins enable uniwork-kits``. Expert profiles created by
 
 from __future__ import annotations
 
-from . import background_rules, cli, code_packages, codex, communication_rules, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, terminal_env, terminal_hints, tool_call_rules
+from . import background_rules, cli, code_packages, codex, communication_rules, deck_timing, expert_sync, host_hooks, host_rules, llm, package_hooks, router, skill_paths, terminal_env, terminal_hints, tool_call_rules
 
 
 def register(ctx) -> None:
@@ -35,6 +35,11 @@ def register(ctx) -> None:
 
     前两步出错只跳过，不能拦住插件加载；否则一个专家档案的问题会让所有档案都没有套件功能。
     """
+    from . import native_ppt
+
+    native_ppt.register(ctx)
+    from .office import tools as office_tools
+    office_tools.register(ctx)
     llm.set_context(ctx)
     codex.set_context(ctx)
     if codex.ENABLED:
@@ -91,3 +96,14 @@ def register(ctx) -> None:
     ctx.register_hook("on_session_start", lambda **kw: package_hooks.on_observed("on_session_start", **kw))
     ctx.register_hook("on_session_end", lambda **kw: package_hooks.on_observed("on_session_end", **kw))
     ctx.register_hook("transform_tool_result", host_hooks.on_transform_tool_result)
+
+    from . import ppt_visual_evidence
+    ctx.register_middleware("tool_execution", ppt_visual_evidence.around_call)
+    for event, callback in (
+        ("pre_api_request", deck_timing.on_pre_api_request),
+        ("post_api_request", deck_timing.on_post_api_request),
+        ("api_request_error", deck_timing.on_api_request_error),
+        ("post_tool_call", deck_timing.on_post_tool_call),
+        ("post_llm_call", deck_timing.on_post_llm_call),
+    ):
+        ctx.register_hook(event, callback)

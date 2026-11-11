@@ -9,6 +9,7 @@
 # google-genai 要用户自己的谷歌密钥才能生图。
 
 pandas>=2.3.3,<3
+python-pptx==1.0.2
 numpy>=2.3.3,<3
 lxml>=6.0.2,<7
 openpyxl>=3.1.5,<4

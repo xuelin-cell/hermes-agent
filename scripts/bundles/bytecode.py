@@ -34,6 +34,9 @@ from pathlib import Path
 from scripts.build.retry import retry_on_permission_error
 
 MARKER = ".hermes-baked-pycache"
+# Node dependencies carry vendor build scripts, including Python 2 sources;
+# they are not import roots for the bundled Python runtime.
+NODE_MODULES_PATTERN = r"(^|[\\/])node_modules([\\/]|$)"
 
 
 def _import_roots(root: Path) -> list[Path]:
@@ -61,7 +64,7 @@ def _uncovered(root: Path) -> tuple[list[Path], int]:
     missing: list[Path] = []
     unparseable = 0
     for path in root.rglob("*.py"):
-        if "__pycache__" in path.parts:
+        if {"__pycache__", "node_modules"}.intersection(path.relative_to(root).parts):
             continue
         if Path(cache_from_source(path)).exists():
             continue
@@ -90,6 +93,7 @@ def bake_bytecode(root: Path, python: Path) -> dict:
         retry_on_permission_error(
             lambda: subprocess.run(
                 [str(python), "-I", "-m", "compileall", "-q",
+                 "-x", NODE_MODULES_PATTERN,
                  "--invalidation-mode", "unchecked-hash", str(source_root)],
                 check=True, timeout=30 * 60, stdin=subprocess.DEVNULL),
             operation_name="compileall",

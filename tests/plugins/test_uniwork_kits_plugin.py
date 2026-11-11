@@ -607,6 +607,9 @@ def test_register_wires_cli_sections_and_hook(kits, monkeypatch):
             """记录公开斜杠命令及其处理器。"""
             calls["commands"][name] = (handler, metadata)
 
+        def register_tool(self, *args, **kwargs):
+            return None
+
         def register_cli_command(self, name, help, setup_fn, handler_fn=None, description=""):
             """记下注册的命令名。"""
             calls["cli"].append(name)
@@ -615,16 +618,22 @@ def test_register_wires_cli_sections_and_hook(kits, monkeypatch):
             """记下注册的提示段 id。"""
             calls["sections"].append(id)
 
+        def register_middleware(self, kind, callback):
+            return None
+
         def register_hook(self, name, callback):
             """记下注册的钩子名。"""
             calls["hooks"].append(name)
+            calls.setdefault("hook_handlers", []).append((name, callback))
 
     kits.root.register(Ctx())
     from hermes_cli.plugins import is_valid_system_prompt_section_id
 
     assert calls["cli"] == ["kit"]
     assert "codex" not in calls["commands"]
-    assert "post_llm_call" not in calls["hooks"]
+    assert "post_llm_call" in calls["hooks"]
+    assert all(callback.__module__.endswith(".deck_timing")
+               for name, callback in calls["hook_handlers"] if name == "post_llm_call")
     assert set(calls["hooks"]) >= {
         "pre_llm_call",
         "pre_tool_call",
@@ -2022,3 +2031,65 @@ def test_kit_cards_use_a_chinese_title_without_replacing_an_expert_name(kits, pr
     rows = {row["name"]: row for row in kits.catalog.describe(profile_env)["plugins"]}
     assert rows["docx"]["display_name"] == "Word 文档"
     assert rows["demo-expert"]["display_name"] == "演示专家"
+
+
+def test_native_ppt_seed_preserves_disabled_state_custom_packages_and_profile_scope(kits, profile_env, tmp_path, monkeypatch):
+    import importlib
+    import zipfile
+    native = importlib.import_module(kits.root.__name__ + ".native_ppt")
+    runtime = importlib.import_module(kits.root.__name__ + ".native_ppt_runtime")
+    seed = importlib.import_module(kits.root.__name__ + ".seed")
+    monkeypatch.setattr(runtime, "available", lambda: True)
+    with (profile_env / "config.yaml").open("a", encoding="utf-8") as config:
+        config.write("\nuniwork_kits:\n  bundled_dir: " + (tmp_path / "manual-only").as_posix() + "\n")
+    packages = tmp_path / "builtin"
+    packages.mkdir()
+    for name in ["pptx", "ppt-writer"]:
+        with zipfile.ZipFile(packages / (name + ".zip"), "w") as archive:
+            archive.writestr("plugin.json", json.dumps({"name": name, "version": "0.1.0", "description": "old builtin"}))
+            archive.writestr("skills/pptx/SKILL.md", "---\nname: pptx\ndescription: old PPT\n---\nOld text")
+    for archive in packages.glob("*.zip"):
+        assert kits.installer.install(archive, profile_env, triggers={}, generate_triggers=False).ok
+    kits.installer.set_enabled(profile_env, "pptx", False)
+    before = (profile_env / "skills/kits/pptx").rglob("SKILL.md")
+    next(before).write_text("user-edited old skill", encoding="utf-8")
+    result = seed.seed(profile_env, packages, native_ppt=True, generate_triggers=False)
+    assert all(item.status != "failed" for item in result)
+    entry = kits.store.load_index(profile_env)["plugins"]
+    assert native.installed(profile_env) and entry["pptx"]["enabled"] is False
+    assert entry["ppt-writer"]["native_retired"] is True
+    backups = list((profile_env / "imported-plugins/.native-ppt/backups").rglob("SKILL.md"))
+    assert any("user-edited old skill" in p.read_text(encoding="utf-8") for p in backups)
+    other = tmp_path / "other-home"
+    other.mkdir()
+    (other / "config.yaml").write_text("uniwork_kits:\n  bundled_dir: " + (tmp_path / "manual-only").as_posix() + "\n", encoding="utf-8")
+    with kits.store.scoped_home(profile_env):
+        assert native.installed(profile_env)
+        kits.turns.begin("same-session", "A")
+        kits.turns.current("same-session").native_ppt = True
+        with kits.store.scoped_home(other):
+            assert not native.installed(other)
+            assert not kits.turns.current("same-session").native_ppt
+        assert kits.turns.current("same-session").native_ppt
+        kits.turns.begin("same-session", "next-user-topic")
+        assert not kits.turns.current("same-session").native_ppt
+    custom = tmp_path / "custom.zip"
+    with zipfile.ZipFile(custom, "w") as archive:
+        archive.writestr("plugin.json", json.dumps({"name": "pptx", "version": "9-custom"}))
+        archive.writestr("skills/pptx/SKILL.md", "---\nname: pptx\ndescription: custom\n---\nCustom")
+    assert kits.installer.install(custom, other, triggers={}, generate_triggers=False).ok
+    seed.seed(other, packages, native_ppt=True, generate_triggers=False)
+    assert kits.store.load_index(other)["plugins"]["pptx"]["version"] == "9-custom"
+
+
+def test_native_ppt_forbids_ocr_without_changing_other_terminal_work(kits, monkeypatch):
+    import importlib
+    native = importlib.import_module(kits.root.__name__ + ".native_ppt")
+    monkeypatch.setattr(native, "enabled", lambda: False)
+    monkeypatch.setattr(kits.host_hooks.script_python, "on_pre_tool_call", lambda **kw: None)
+    kits.turns.current("ppt-no-ocr").native_ppt = True
+    request = {"command": "pip install rapidocr_onnxruntime"}
+    rejected = kits.host_hooks.on_pre_tool_call(tool_name="terminal", args=request, session_id="ppt-no-ocr")
+    assert rejected["action"] == "block" and "OCR" in rejected["message"]
+    assert kits.host_hooks.on_pre_tool_call(tool_name="terminal", args={"command": "python build.py"}, session_id="ppt-no-ocr") is None
+    assert kits.host_hooks.on_pre_tool_call(tool_name="terminal", args=request, session_id="ordinary") is None

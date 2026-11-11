@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _MAX_SESSIONS = 256
 _lock = threading.Lock()
-_sessions: "OrderedDict[str, Turn]" = OrderedDict()
+_sessions: "OrderedDict[Tuple[str, str], Turn]" = OrderedDict()
 
 
 @dataclass
@@ -30,11 +30,17 @@ class Turn:
     started: float = 0.0
     platform: str = ""
     deck: bool = False
+    native_ppt: bool = False
+    native_images: Dict[str, str] = field(default_factory=dict)
+    native_visual_reads: Dict[str, str] = field(default_factory=dict)
+    native_visual_pending: Dict[str, tuple[str, str]] = field(default_factory=dict)
     # 子代理（delegate_task 派出的子任务）的会话：只按父任务交代的写自己那一份，不收整份 PPT 的写法规则。
     subagent: bool = False
     task_id: str = ""
     rules_shown: bool = False
     bounces: int = 0
+    # 页码 -> 这一页为观感问题退回过几次（deck_check._triage）；页码 0 是整份层面的问题。
+    page_bounces: Dict[int, int] = field(default_factory=dict)
     generated: List[str] = field(default_factory=list)
     reviewed: bool = False
     searches: List[Tuple[str, List[Any], str]] = field(default_factory=list)
@@ -47,7 +53,12 @@ class Turn:
         self.turn_id = turn_id
         self.started = time.time()
         self.rules_shown = False
+        self.native_ppt = False
+        self.native_images = {}
+        self.native_visual_reads = {}
+        self.native_visual_pending = {}
         self.bounces = 0
+        self.page_bounces = {}
         self.generated = []
         self.reviewed = False
         self.searches = []
@@ -56,10 +67,10 @@ class Turn:
 
 def _get(session_id: str) -> Turn:
     """取会话的状态，没有就新建；最多保留 256 个会话，最久没用的先丢。"""
-    key = str(session_id or "")
+    key = _key(session_id)
     turn = _sessions.get(key)
     if turn is None:
-        turn = Turn(session_id=key)
+        turn = Turn(session_id=str(session_id or ""))
         _sessions[key] = turn
         while len(_sessions) > _MAX_SESSIONS:
             _sessions.popitem(last=False)
@@ -80,7 +91,7 @@ def begin(
     with _lock:
         turn = _get(session_id)
         turn.reset_request(str(turn_id or ""))
-        parent = _sessions.get(str(parent_session_id or "")) if parent_session_id else None
+        parent = _sessions.get(_key(parent_session_id)) if parent_session_id else None
         turn.platform = str(platform or (parent.platform if parent else "") or "")
         turn.deck = bool(deck or (parent is not None and parent.deck))
         turn.subagent = bool(parent_session_id)
@@ -101,7 +112,13 @@ def current(session_id: str, turn_id: str = "", task_id: str = "") -> Turn:
 def peek(session_id: str) -> Optional[Turn]:
     """只看会话的状态，不新建。"""
     with _lock:
-        return _sessions.get(str(session_id or ""))
+        return _sessions.get(_key(session_id))
+
+
+def _key(session_id):
+    from hermes_constants import get_hermes_home
+
+    return (str(get_hermes_home().resolve()), str(session_id or ""))
 
 
 def clear() -> None:

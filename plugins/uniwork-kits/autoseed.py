@@ -93,7 +93,9 @@ def start(home: Path) -> bool:
     first = not (store.imported_root(root) / SEEDED_NAME).exists()
     if first and not _install(root, directory):
         return True
-    _thread = threading.Thread(
+    from agent.memory_provider import spawn_context_thread
+
+    _thread = spawn_context_thread(
         target=script_python.prepare if first else _run,
         args=(root,) if first else (root, directory), name="uniwork-kits-seed", daemon=True,
     )
@@ -124,7 +126,7 @@ def _install(root: Path, directory: Path) -> bool:
         record = store.imported_root(root) / SEEDED_NAME
         seeded = _load_seeded(record)
         present = set(store.load_index(root).get("plugins") or {})
-        items = seed.seed(root, directory, progress=progress, removed=seeded - present)
+        items = seed.seed(root, directory, progress=progress, removed=seeded - present, native_ppt=True)
         _save_seeded(record, seeded | {item.name for item in items if item.name and item.status in ("installed", "unchanged")})
         # 包没变时 seed 不重装；以前装好的脚本在这里补换。
         for note in script_swaps.apply_installed(root):

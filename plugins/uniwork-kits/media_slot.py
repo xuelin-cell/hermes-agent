@@ -23,7 +23,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping, Optional
+
+from . import deck_support
 
 DEFAULT_IMAGE_TOOL = "image_generate"
 UNIAI_SERVER_NAMES = ("UniAI-Toolkit", "yuanjing", "1")
@@ -289,6 +292,30 @@ _ELSEWHERE = (
     "（记下来源页，图下标注）；Unsplash / Pexels 这类图库只适合风景、氛围图。"
 )
 
+# 元景搜图按网页标题命中，通用名词（行星、动植物、食物）搜回来多是新闻配图、主体对不上。2026-10-27
+# 太阳系一份把 8 次搜索全部用掉，再花 9.9 分钟在思考里从零规划 Commons 下载脚本；取法写在规则里，
+# 省掉那一段。模型遇到通用名词直接走这条路、不经过搜图，所以取法不能只挂在搜图结果后面。
+COMMONS_RECIPE = deck_support.PHOTOS
+_PHOTO_NOTES = "references/photo-sourcing.md"
+
+
+def photo_notes_hint() -> str:
+    """本档案的自学技能里攒了配图经验文件时，告诉模型去哪读；别的账号、专家档案没有这份文件就不提。
+
+    文件是 curator 按本机做过的 PPT 自动写的，技能名和所在分类因账号而异，所以按文件找、用找到的路径指路。
+    """
+    from hermes_constants import get_skills_dir
+
+    root = get_skills_dir()
+    found = sorted((*root.glob(f"*/*/{_PHOTO_NOTES}"), *root.glob(f"*/{_PHOTO_NOTES}")))
+    if not found:
+        return ""
+    skill = found[0].parent.parent.relative_to(root).as_posix()
+    return (
+        "看图核对的参数、元景工具要逐个调用、搜图额度用完后从新闻页取图等更多本机经验，见 "
+        f'`skill_view(name="{skill}", file_path="{_PHOTO_NOTES}")`。'
+    )
+
 
 def vision_ready() -> bool:
     """看图工具真能看到图：配了专门的看图模型，或者主模型已知能看图。能力未知时按看不到处理。
@@ -320,6 +347,9 @@ def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "", can_s
     if slot.search_tool:
         search = (
             f"用 `{slot.search_tool}` 找真图（宿主会把搜到的图下载到本地，标出横图 / 竖图和来源）。"
+            "这个搜图按网页标题检索，只适合有专名的：产品型号、品牌形象、地标、人物、作品名；"
+            "行星、动植物、食物、日用品这类通用名词搜回来多是新闻配图、主体对不上，"
+            "直接按下面的取法去 Wikimedia Commons 拿，不要把搜图额度耗在上面。"
         )
         missing = "只是没搜到 → 换关键词再搜，还没有就这页少放一张"
     else:
@@ -347,6 +377,7 @@ def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "", can_s
         + f"本来就没有照片的（古人、未发布产品）{no_photo}；"
         f"{missing}，不许用生成图顶替，也不要写「此处放图」。",
         "· 不会（公版虚构角色、风格插画、概念、背景、封面、泛泛的场景）→ " + generate,
+        COMMONS_RECIPE + photo_notes_hint(),
         "4. 整套画风开工前定一次；统一靠相框和色调，不靠把真图换成生成图。",
         "标注：搜来的图正下方一行小字写来源（不清楚写「图片来源：网络」，英文 PPT 写 Image: …）；"
         + (f"生成图右下角自带「{UNIAI_WATERMARK}」水印，这就是 AI 生成标注，不用再加「AI 生成」小字："
@@ -354,7 +385,9 @@ def picture_rules(slot: Optional[MediaSlot] = None, *, delivery: str = "", can_s
            if marked else "生成的画面图一律标「AI 生成」。")
         + "人物、产品、场景不要用色块拼。",
         "放图保持原比例：pptxgenjs 外层 w/h 写图片自己的尺寸（像素÷96），sizing 的 w/h 才是画框；"
-        "主体图比例对不上用 contain 完整放下，只有通栏 / 出血背景图用 cover。",
+        "产品、机器、人物用 contain 完整放下，主体留在画面正中；原图里主体贴边或被切掉就换一张。只有通栏 / 出血背景图用 cover。"
+        "图片要铺满它所在的卡片并居中，不要贴在上沿、下面留一大块空白；卡片比例和图片不一致就改卡片。"
+        "生成的通栏背景，文字会落上去的区域留浅色或留白。书影、产品、人物这些真图不要为了让字让路而重画，把字挪到图旁边，或在字底下垫一块浅色底。",
         "宿主在 .pptx 写出后会自动检查图片拉伸和大幅裁切、元素出界、文字挤在一起或空着、内容缩在一角、"
         "PowerPoint 打不开的写法，不合格会退回"
         + ("；自己看图检查时只看内容对不对、观感好不好（配色、对比度、层次），不用写脚本或派子任务逐项复查这些。"

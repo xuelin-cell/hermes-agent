@@ -46,6 +46,22 @@ def test_bake_fails_closed_on_uncompilable_module(tmp_path):
         bake_bytecode(root, Path(sys.executable))
 
 
+def test_bake_preserves_node_resources_without_compiling_vendor_scripts(tmp_path):
+    from scripts.bundles.bytecode import _uncovered
+
+    root = _make_payload(tmp_path)
+    vendor = root / "hermes-agent/tencent-ppt-runtime/node/node_modules/vendor"
+    vendor.mkdir(parents=True)
+    legacy = vendor / "bootstrap.py"
+    legacy.write_text("print 'Python 2 build script'\n")
+    (vendor / "helper.py").write_text("X = 1\n")
+    bake_bytecode(root, Path(sys.executable))
+    assert legacy.read_text() == "print 'Python 2 build script'\n"
+    assert not list(vendor.rglob("*.pyc"))
+    assert _uncovered(root / "hermes-agent") == ([], 0)
+    assert list((root / "hermes-agent/pkg").rglob("mod*.pyc"))
+
+
 def test_uncovered_reports_parseable_module_without_pyc(tmp_path):
     """The coverage gate: a parseable module lacking bytecode is reported
     before it can ship as a cold-compile stall."""

@@ -434,6 +434,28 @@ def test_moving_media_only_removes_its_own_line(delivery, newline, below):
     assert reply(plugin, original) == expected + f"\n\nMEDIA:{output}"
 
 
+@pytest.mark.parametrize("emphasis", ["", "*", "**", "***", "_", "__"])
+@pytest.mark.parametrize("quoted", [False, True])
+def test_standalone_deliveries_finish_after_prose_regardless_of_emphasis(delivery, emphasis, quoted):
+    """独立附件统一置底、成品优先，Markdown 强调不能改变排序或重复出卡。"""
+    plugin, work = delivery
+    begin(plugin)
+    output = work / ("课程 成品.pptx" if quoted else "课程.pptx")
+    directive = f"MEDIA:`{output}`" if quoted else f"MEDIA:{output}"
+    notes = work / "DESIGN.md"
+    output.write_bytes(b"deck")
+    notes.write_text("design")
+    original = (
+        f"做好了。\n\n{emphasis}{directive}{emphasis}\n\n"
+        f"说明与注意事项。\n\nMEDIA:{notes}\n\n结束。"
+    )
+    result = reply(plugin, original) or original
+    assert result == (
+        f"做好了。\n\n说明与注意事项。\n\n结束。\n\n"
+        f"{directive}\nMEDIA:{notes}"
+    )
+
+
 @pytest.mark.parametrize(
     "example",
     [
@@ -449,6 +471,199 @@ def test_example_is_preserved_but_does_not_suppress_real_delivery(delivery, exam
     output.write_bytes(b"pdf")
     original = example.format(path=output)
     assert reply(plugin, original) == original + f"\n\nMEDIA:{output}"
+
+
+def test_a_reply_that_mentions_a_pptx_does_not_also_card_the_generated_picture(delivery):
+    """回复里已经有 PPT 时，同轮生成图不再发卡。文件名里的中文逗号也不能把图片行留下。"""
+    plugin, work = delivery
+    begin(plugin)
+    picture = work / "outputs" / "现代扁平插画风格，学生宿舍书桌上一台打开的笔.png"
+    picture.parent.mkdir()
+    picture.write_bytes(b"png")
+    plugin.after_tool(
+        tool_name="write_file",
+        args={"path": str(picture)},
+        result="{}",
+        status="ok",
+        session_id="s",
+        turn_id="t",
+    )
+    plugin._turns[plugin.scope("s")].downloads["https://example.test/laptop.png"] = picture
+    result = reply(
+        plugin,
+        f"做好了。\n\nMEDIA:{work / '学生笔记本电脑推荐.pptx'}\n\nMEDIA:{picture}\n\n![]({picture})",
+    )
+    assert result is not None
+    assert "打开的笔.png" not in result
+    assert "学生笔记本电脑推荐.pptx" in result
+
+
+def test_a_deck_picture_under_assets_is_not_carded(delivery):
+    """做 PPT 时放进 assets 的配图不出卡，回复里写了路径也去掉；单独要的图仍在 outputs 概念下出卡。"""
+    plugin, work = delivery
+    begin(plugin, user_message="帮我做一份大约 10 页的 PPT，介绍一下《西游记》。")
+    picture = work / "assets" / "generated" / "师徒.png"
+    picture.parent.mkdir(parents=True)
+    picture.write_bytes(b"png")
+    deck = work / "西游记.pptx"
+    deck.write_bytes(b"pptx")
+    for file in (picture, deck):
+        plugin.after_tool(
+            tool_name="write_file",
+            args={"path": str(file)},
+            result="{}",
+            status="ok",
+            session_id="s",
+            turn_id="t",
+        )
+    result = reply(plugin, f"配图先放这儿。\n\nMEDIA:{picture}")
+    assert str(deck) in result
+    assert "师徒" not in (result or "")
+
+
+def test_another_sessions_deck_is_not_carded_in_this_one(delivery):
+    """两个会话共用工作区时，目录里列出的别人的 PPT 不进本会话；自己这次写出的那份要进。"""
+    plugin, work = delivery
+    begin(plugin, session="luxun")
+    begin(plugin, session="huawei")
+    plugin.before_tool(
+        tool_name="terminal", args={}, session_id="huawei", turn_id="t", tool_call_id="h"
+    )
+    other = work / "华为汽车.pptx"
+    other.write_bytes(b"other")
+    # 修改时间写明在命令前后各一秒：Windows 记修改时间用粗粒度时钟，紧挨着命令开始写的文件
+    # 常比命令开始时刻早一两毫秒，靠毫秒先后判断会时好时坏。真实命令光启动进程就要几十毫秒。
+    os.utime(other, (time.time() - 1, time.time() - 1))
+    plugin.after_tool(
+        tool_name="terminal",
+        args={},
+        result=str(other),
+        status="ok",
+        session_id="huawei",
+        turn_id="t",
+        tool_call_id="h",
+    )
+    plugin.before_tool(
+        tool_name="terminal", args={}, session_id="luxun", turn_id="t", tool_call_id="l"
+    )
+    own = work / "鲁迅的书.pptx"
+    own.write_bytes(b"own")
+    os.utime(own, (time.time() + 1, time.time() + 1))
+    plugin.after_tool(
+        tool_name="terminal",
+        args={},
+        result=f"{other}\n{own}",
+        status="ok",
+        session_id="luxun",
+        turn_id="t",
+        tool_call_id="l",
+    )
+    result = reply(plugin, "做完了。", session="luxun")
+    assert str(own) in result
+    assert str(other) not in result
+
+
+def test_a_deck_turn_does_not_card_its_pictures_even_when_the_pptx_is_withheld(delivery):
+    """做 PPT 时生成图和回复里的图片路径都不发卡；没在做 PPT 时，生成图仍然发卡。"""
+    plugin, work = delivery
+    begin(plugin, user_message="帮我做一份 PPT")
+    deck = work / "提案.pptx"
+    picture = work / "荷塘.png"
+    for file in (deck, picture):
+        file.write_bytes(b"deliverable")
+        plugin.after_tool(
+            tool_name="write_file",
+            args={"path": str(file)},
+            result="{}",
+            status="ok",
+            session_id="s",
+            turn_id="t",
+        )
+    plugin._turns[plugin.scope("s")].downloads["https://example.test/a.png"] = picture
+    result = reply(plugin, f"配图在这里。\n\nMEDIA:{picture}")
+    assert str(deck) in result
+    assert str(picture) not in result
+
+    begin(plugin, turn="held", user_message="再做一份幻灯片")
+    held = work / "只有图.png"
+    held.write_bytes(b"picture")
+    plugin.after_tool(
+        tool_name="write_file",
+        args={"path": str(held)},
+        result="{}",
+        status="ok",
+        session_id="s",
+        turn_id="held",
+    )
+    plugin._turns[plugin.scope("s")].downloads["https://example.test/b.png"] = held
+    held_reply = reply(plugin, f"MEDIA:{held}", turn="held")
+    assert held_reply is None or str(held) not in held_reply
+
+    begin(plugin, turn="poster", user_message="生成一张荷塘图")
+    poster = work / "荷塘图.png"
+    poster.write_bytes(b"picture")
+    plugin.after_tool(
+        tool_name="write_file",
+        args={"path": str(poster)},
+        result="{}",
+        status="ok",
+        session_id="s",
+        turn_id="poster",
+    )
+    plugin._turns[plugin.scope("s")].downloads["https://example.test/c.png"] = poster
+    assert str(poster) in reply(plugin, "好了。", turn="poster")
+
+    # 只是提到 PPT 不算做幻灯片：回复顺口一提、或者照着 PPT 的风格要一张海报，图仍是成品。
+    for turn, user_message, answer in (
+        ("aside", "生成一张荷塘图", "好了。需要的话也可以放进 PPT 里。"),
+        ("styled", "照着上次PPT的封面风格，生成一张海报图", "海报好了。"),
+    ):
+        begin(plugin, turn=turn, user_message=user_message)
+        image = work / f"{turn}.png"
+        image.write_bytes(b"picture")
+        plugin.after_tool(
+            tool_name="write_file",
+            args={"path": str(image)},
+            result="{}",
+            status="ok",
+            session_id="s",
+            turn_id=turn,
+        )
+        plugin._turns[plugin.scope("s")].downloads[f"https://example.test/{turn}.png"] = image
+        assert str(image) in reply(plugin, answer, turn=turn)
+
+
+def test_self_check_preview_and_agent_skill_file_are_not_carded_unless_asked_for(delivery):
+    """做 PPT 时模型渲染来自查的同名 PDF、顺手改的技能说明，即使写进回复也不出卡；
+    用户这句自己要 PDF、要存技能时，它们就是成品。"""
+    plugin, work = delivery
+    skill = work.parent / "home" / "skills" / "office" / "pptx-scripted-decks" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    for turn, user_message, kept in (
+        ("plain", "帮我做一份大约 10 页的 PPT，给小学生讲恐龙。", set()),
+        ("pdf", "帮我做一份恐龙 PPT，再导出一份 PDF。", {"pdf"}),
+        ("skill", "做一份恐龙 PPT，做完把这次的做法存成技能。", {"skill"}),
+    ):
+        begin(plugin, turn=turn, user_message=user_message)
+        deck = work / "恐龙大冒险.pptx"
+        preview = work / "preview" / "恐龙大冒险.pdf"
+        preview.parent.mkdir(exist_ok=True)
+        for file in (deck, preview, skill):
+            file.write_bytes(b"content")
+            plugin.after_tool(
+                tool_name="write_file",
+                args={"path": str(file)},
+                result="{}",
+                status="ok",
+                session_id="s",
+                turn_id=turn,
+            )
+        result = reply(
+            plugin, f"做好了。\n\nMEDIA:{deck}\nMEDIA:{preview}\nMEDIA:{skill}", turn=turn
+        )
+        assert str(deck) in result
+        assert (str(preview) in result) == ("pdf" in kept)
+        assert (str(skill) in result) == ("skill" in kept)
 
 
 def test_generated_image_is_carded_next_to_document(delivery):
@@ -782,3 +997,157 @@ def test_scratch_files_stay_hidden_after_terminal_cd_into_scratch(delivery, monk
     draft = scratch / "next.md"
     run("u", "next", [draft])
     assert reply(plugin, str(draft), turn="u") is None
+
+
+def test_native_final_receipt_delivers_snapshot_and_hides_working_draft(delivery):
+    plugin, work = delivery
+    begin(plugin)
+    source = work / "outputs/project/deck.pptx"
+    final = work / "outputs/deliveries/v/deck.pptx"
+    for file in [source, final]:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(b"pptx")
+    import json
+    plugin.after_tool(tool_name="TencentPpt", session_id="s", turn_id="t", result=json.dumps({
+        "ok": True, "presentation": {"source_path": str(source), "file_path": str(final), "status": "final", "written_pages": 3, "version": "v"}
+    }))
+    result = reply(plugin, text="MEDIA:" + str(source))
+    assert str(final) in result
+    assert "MEDIA:" + str(source) not in result
+
+
+@pytest.mark.parametrize("mention_old", [False, True])
+def test_native_revisions_deliver_only_latest_per_source(delivery, mention_old):
+    """同一工作稿只交最新版本，同名但独立的另一份成品仍需保留。"""
+    plugin, work = delivery
+    begin(plugin)
+    source_a = work / "outputs/project-a/deck.pptx"
+    source_b = work / "outputs/project-b/deck.pptx"
+    old = work / "outputs/deliveries/a1/deck.pptx"
+    latest = work / "outputs/deliveries/a2/deck.pptx"
+    other = work / "outputs/deliveries/b1/deck.pptx"
+    for file in [source_a, source_b, old, latest, other]:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_bytes(str(file).encode())
+    for source, final in [(source_a, old), (source_b, other), (source_a, latest)]:
+        plugin.after_tool(
+            tool_name="TencentPpt", session_id="s", turn_id="t", status="ok",
+            result={"ok": True, "presentation": {
+                "source_path": str(source), "file_path": str(final), "status": "final",
+                "written_pages": 1, "version": final.parent.name,
+            }},
+        )
+    original = "做好了。" + (f"\n\n**MEDIA:{old}**" if mention_old else "")
+    result = reply(plugin, original) or original
+    assert str(old) not in result
+    assert result.count(f"MEDIA:{latest}") == 1
+    assert result.count(f"MEDIA:{other}") == 1
+    assert result.count("MEDIA:") == 2
+    assert old.is_file()
+
+
+def test_internal_native_receipt_never_becomes_a_media_card(delivery):
+    import json
+    plugin, work = delivery
+    begin(plugin)
+    path = work / "ordinary-name.pptx"
+    path.write_bytes(b"internal")
+    state = path.parent / ".ppt-state" / (path.name + ".json")
+    state.parent.mkdir()
+    state.write_text(json.dumps({"purpose": "internal", "pages": {"0": {}}}))
+    plugin.after_tool(tool_name="TencentPpt", session_id="s", turn_id="t", result=json.dumps({
+        "ok": True, "presentation": {"source_path": str(path), "file_path": str(path), "status": "draft", "purpose": "internal", "written_pages": 1}
+    }))
+    assert str(path) not in (reply(plugin, text="MEDIA:" + str(path)) or "")
+
+
+@pytest.mark.parametrize("outcome", ["unconfirmed", "final", "corrupt", "empty", "internal"])
+def test_saved_native_draft_stays_local_until_final_approval(delivery, outcome):
+    import zipfile
+    plugin, work = delivery
+    begin(plugin)
+    source = work / "outputs/project/report.pptx"
+    source.parent.mkdir(parents=True)
+    p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    r = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    with zipfile.ZipFile(source, "w") as archive:
+        slide = '' if outcome == "empty" else '<p:sldId id="256" r:id="rId1"/>'
+        archive.writestr("ppt/presentation.xml", f'<p:presentation xmlns:p="{p}" xmlns:r="{r}"><p:sldIdLst>{slide}</p:sldIdLst></p:presentation>')
+        archive.writestr("ppt/_rels/presentation.xml.rels", '<Relationships><Relationship Id="rId1" Target="slides/slide1.xml"/></Relationships>')
+        archive.writestr("ppt/slides/slide1.xml", f'<p:sld xmlns:p="{p}"><p:cSld/></p:sld>')
+    if outcome == "corrupt":
+        source.write_bytes(b'broken zip')
+    receipt = {"source_path": str(source), "file_path": str(source), "status": "draft", "written_pages": 1,
+               "purpose": "internal" if outcome == "internal" else "deliverable",
+               "visual_unconfirmed_pages": {"0": "识图服务暂时不可用"}, "visual_pending_pages": [0]}
+    plugin.after_tool(tool_name="TencentPpt", session_id="s", turn_id="t", result={"ok": True, "presentation": receipt})
+    if outcome == "final":
+        final = work / "outputs/deliveries/final/report.pptx"
+        final.parent.mkdir(parents=True)
+        final.write_bytes(source.read_bytes())
+        plugin.after_tool(tool_name="TencentPpt", session_id="s", turn_id="t", result={"ok": True,
+            "presentation": {**receipt, "status": "final", "file_path": str(final)}})
+    result = reply(plugin, text="暂未完成。\n\nMEDIA:" + str(source)) or ""
+    drafts = list(source.parent.glob("recovery/*/*.pptx"))
+    if outcome == "unconfirmed":
+        assert not drafts and "MEDIA:" not in result
+        assert source.is_file()
+        assert "已保留待核对工作稿" not in result
+    elif outcome == "final":
+        assert not drafts and result.count("MEDIA:") == 1 and str(final) in result
+        assert "尚未通过最终验收" not in result
+    else:
+        assert not drafts and "MEDIA:" not in result
+
+
+def test_draft_recovery_does_not_publish_other_workspaces(delivery):
+    plugin, work = delivery
+    begin(plugin)
+    outside = work.parent / "other-session.pptx"
+    outside.write_bytes(b'not this task')
+    plugin.after_tool(tool_name="TencentPpt", session_id="s", turn_id="t", result={"ok": True,
+        "presentation": {"source_path": str(outside), "file_path": str(outside), "status": "draft", "written_pages": 1}})
+    result = reply(plugin, "尚未完成。") or ""
+    assert "MEDIA:" not in result
+    assert outside.read_bytes() == b'not this task'
+
+
+@pytest.mark.parametrize("suffix", ["pptx", "docx", "xlsx", "pdf"])
+def test_office_handoff_excludes_prose_mentions_and_explicit_drafts(delivery, suffix):
+    plugin, work = delivery
+    begin(plugin)
+    final = work / f"成品.{suffix}"
+    another = work / f"独立成果.{suffix}"
+    old = work / f"旧版v1.{suffix}"
+    draft = work / f"方案-草稿.{suffix}"
+    for path in (final, another, old, draft):
+        path.write_bytes(b"saved document")
+        plugin.after_tool(tool_name="write_file", args={"path": str(path)}, result="{}",
+                          status="ok", session_id="s", turn_id="t")
+    original = f"旧文件位置：`{old}`\n\nMEDIA:{final}\nMEDIA:{another}\nMEDIA:{draft}\n[草稿下载]({draft.as_posix()})"
+    result = reply(plugin, original) or original
+    assert result.count("MEDIA:") == 2
+    assert str(final) in result and str(another) in result
+    assert "MEDIA:" + str(old) not in result and "MEDIA:" + str(draft) not in result
+    assert f"]({draft.as_posix()})" not in result
+    assert all(path.is_file() for path in (final, another, old, draft))
+
+
+def test_native_success_does_not_recover_other_working_paths(delivery):
+    plugin, work = delivery
+    begin(plugin)
+    old = work / "v1/report.pptx"
+    source = work / "v3/report.pptx"
+    final = work / "deliveries/ready/report.pptx"
+    for path in (old, source, final):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"saved document")
+    for path in (old, source):
+        plugin.after_tool(tool_name="TencentPpt", session_id="s", turn_id="t", status="ok",
+            result={"ok":True,"presentation":{"source_path":str(path),"file_path":str(path),"status":"draft","written_pages":4}})
+    plugin.after_tool(tool_name="TencentPpt", session_id="s", turn_id="t", status="ok",
+        result={"ok":True,"presentation":{"source_path":str(source),"file_path":str(final),"status":"final","written_pages":4}})
+    result = reply(plugin, "已完成。")
+    assert result.count("MEDIA:") == 1 and str(final) in result
+    assert "待核对" not in result and not list(work.rglob("recovery"))
+    assert old.is_file() and source.is_file()

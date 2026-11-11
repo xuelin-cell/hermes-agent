@@ -1,0 +1,1410 @@
+{
+  "source": "C:\\uniclaw_code\\UniClaw\\experiments\\ppt-tencent-native\\libs\\hexagent_demo\\backend",
+  "imported_at": "2026-11-08 19:20:51",
+  "files": [
+    {
+      "source": "C:\\uniclaw_code\\UniClaw\\experiments\\ppt-tencent-native\\libs\\hexagent_demo\\backend\\hexagent_api\\office_cli.py",
+      "target": "plugins\\uniwork-kits\\office\\office_cli.py",
+      "sha256": "c468576f1a7d9ef505049745e4af63ed538246bbadccf7222cf29fda2b7081d3",
+      "hermes_sha256": "09b0a723ca8afa8ac3db7f3fcc70485ef9ba33843730fbb18a22b0124768387f"
+    },
+    {
+      "source": "C:\\uniclaw_code\\UniClaw\\experiments\\ppt-tencent-native\\libs\\hexagent_demo\\backend\\hexagent_api\\office_converter_process.py",
+      "target": "plugins\\uniwork-kits\\office\\office_converter_process.py",
+      "sha256": "ece7fa93064edbbfc7a7a1ee7c88f485480b5ee2be9bf91fd19b3ece95b6946f",
+      "hermes_sha256": "ece7fa93064edbbfc7a7a1ee7c88f485480b5ee2be9bf91fd19b3ece95b6946f"
+    },
+    {
+      "source": "C:\\uniclaw_code\\UniClaw\\experiments\\ppt-tencent-native\\libs\\hexagent_demo\\backend\\hexagent_api\\office_formula_edits.py",
+      "target": "plugins\\uniwork-kits\\office\\office_formula_edits.py",
+      "sha256": "9052089d0d64abf4371f674f4d4011c7876b1ff1715ab3168e66c58043e2cfc3",
+      "hermes_sha256": "f5151c460191ceb00b46b0778fc0bf8a48f0dbb3953b97f5624c5172dfbea4ff"
+    },
+    {
+      "source": "C:\\uniclaw_code\\UniClaw\\experiments\\ppt-tencent-native\\libs\\hexagent_demo\\backend\\hexagent_api\\office_pdf_ocr.py",
+      "target": "plugins\\uniwork-kits\\office\\office_pdf_ocr.py",
+      "sha256": "0b23c31b218f76e92531ba19823d71a50fb2af937c739b26fffcc7cedaee8848",
+      "hermes_sha256": "0b23c31b218f76e92531ba19823d71a50fb2af937c739b26fffcc7cedaee8848"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\SKILL.md",
+      "size": 3114,
+      "sha256": "1a79e800f3eb4d7d81258d373d796472649d02c0b076da4bdc11c785b9b89b59",
+      "hermes_sha256": "1a79e800f3eb4d7d81258d373d796472649d02c0b076da4bdc11c785b9b89b59"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\editor-sdk-version.json",
+      "size": 202,
+      "sha256": "994622404617320698dbcf843f7f4bfb42da2f1f3e7a120da49c34b73c819996",
+      "hermes_sha256": "994622404617320698dbcf843f7f4bfb42da2f1f3e7a120da49c34b73c819996"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\package.json",
+      "size": 1441,
+      "sha256": "487d29ec708a8c3ff5827cb78c0a2fef45fa591653e5056e79416475e7eceb3a",
+      "hermes_sha256": "487d29ec708a8c3ff5827cb78c0a2fef45fa591653e5056e79416475e7eceb3a"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\supported-extensions.cjs",
+      "size": 321,
+      "sha256": "3f25899c2c43a18d83016a9322971df71a95a340cd1dc28335f480155cdf32f0",
+      "hermes_sha256": "3f25899c2c43a18d83016a9322971df71a95a340cd1dc28335f480155cdf32f0"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\pdf-cli\\.pdf-cli-version",
+      "size": 10,
+      "sha256": "f1d2b9bb14815facbc88df7d7dc7e76d1eae2a93dab9f3b681bbeac1cafa33a7",
+      "hermes_sha256": "f1d2b9bb14815facbc88df7d7dc7e76d1eae2a93dab9f3b681bbeac1cafa33a7"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\pdf-cli\\workbuddy-pdf.exe",
+      "size": 10983976,
+      "sha256": "f24002b0bb7b9f23310955afd075ae26f16f7af84619940aebca6c16a426cd4b",
+      "hermes_sha256": "f24002b0bb7b9f23310955afd075ae26f16f7af84619940aebca6c16a426cd4b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\pdf-skill\\SKILL.md",
+      "size": 5785,
+      "sha256": "14e1fb9a56c80115ae001a422532bddecf30cab773f94704214950575416050a",
+      "hermes_sha256": "14e1fb9a56c80115ae001a422532bddecf30cab773f94704214950575416050a"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.codebuddy-plugin\\plugin.json",
+      "size": 940,
+      "sha256": "aab49ff0ff77fae2ca86792d3042411fb6bf66cf24fd499b1750828abf1accbd",
+      "hermes_sha256": "aab49ff0ff77fae2ca86792d3042411fb6bf66cf24fd499b1750828abf1accbd"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\10176",
+      "size": 88,
+      "sha256": "e9124b50476b22592caa99fe929e7483ac9294c3c04767d7b9c09bf7b06f2436",
+      "hermes_sha256": "e9124b50476b22592caa99fe929e7483ac9294c3c04767d7b9c09bf7b06f2436"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\10556",
+      "size": 88,
+      "sha256": "b58bac41971d7adb2921259ccde1abb16a489dd08ec1bb454bd9e51635f01900",
+      "hermes_sha256": "b58bac41971d7adb2921259ccde1abb16a489dd08ec1bb454bd9e51635f01900"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\13768",
+      "size": 88,
+      "sha256": "7df57d7abd920b65f5e00ca016f8dfe42384a8d5a25301635cbcd0b4f24d28fb",
+      "hermes_sha256": "7df57d7abd920b65f5e00ca016f8dfe42384a8d5a25301635cbcd0b4f24d28fb"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\19664",
+      "size": 88,
+      "sha256": "34bfa3c33b560f6feb75b746850f772eca3ed69fb35362e9b15e02bf3b84336e",
+      "hermes_sha256": "34bfa3c33b560f6feb75b746850f772eca3ed69fb35362e9b15e02bf3b84336e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\20560",
+      "size": 88,
+      "sha256": "15c72c7cef117e3fadf97658ee92960cc1209c2ad004c12b51b4d42e79f96bea",
+      "hermes_sha256": "15c72c7cef117e3fadf97658ee92960cc1209c2ad004c12b51b4d42e79f96bea"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\21048",
+      "size": 88,
+      "sha256": "9554604ae6c22e9e226766be01d9e1046b3c5a8a0b80d9054245ec4a2e73d420",
+      "hermes_sha256": "9554604ae6c22e9e226766be01d9e1046b3c5a8a0b80d9054245ec4a2e73d420"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\25716",
+      "size": 88,
+      "sha256": "e811b65b789a1784fa387e410ebc0670df25a13920a163661d244514f6e790d1",
+      "hermes_sha256": "e811b65b789a1784fa387e410ebc0670df25a13920a163661d244514f6e790d1"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\28008",
+      "size": 88,
+      "sha256": "711318b0b249c39e8f8474f35761064a37a6ca5b145581606db012bcfa00e824",
+      "hermes_sha256": "711318b0b249c39e8f8474f35761064a37a6ca5b145581606db012bcfa00e824"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\29544",
+      "size": 88,
+      "sha256": "7f73d1d85aff6c6d5132d06bb3b2480b62fad5ebae73ab8e77c49c33c9cd1209",
+      "hermes_sha256": "7f73d1d85aff6c6d5132d06bb3b2480b62fad5ebae73ab8e77c49c33c9cd1209"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\37372",
+      "size": 88,
+      "sha256": "03bc7c88a2e5904d2d53c17e966c29516873aad596e4d0b8b449a6cb9aa77c8e",
+      "hermes_sha256": "03bc7c88a2e5904d2d53c17e966c29516873aad596e4d0b8b449a6cb9aa77c8e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\37880",
+      "size": 88,
+      "sha256": "8abeff46971fbac2e8582bf8413655143a1aa9ebe17f097115529fabbd6a3ba5",
+      "hermes_sha256": "8abeff46971fbac2e8582bf8413655143a1aa9ebe17f097115529fabbd6a3ba5"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\42264",
+      "size": 88,
+      "sha256": "123ba90775da7dde24b1f1117f259f8fe8b5c564b7e5d35e0b356c6dba697d3e",
+      "hermes_sha256": "123ba90775da7dde24b1f1117f259f8fe8b5c564b7e5d35e0b356c6dba697d3e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\50900",
+      "size": 88,
+      "sha256": "369ca7d5af991882b17170689aa7ceb5df1c3b46df5ce280e0476d4ef4d1dcf5",
+      "hermes_sha256": "369ca7d5af991882b17170689aa7ceb5df1c3b46df5ce280e0476d4ef4d1dcf5"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\53176",
+      "size": 88,
+      "sha256": "566b9caf1a5475b76bc977333a3930b3204ae8efab16246fce65f0fd79f72003",
+      "hermes_sha256": "566b9caf1a5475b76bc977333a3930b3204ae8efab16246fce65f0fd79f72003"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\56760",
+      "size": 88,
+      "sha256": "7c08681b559d193941443d7186df6325e180c9c92f820233f0288d2bef8f8705",
+      "hermes_sha256": "7c08681b559d193941443d7186df6325e180c9c92f820233f0288d2bef8f8705"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\57132",
+      "size": 88,
+      "sha256": "0a9a702666d9f1785e86326a5a713002feacd8c900b8d0ba3e3edfd546727a83",
+      "hermes_sha256": "0a9a702666d9f1785e86326a5a713002feacd8c900b8d0ba3e3edfd546727a83"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\6872",
+      "size": 87,
+      "sha256": "fa37e037fc1fcf64f26bca229d2d6c2af38146eea2bf5bbc4779e1ece3058882",
+      "hermes_sha256": "fa37e037fc1fcf64f26bca229d2d6c2af38146eea2bf5bbc4779e1ece3058882"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\69992",
+      "size": 88,
+      "sha256": "279f3a87553974975e6323ed845d2aa9ab9c70abcd50c8ebbf76600c64cd7e87",
+      "hermes_sha256": "279f3a87553974975e6323ed845d2aa9ab9c70abcd50c8ebbf76600c64cd7e87"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\74860",
+      "size": 88,
+      "sha256": "6558475ed0f4824e0ca754db9f56c8d96f1e588599f4d41a8eaa95ec74a56b86",
+      "hermes_sha256": "6558475ed0f4824e0ca754db9f56c8d96f1e588599f4d41a8eaa95ec74a56b86"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\.in_use\\7616",
+      "size": 87,
+      "sha256": "cf070e83216593d1b7f3236f5d3561ce78ba3d645ca79498c61cb067864a960b",
+      "hermes_sha256": "cf070e83216593d1b7f3236f5d3561ce78ba3d645ca79498c61cb067864a960b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\agents\\sheet-agent.md",
+      "size": 92212,
+      "sha256": "651c3a2b0f5ee0c0f249e85b4b8cd370c023d932c35886ea62605b5506843a3c",
+      "hermes_sha256": "651c3a2b0f5ee0c0f249e85b4b8cd370c023d932c35886ea62605b5506843a3c"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\commands\\excel.md",
+      "size": 1177,
+      "sha256": "ba91a7cb72dafe231ab03f4259ce8ee372731b99b6297f25ee1d6a71a35a65c9",
+      "hermes_sha256": "ba91a7cb72dafe231ab03f4259ce8ee372731b99b6297f25ee1d6a71a35a65c9"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\commands\\generation.md",
+      "size": 327,
+      "sha256": "318d6a309700e002faba13cb700903e8c774ffc5e14f260a4e980081880e1796",
+      "hermes_sha256": "318d6a309700e002faba13cb700903e8c774ffc5e14f260a4e980081880e1796"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\hooks\\hooks.json",
+      "size": 514,
+      "sha256": "9708877e0af1afa9ce46ba7c62a376d319110683d8d89cdad1750538e1b7e162",
+      "hermes_sha256": "9708877e0af1afa9ce46ba7c62a376d319110683d8d89cdad1750538e1b7e162"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\hooks\\save-on-subagent-stop.mjs",
+      "size": 6428,
+      "sha256": "9ace24c19e3b0a9ce38c315813f87c8c74a53cb31d4e1a360382074f66d377f2",
+      "hermes_sha256": "9ace24c19e3b0a9ce38c315813f87c8c74a53cb31d4e1a360382074f66d377f2"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\mcp\\debug-cli.mjs",
+      "size": 357283,
+      "sha256": "9542a2ba00a2fdb91d80f8e15727bd4793408366caa861264ec1c0da57646c87",
+      "hermes_sha256": "9542a2ba00a2fdb91d80f8e15727bd4793408366caa861264ec1c0da57646c87"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\mcp\\debug-server.mjs",
+      "size": 385239,
+      "sha256": "e3cb21ecd58ecba1e7397800c72c90b0450afc6749bdce4f12a0a9895ab80d70",
+      "hermes_sha256": "e3cb21ecd58ecba1e7397800c72c90b0450afc6749bdce4f12a0a9895ab80d70"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\mcp\\package.json",
+      "size": 197,
+      "sha256": "c63fa3e573f3c0d6c8d32ce2bfe9ea9cab0ff64b1aad9aaba9a14867e223a93c",
+      "hermes_sha256": "c63fa3e573f3c0d6c8d32ce2bfe9ea9cab0ff64b1aad9aaba9a14867e223a93c"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\mcp\\server.mjs",
+      "size": 584189,
+      "sha256": "228bcaaac576cf4d30b23837cb8eb30e007e497a796d4af8e89d813347ec774f",
+      "hermes_sha256": "228bcaaac576cf4d30b23837cb8eb30e007e497a796d4af8e89d813347ec774f"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\mcp\\start.mjs",
+      "size": 1584,
+      "sha256": "f19b768ad1ba6da586b569e06d3075b47acf0a2f8adaa84015e98c025c9364af",
+      "hermes_sha256": "f19b768ad1ba6da586b569e06d3075b47acf0a2f8adaa84015e98c025c9364af"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\mcp\\worker.mjs",
+      "size": 112916,
+      "sha256": "67b0b2fd44db3fa5f0c762fea5c174864bc3c3c59be50865d28eae6b79879bde",
+      "hermes_sha256": "67b0b2fd44db3fa5f0c762fea5c174864bc3c3c59be50865d28eae6b79879bde"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\invoke-sheet-agent.md",
+      "size": 905,
+      "sha256": "2167e936853439a496697797e40d5eed0409575059c9bc2069b80be59b3c691b",
+      "hermes_sha256": "2167e936853439a496697797e40d5eed0409575059c9bc2069b80be59b3c691b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-agent-prompt.md",
+      "size": 86788,
+      "sha256": "56d3e10fcf1dfc87cc7d50e41bac69c29b5b49386948438e780ad3c91709866c",
+      "hermes_sha256": "56d3e10fcf1dfc87cc7d50e41bac69c29b5b49386948438e780ad3c91709866c"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\SKILL.md",
+      "size": 17089,
+      "sha256": "b8ecfdcb972e24af867d8765811395f375e1883fbab902ac6f5f48f17fd00f54",
+      "hermes_sha256": "b8ecfdcb972e24af867d8765811395f375e1883fbab902ac6f5f48f17fd00f54"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheetagent\\SKILL.md",
+      "size": 1770,
+      "sha256": "effa258af6a79ce3f40da328bcf3c217ea765dd06c09c1526c1056d312e2c7bd",
+      "hermes_sha256": "effa258af6a79ce3f40da328bcf3c217ea765dd06c09c1526c1056d312e2c7bd"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\schema_principle.md",
+      "size": 26584,
+      "sha256": "e1a86e5974cc74c295c98dd44e4c185d4a183914c712e603fede3def91d129a4",
+      "hermes_sha256": "e1a86e5974cc74c295c98dd44e4c185d4a183914c712e603fede3def91d129a4"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\scripts\\aigc_label.py",
+      "size": 13476,
+      "sha256": "5b169f287b90f221501c805273f53291dec7d756ce89bafcfb2a75576de98294",
+      "hermes_sha256": "5b169f287b90f221501c805273f53291dec7d756ce89bafcfb2a75576de98294"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\scripts\\extract.py",
+      "size": 36886,
+      "sha256": "f3261c8392a30025dc6dcd673632450d030778b67d28112353bb9ec26627cbf4",
+      "hermes_sha256": "f3261c8392a30025dc6dcd673632450d030778b67d28112353bb9ec26627cbf4"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\scripts\\recalc.py",
+      "size": 35137,
+      "sha256": "e2638138846cbb16079cb3ea6f3d5aa9cca24c26c22875ac0d6227a453d5c424",
+      "hermes_sha256": "e2638138846cbb16079cb3ea6f3d5aa9cca24c26c22875ac0d6227a453d5c424"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\scripts\\requirements.txt",
+      "size": 1633,
+      "sha256": "c12f42f7c05d5335bb52986e03e82e7fa9f7632aab5498de288eb4d904df8667",
+      "hermes_sha256": "c12f42f7c05d5335bb52986e03e82e7fa9f7632aab5498de288eb4d904df8667"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\scripts\\office\\soffice.py",
+      "size": 9328,
+      "sha256": "624f9f71403023659d5d8a9b474f6045f4289280951cc829116b23a5bbdedf34",
+      "hermes_sha256": "624f9f71403023659d5d8a9b474f6045f4289280951cc829116b23a5bbdedf34"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\design_patterns\\calendar.md",
+      "size": 1526,
+      "sha256": "a902e342788cf4dacd268a72b0a9dd7b2a5668cf5e17a7bb2bc6b769bfcdfdc7",
+      "hermes_sha256": "a902e342788cf4dacd268a72b0a9dd7b2a5668cf5e17a7bb2bc6b769bfcdfdc7"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\design_patterns\\dashboard.md",
+      "size": 1774,
+      "sha256": "f9c736d2ee43088bd8a8cfa24aa4b31ac736c5e459d1c5d0e7db4340d3ef0ab1",
+      "hermes_sha256": "f9c736d2ee43088bd8a8cfa24aa4b31ac736c5e459d1c5d0e7db4340d3ef0ab1"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\design_patterns\\form_print.md",
+      "size": 1553,
+      "sha256": "97b7da55a8f71125737912a3a137ec083fbf7f9274c25dbbfb798ce9b6752528",
+      "hermes_sha256": "97b7da55a8f71125737912a3a137ec083fbf7f9274c25dbbfb798ce9b6752528"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\design_patterns\\model.md",
+      "size": 1678,
+      "sha256": "3d41ff9b791fbd0b56de13fa0e9dd3b9199fd4d9cc6638f9057288b4ee04dd9e",
+      "hermes_sha256": "3d41ff9b791fbd0b56de13fa0e9dd3b9199fd4d9cc6638f9057288b4ee04dd9e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\design_patterns\\plan.md",
+      "size": 1587,
+      "sha256": "7aac7aceb6035d0ef48213ed5b9bc66d03dca760f99abd3cb4df3924f499ce52",
+      "hermes_sha256": "7aac7aceb6035d0ef48213ed5b9bc66d03dca760f99abd3cb4df3924f499ce52"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\design_patterns\\progress.md",
+      "size": 1503,
+      "sha256": "0b589c49c082c6819f7bbefd7b1affbf0ae0c667e68d45e10389c0accec5d26b",
+      "hermes_sha256": "0b589c49c082c6819f7bbefd7b1affbf0ae0c667e68d45e10389c0accec5d26b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\skills\\workbuddy-sheet-generation\\references\\design_patterns\\stats.md",
+      "size": 1855,
+      "sha256": "8b52148f520664499eef918df12b5e2f19ec2611deb0b200afc76251b625d97d",
+      "hermes_sha256": "8b52148f520664499eef918df12b5e2f19ec2611deb0b200afc76251b625d97d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\audit-spreadsheet.md",
+      "size": 4596,
+      "sha256": "e6f0ddb2473602237fc1c54cb8fbb933e75edf85571b2f8341a3f27de116c9cc",
+      "hermes_sha256": "e6f0ddb2473602237fc1c54cb8fbb933e75edf85571b2f8341a3f27de116c9cc"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\charts-create.md",
+      "size": 36472,
+      "sha256": "5533172de79b00349afafe54039c0ee1fbb777667eccce7640c8ca2c3c78ab2d",
+      "hermes_sha256": "5533172de79b00349afafe54039c0ee1fbb777667eccce7640c8ca2c3c78ab2d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\charts-delete.md",
+      "size": 2201,
+      "sha256": "9c62b1bd659a34af14a27cb732a04cd5c900de19b68d388ccd15d92731d5ac7f",
+      "hermes_sha256": "9c62b1bd659a34af14a27cb732a04cd5c900de19b68d388ccd15d92731d5ac7f"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\charts-edit.md",
+      "size": 8479,
+      "sha256": "bd317b1db1da18ced0aefd564ab1f63c3fc74ca236cb52311aa5ee01c2abce77",
+      "hermes_sha256": "bd317b1db1da18ced0aefd564ab1f63c3fc74ca236cb52311aa5ee01c2abce77"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\charts-visual.md",
+      "size": 42682,
+      "sha256": "ffb7256e7a5b32cc5769c59e7f3be4d5c7153a6c6e0b41fb66b9c47b5834cd62",
+      "hermes_sha256": "ffb7256e7a5b32cc5769c59e7f3be4d5c7153a6c6e0b41fb66b9c47b5834cd62"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\featured-formulas.md",
+      "size": 7228,
+      "sha256": "ccb4365ed32490ee6f62faf1a3e3f97cc5332f803c26312f79fa454855780793",
+      "hermes_sha256": "ccb4365ed32490ee6f62faf1a3e3f97cc5332f803c26312f79fa454855780793"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\index.md",
+      "size": 5031,
+      "sha256": "bf0e8ba58fd1aa7e51f3ea445da04adc45a514594a085be13808dd7362e09ffb",
+      "hermes_sha256": "bf0e8ba58fd1aa7e51f3ea445da04adc45a514594a085be13808dd7362e09ffb"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\sheet-api-reference.md",
+      "size": 42983,
+      "sha256": "eca2a7c2abbd36d303e2c19beeb38ea3525055a9bb9b5132aea21b0624ebb098",
+      "hermes_sha256": "eca2a7c2abbd36d303e2c19beeb38ea3525055a9bb9b5132aea21b0624ebb098"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\sheet-pivot-tables.md",
+      "size": 10130,
+      "sha256": "60ce6ced881f5be8f6febf8ef390ebd72732b8a0ad617795c565f256abd8abef",
+      "hermes_sha256": "60ce6ced881f5be8f6febf8ef390ebd72732b8a0ad617795c565f256abd8abef"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\sheet\\prompt\\sheet-references\\sheet-replicate-template-layout.md",
+      "size": 17214,
+      "sha256": "a477f2591dae33e0f032f765965818f5e87ae0111ac610878f7f1e834faf670d",
+      "hermes_sha256": "a477f2591dae33e0f032f765965818f5e87ae0111ac610878f7f1e834faf670d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\pdf-skill\\.codebuddy-plugin\\plugin.json",
+      "size": 525,
+      "sha256": "32dd505c3ea0fef5bfba1f2f109706b03f95009d5b30b4adb0dcf22e889bd74c",
+      "hermes_sha256": "32dd505c3ea0fef5bfba1f2f109706b03f95009d5b30b4adb0dcf22e889bd74c"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\pdf-skill\\scripts\\run.ps1",
+      "size": 2797,
+      "sha256": "2fc1e0edaef5b31ff32ec6c8ff03356417280cc2dc67c49dc12e5b184f9a6346",
+      "hermes_sha256": "2fc1e0edaef5b31ff32ec6c8ff03356417280cc2dc67c49dc12e5b184f9a6346"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\pdf-skill\\scripts\\run.sh",
+      "size": 2270,
+      "sha256": "c66cd7b85f7de2af6effc292411cb82f4f4d745c3e3761cc8b09fd9c6fad1d45",
+      "hermes_sha256": "c66cd7b85f7de2af6effc292411cb82f4f4d745c3e3761cc8b09fd9c6fad1d45"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\scripts\\allowed-hosts.cjs",
+      "size": 442,
+      "sha256": "2eb2a2535e77bbbf902a08b6abcfe15e8f00c2fa0498c51081ff05b755176719",
+      "hermes_sha256": "2eb2a2535e77bbbf902a08b6abcfe15e8f00c2fa0498c51081ff05b755176719"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\scripts\\download-editor-sdk.js",
+      "size": 13636,
+      "sha256": "f1bc54daa73cf67b040a202c33b4fd1da0eb069ecdb790a752c7062d538aacec",
+      "hermes_sha256": "f1bc54daa73cf67b040a202c33b4fd1da0eb069ecdb790a752c7062d538aacec"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\scripts\\editor-sdk-platforms.js",
+      "size": 1725,
+      "sha256": "16cdaa23a37fb4f9fa2bc1bf7c5a1ea73a886dcccd290fc24cff46fb00af159a",
+      "hermes_sha256": "16cdaa23a37fb4f9fa2bc1bf7c5a1ea73a886dcccd290fc24cff46fb00af159a"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\document-types.js",
+      "size": 3772,
+      "sha256": "c22625ad5f4502ec3f2828da1ccef1c3417aa9596df8b1f70f6768d25cab1335",
+      "hermes_sha256": "c22625ad5f4502ec3f2828da1ccef1c3417aa9596df8b1f70f6768d25cab1335"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\editor-sdk-process-launcher.js",
+      "size": 995,
+      "sha256": "140bd9f6554e8a10c2d43a628b20dcaebb3dacb531dfa91f0678f87ec6f39fec",
+      "hermes_sha256": "140bd9f6554e8a10c2d43a628b20dcaebb3dacb531dfa91f0678f87ec6f39fec"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\engine-port-file.js",
+      "size": 6674,
+      "sha256": "c777fe1c9a80d29dc9c0a66a66b9efe037ad48adce703bbdf77a5f5d92b915b7",
+      "hermes_sha256": "c777fe1c9a80d29dc9c0a66a66b9efe037ad48adce703bbdf77a5f5d92b915b7"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\extensions.js",
+      "size": 3109,
+      "sha256": "757195f65b3e9c5daca7c5e4a5659c8cb9d96f1e3825c47a64cfb32c75751d35",
+      "hermes_sha256": "757195f65b3e9c5daca7c5e4a5659c8cb9d96f1e3825c47a64cfb32c75751d35"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\index.js",
+      "size": 8926,
+      "sha256": "20e1f159b9dd748692a2493716a5260fbb1284257603b7c7c3b39233e7253a7a",
+      "hermes_sha256": "20e1f159b9dd748692a2493716a5260fbb1284257603b7c7c3b39233e7253a7a"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\mcp-constants.js",
+      "size": 1641,
+      "sha256": "06bb9e018d1d646ff24da640ee91764d0f134f226584427082c783d7ec8dec15",
+      "hermes_sha256": "06bb9e018d1d646ff24da640ee91764d0f134f226584427082c783d7ec8dec15"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\preview-runtime.js",
+      "size": 2563,
+      "sha256": "6df68f62c21e11759ee14efd21491bdc6dd4e8e4125d529b346c19c472ed9383",
+      "hermes_sha256": "6df68f62c21e11759ee14efd21491bdc6dd4e8e4125d529b346c19c472ed9383"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\routing-prompt.js",
+      "size": 18353,
+      "sha256": "834bd475f7324899bc2c88c0d45d4e8bde271a56bb7f1c08d59639f47e6a1054",
+      "hermes_sha256": "834bd475f7324899bc2c88c0d45d4e8bde271a56bb7f1c08d59639f47e6a1054"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\scenario-detector.js",
+      "size": 5195,
+      "sha256": "2f2638052d0ddcd9e281c37cb1ad4a1a2ec3d3b79fedd4987df57ce4cc7f592c",
+      "hermes_sha256": "2f2638052d0ddcd9e281c37cb1ad4a1a2ec3d3b79fedd4987df57ce4cc7f592c"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\selection-prompt.js",
+      "size": 2582,
+      "sha256": "f3a30b527c8670f8aa8fe9b9133a6c43f6bffaf84d6eac4f70fd267a2a0307db",
+      "hermes_sha256": "f3a30b527c8670f8aa8fe9b9133a6c43f6bffaf84d6eac4f70fd267a2a0307db"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\tencent-docs-service.js",
+      "size": 52806,
+      "sha256": "35e49bbf215ba0789d6fce91bfb3b0fe65a83fdc5334770f1073d265df8c367d",
+      "hermes_sha256": "35e49bbf215ba0789d6fce91bfb3b0fe65a83fdc5334770f1073d265df8c367d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\common\\types.js",
+      "size": 173,
+      "sha256": "f7c956bafcfa826d4893f38f6d4a7eccbe23e9fbdb13e93688ad5f8036970f4d",
+      "hermes_sha256": "f7c956bafcfa826d4893f38f6d4a7eccbe23e9fbdb13e93688ad5f8036970f4d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\lib\\mcp\\stdio-mcp-bridge.js",
+      "size": 646884,
+      "sha256": "ee1fc52fae8bdf57fda1993ef198d41660a21b0d4a993b75c9b7f61e424c97b2",
+      "hermes_sha256": "ee1fc52fae8bdf57fda1993ef198d41660a21b0d4a993b75c9b7f61e424c97b2"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\bin\\win32-x64\\.editor-sdk-version",
+      "size": 9,
+      "sha256": "f94e0dc2d1656a17f2279d4d9ed5f03af5f56e03e7af26148bbf1f709075fb97",
+      "hermes_sha256": "f94e0dc2d1656a17f2279d4d9ed5f03af5f56e03e7af26148bbf1f709075fb97"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\engine\\bin\\win32-x64\\editor_sdk.exe",
+      "size": 214451016,
+      "sha256": "b15ee76fc11296651a03386552dce9e6b81d2908c5133bfed21c7d8dbc7da3f1",
+      "hermes_sha256": "b15ee76fc11296651a03386552dce9e6b81d2908c5133bfed21c7d8dbc7da3f1"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.codebuddy-plugin\\plugin.json",
+      "size": 897,
+      "sha256": "c18f6b1a6c2fb2eb708712532a15fd776054e0e12c4a497e1a24f6c4be716fcb",
+      "hermes_sha256": "c18f6b1a6c2fb2eb708712532a15fd776054e0e12c4a497e1a24f6c4be716fcb"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\10176",
+      "size": 88,
+      "sha256": "e9124b50476b22592caa99fe929e7483ac9294c3c04767d7b9c09bf7b06f2436",
+      "hermes_sha256": "e9124b50476b22592caa99fe929e7483ac9294c3c04767d7b9c09bf7b06f2436"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\10556",
+      "size": 88,
+      "sha256": "b58bac41971d7adb2921259ccde1abb16a489dd08ec1bb454bd9e51635f01900",
+      "hermes_sha256": "b58bac41971d7adb2921259ccde1abb16a489dd08ec1bb454bd9e51635f01900"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\13768",
+      "size": 88,
+      "sha256": "7df57d7abd920b65f5e00ca016f8dfe42384a8d5a25301635cbcd0b4f24d28fb",
+      "hermes_sha256": "7df57d7abd920b65f5e00ca016f8dfe42384a8d5a25301635cbcd0b4f24d28fb"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\19664",
+      "size": 88,
+      "sha256": "34bfa3c33b560f6feb75b746850f772eca3ed69fb35362e9b15e02bf3b84336e",
+      "hermes_sha256": "34bfa3c33b560f6feb75b746850f772eca3ed69fb35362e9b15e02bf3b84336e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\20560",
+      "size": 88,
+      "sha256": "15c72c7cef117e3fadf97658ee92960cc1209c2ad004c12b51b4d42e79f96bea",
+      "hermes_sha256": "15c72c7cef117e3fadf97658ee92960cc1209c2ad004c12b51b4d42e79f96bea"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\21048",
+      "size": 88,
+      "sha256": "9554604ae6c22e9e226766be01d9e1046b3c5a8a0b80d9054245ec4a2e73d420",
+      "hermes_sha256": "9554604ae6c22e9e226766be01d9e1046b3c5a8a0b80d9054245ec4a2e73d420"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\25716",
+      "size": 88,
+      "sha256": "e811b65b789a1784fa387e410ebc0670df25a13920a163661d244514f6e790d1",
+      "hermes_sha256": "e811b65b789a1784fa387e410ebc0670df25a13920a163661d244514f6e790d1"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\28008",
+      "size": 88,
+      "sha256": "711318b0b249c39e8f8474f35761064a37a6ca5b145581606db012bcfa00e824",
+      "hermes_sha256": "711318b0b249c39e8f8474f35761064a37a6ca5b145581606db012bcfa00e824"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\29544",
+      "size": 88,
+      "sha256": "7f73d1d85aff6c6d5132d06bb3b2480b62fad5ebae73ab8e77c49c33c9cd1209",
+      "hermes_sha256": "7f73d1d85aff6c6d5132d06bb3b2480b62fad5ebae73ab8e77c49c33c9cd1209"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\37372",
+      "size": 88,
+      "sha256": "03bc7c88a2e5904d2d53c17e966c29516873aad596e4d0b8b449a6cb9aa77c8e",
+      "hermes_sha256": "03bc7c88a2e5904d2d53c17e966c29516873aad596e4d0b8b449a6cb9aa77c8e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\37880",
+      "size": 88,
+      "sha256": "8abeff46971fbac2e8582bf8413655143a1aa9ebe17f097115529fabbd6a3ba5",
+      "hermes_sha256": "8abeff46971fbac2e8582bf8413655143a1aa9ebe17f097115529fabbd6a3ba5"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\42264",
+      "size": 88,
+      "sha256": "123ba90775da7dde24b1f1117f259f8fe8b5c564b7e5d35e0b356c6dba697d3e",
+      "hermes_sha256": "123ba90775da7dde24b1f1117f259f8fe8b5c564b7e5d35e0b356c6dba697d3e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\50900",
+      "size": 88,
+      "sha256": "369ca7d5af991882b17170689aa7ceb5df1c3b46df5ce280e0476d4ef4d1dcf5",
+      "hermes_sha256": "369ca7d5af991882b17170689aa7ceb5df1c3b46df5ce280e0476d4ef4d1dcf5"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\53176",
+      "size": 88,
+      "sha256": "566b9caf1a5475b76bc977333a3930b3204ae8efab16246fce65f0fd79f72003",
+      "hermes_sha256": "566b9caf1a5475b76bc977333a3930b3204ae8efab16246fce65f0fd79f72003"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\56760",
+      "size": 88,
+      "sha256": "7c08681b559d193941443d7186df6325e180c9c92f820233f0288d2bef8f8705",
+      "hermes_sha256": "7c08681b559d193941443d7186df6325e180c9c92f820233f0288d2bef8f8705"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\57132",
+      "size": 88,
+      "sha256": "0a9a702666d9f1785e86326a5a713002feacd8c900b8d0ba3e3edfd546727a83",
+      "hermes_sha256": "0a9a702666d9f1785e86326a5a713002feacd8c900b8d0ba3e3edfd546727a83"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\6872",
+      "size": 87,
+      "sha256": "fa37e037fc1fcf64f26bca229d2d6c2af38146eea2bf5bbc4779e1ece3058882",
+      "hermes_sha256": "fa37e037fc1fcf64f26bca229d2d6c2af38146eea2bf5bbc4779e1ece3058882"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\69992",
+      "size": 88,
+      "sha256": "279f3a87553974975e6323ed845d2aa9ab9c70abcd50c8ebbf76600c64cd7e87",
+      "hermes_sha256": "279f3a87553974975e6323ed845d2aa9ab9c70abcd50c8ebbf76600c64cd7e87"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\74860",
+      "size": 88,
+      "sha256": "6558475ed0f4824e0ca754db9f56c8d96f1e588599f4d41a8eaa95ec74a56b86",
+      "hermes_sha256": "6558475ed0f4824e0ca754db9f56c8d96f1e588599f4d41a8eaa95ec74a56b86"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\.in_use\\7616",
+      "size": 87,
+      "sha256": "cf070e83216593d1b7f3236f5d3561ce78ba3d645ca79498c61cb067864a960b",
+      "hermes_sha256": "cf070e83216593d1b7f3236f5d3561ce78ba3d645ca79498c61cb067864a960b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\agents\\doc-converter.md",
+      "size": 16534,
+      "sha256": "f7299df4004e7932aaf09df4c194987eb38b1d1cd5f0d90fafd1883eaa0d78f7",
+      "hermes_sha256": "f7299df4004e7932aaf09df4c194987eb38b1d1cd5f0d90fafd1883eaa0d78f7"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\agents\\doc-formatter.md",
+      "size": 25333,
+      "sha256": "adc5a53119b6e715d0e3b3f9ff3fb375cf0dce9396bad8b007898ec62dd758e7",
+      "hermes_sha256": "adc5a53119b6e715d0e3b3f9ff3fb375cf0dce9396bad8b007898ec62dd758e7"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\agents\\doc-writer.md",
+      "size": 14886,
+      "sha256": "cce9d83a9b999dc9aa5df67a76d8cedfc898d645706ba86debadbdedc6140d09",
+      "hermes_sha256": "cce9d83a9b999dc9aa5df67a76d8cedfc898d645706ba86debadbdedc6140d09"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\hooks\\hooks.json",
+      "size": 563,
+      "sha256": "88f2bac0c55b8195285a8c4c45025fd487b031c8ba2212bbd1f0f96189b11e84",
+      "hermes_sha256": "88f2bac0c55b8195285a8c4c45025fd487b031c8ba2212bbd1f0f96189b11e84"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\brief-compose\\SKILL.md",
+      "size": 8643,
+      "sha256": "9f901bbd71cebb715c905d17c933bfe32bed5e5d1df9ae3040043ab5c4b7c8ad",
+      "hermes_sha256": "9f901bbd71cebb715c905d17c933bfe32bed5e5d1df9ae3040043ab5c4b7c8ad"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\SKILL.md",
+      "size": 5215,
+      "sha256": "10043505d21297a0dae7ec21ce24e65e7da1aaa1b283cac5d39dd4d3cc2f894b",
+      "hermes_sha256": "10043505d21297a0dae7ec21ce24e65e7da1aaa1b283cac5d39dd4d3cc2f894b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\SKILL.md",
+      "size": 17366,
+      "sha256": "c38be42ce16024e25d7c626dbf2e7ffc553db0d59cae7db3380c74aa890aeda8",
+      "hermes_sha256": "c38be42ce16024e25d7c626dbf2e7ffc553db0d59cae7db3380c74aa890aeda8"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\format-extract\\run.py",
+      "size": 14752,
+      "sha256": "f4372228166baed72188dba9db1858852a42f9f3feb33de65993823a2d02cb43",
+      "hermes_sha256": "f4372228166baed72188dba9db1858852a42f9f3feb33de65993823a2d02cb43"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\format-extract\\SKILL.md",
+      "size": 10101,
+      "sha256": "5ab996b149645ebdd8bc65ddcf8e73216a260b99d653932928c321acac67bbaa",
+      "hermes_sha256": "5ab996b149645ebdd8bc65ddcf8e73216a260b99d653932928c321acac67bbaa"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\generate-fillable-contract-html\\SKILL.md",
+      "size": 1694,
+      "sha256": "375c64a2895aa132a266f6b011a7719f34aed160bdfca31277fe5991dd9583c5",
+      "hermes_sha256": "375c64a2895aa132a266f6b011a7719f34aed160bdfca31277fe5991dd9583c5"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\SKILL.md",
+      "size": 6533,
+      "sha256": "6980b2cfd3ea7bdb5715c68dbd602ba1b640471a5eaa7da5bbc9895b76a64d45",
+      "hermes_sha256": "6980b2cfd3ea7bdb5715c68dbd602ba1b640471a5eaa7da5bbc9895b76a64d45"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-to-doc\\SKILL.md",
+      "size": 11947,
+      "sha256": "a0b6e1af7c025caa5e0cb64bda4c5f9ccd160a7e22c6d1f50bda8d4bb3065890",
+      "hermes_sha256": "a0b6e1af7c025caa5e0cb64bda4c5f9ccd160a7e22c6d1f50bda8d4bb3065890"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\tdoc-orchestrator\\SKILL.md",
+      "size": 20423,
+      "sha256": "ad733bdce906a58867967b4c36872d6388273449371fbf806206be14bef0b459",
+      "hermes_sha256": "ad733bdce906a58867967b4c36872d6388273449371fbf806206be14bef0b459"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\tdoc-orchestrator\\references\\log-schema.md",
+      "size": 5226,
+      "sha256": "0e7e8ae7faa0911142b7298c98d000c23ef9c26118b912f98e2dae89763fdb57",
+      "hermes_sha256": "0e7e8ae7faa0911142b7298c98d000c23ef9c26118b912f98e2dae89763fdb57"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\tdoc-orchestrator\\references\\pipeline-state-protocol.md",
+      "size": 10694,
+      "sha256": "40a294b878a0aa790256f3c18aa8c2fd0f77271b4e256863a19d2d142164c5c8",
+      "hermes_sha256": "40a294b878a0aa790256f3c18aa8c2fd0f77271b4e256863a19d2d142164c5c8"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-to-doc\\scripts\\convert_doc.py",
+      "size": 12620,
+      "sha256": "9b326657f4ed55d203410774e61fe15caee439528a4d5295e75cbc05550679fe",
+      "hermes_sha256": "9b326657f4ed55d203410774e61fe15caee439528a4d5295e75cbc05550679fe"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-to-doc\\scripts\\edsdk.py",
+      "size": 21417,
+      "sha256": "c927eb6a7aa522cec8b0b27bd863b4e955bb27a73ee51cfca1ad2ed2216fbd13",
+      "hermes_sha256": "c927eb6a7aa522cec8b0b27bd863b4e955bb27a73ee51cfca1ad2ed2216fbd13"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-to-doc\\scripts\\preflight_check.py",
+      "size": 10681,
+      "sha256": "022260851000d69b737397642d3b05ad7522b32e6f69cac469dadcd670a09da3",
+      "hermes_sha256": "022260851000d69b737397642d3b05ad7522b32e6f69cac469dadcd670a09da3"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-to-doc\\scripts\\verify_output.py",
+      "size": 17842,
+      "sha256": "41340f1377d4892013ee2b29360d1b1b9b56f964e87dd1767044cdaa933e09f1",
+      "hermes_sha256": "41340f1377d4892013ee2b29360d1b1b9b56f964e87dd1767044cdaa933e09f1"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\references\\decoration-usage.md",
+      "size": 3465,
+      "sha256": "c9431a2c398e2cec71e0c063d2f1cb4aef38ef3970a186cb527a19b26373e239",
+      "hermes_sha256": "c9431a2c398e2cec71e0c063d2f1cb4aef38ef3970a186cb527a19b26373e239"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\references\\design-token-compliance.md",
+      "size": 2522,
+      "sha256": "689afbe49b5cd111e0e35caa8a44bf30179eac532a1eecfcac3a39f9e8523a02",
+      "hermes_sha256": "689afbe49b5cd111e0e35caa8a44bf30179eac532a1eecfcac3a39f9e8523a02"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\references\\genre-fit.md",
+      "size": 3945,
+      "sha256": "b80306fe968ff3555b3fb011dafe08f0649ae93b57fdcf71ee359ae395e7a181",
+      "hermes_sha256": "b80306fe968ff3555b3fb011dafe08f0649ae93b57fdcf71ee359ae395e7a181"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\references\\security-check.md",
+      "size": 4273,
+      "sha256": "f508331ac8edb04985df4398a1d8a62cf47a3080e3679104fea27504c1a20a1b",
+      "hermes_sha256": "f508331ac8edb04985df4398a1d8a62cf47a3080e3679104fea27504c1a20a1b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\references\\structural-integrity.md",
+      "size": 4777,
+      "sha256": "2f7c932e9b13fa7b469307b83f632999e5cec9ef5ed14dfd72ca006e8ff08c8d",
+      "hermes_sha256": "2f7c932e9b13fa7b469307b83f632999e5cec9ef5ed14dfd72ca006e8ff08c8d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\references\\typographic-quality.md",
+      "size": 4233,
+      "sha256": "543bb2d3aef74f505321ab88a31ada095d2de3b9a9e77a1869d773d65339f027",
+      "hermes_sha256": "543bb2d3aef74f505321ab88a31ada095d2de3b9a9e77a1869d773d65339f027"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\html-review\\scripts\\review_html.py",
+      "size": 34024,
+      "sha256": "8e5bc98410bd6824e984d0a9f5eb2e2886befa3a4cc2c624f1e1d35720a9de87",
+      "hermes_sha256": "8e5bc98410bd6824e984d0a9f5eb2e2886befa3a4cc2c624f1e1d35720a9de87"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\format-extract\\references\\cli-reference.md",
+      "size": 3851,
+      "sha256": "cdd511110efe18a57b6334ec3d5779d2066b057c7e853688206f573bd3b27815",
+      "hermes_sha256": "cdd511110efe18a57b6334ec3d5779d2066b057c7e853688206f573bd3b27815"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\format-extract\\references\\node-install.md",
+      "size": 1770,
+      "sha256": "a4eafb3487d57d8db0928f3e64a8be6e6ded7a92722e0901db9ecf23e326339a",
+      "hermes_sha256": "a4eafb3487d57d8db0928f3e64a8be6e6ded7a92722e0901db9ecf23e326339a"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\components\\callout.html",
+      "size": 2160,
+      "sha256": "aaf08d9e8330e4b4ad84bd4935b252fa21253257110ed9ffa1754be3de97b3d2",
+      "hermes_sha256": "aaf08d9e8330e4b4ad84bd4935b252fa21253257110ed9ffa1754be3de97b3d2"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\components\\data-card.html",
+      "size": 3598,
+      "sha256": "1a11eb8771b16c2d3d811ab9bba5d2a7a747806693371f37244a93170e287f57",
+      "hermes_sha256": "1a11eb8771b16c2d3d811ab9bba5d2a7a747806693371f37244a93170e287f57"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\components\\divider.html",
+      "size": 1652,
+      "sha256": "f31b566dcac9873292b862286bc37bd5990ee814fcef43366889a701fe5456cf",
+      "hermes_sha256": "f31b566dcac9873292b862286bc37bd5990ee814fcef43366889a701fe5456cf"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\components\\section-marker.html",
+      "size": 2374,
+      "sha256": "a5a902d436e3ff626b687a102d0071aec8b4e5f612745c471bf541647de6e302",
+      "hermes_sha256": "a5a902d436e3ff626b687a102d0071aec8b4e5f612745c471bf541647de6e302"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\academic-paper.md",
+      "size": 2971,
+      "sha256": "e4e573f48360edc464ccfaa1aa0a655713be88ad9b651d6059e14363ccd1c392",
+      "hermes_sha256": "e4e573f48360edc464ccfaa1aa0a655713be88ad9b651d6059e14363ccd1c392"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\annual-report.md",
+      "size": 3536,
+      "sha256": "f34221153f035611287528139fcbe562e0e2a72e3932c81408c99a9796049adb",
+      "hermes_sha256": "f34221153f035611287528139fcbe562e0e2a72e3932c81408c99a9796049adb"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\base.md",
+      "size": 9010,
+      "sha256": "a07621260d2abe1b96e3fe4652fcc0ed96b4e06e3fd1e2e3882bea7a1fa8dedb",
+      "hermes_sha256": "a07621260d2abe1b96e3fe4652fcc0ed96b4e06e3fd1e2e3882bea7a1fa8dedb"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\business-report.md",
+      "size": 6014,
+      "sha256": "397cde152513fee224b6f0e040fd140a599b3353a20cb0a05e01377ea27da7f3",
+      "hermes_sha256": "397cde152513fee224b6f0e040fd140a599b3353a20cb0a05e01377ea27da7f3"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\government-doc.md",
+      "size": 2639,
+      "sha256": "53b9ec8e96c4cd6af0dc04332922353aea472f64a722e04664306956a3209340",
+      "hermes_sha256": "53b9ec8e96c4cd6af0dc04332922353aea472f64a722e04664306956a3209340"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\legal-contract.md",
+      "size": 2588,
+      "sha256": "bbe454d0d9080782570a8a0fa1a1cad83d5ffb9c3178bc338b53e4d173ce2bb7",
+      "hermes_sha256": "bbe454d0d9080782570a8a0fa1a1cad83d5ffb9c3178bc338b53e4d173ce2bb7"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\meeting-minutes.md",
+      "size": 2277,
+      "sha256": "fa957ff5d03168406482f7a7f7760d26b5f8e1b50a5dbfa8509b0faecdc68dd4",
+      "hermes_sha256": "fa957ff5d03168406482f7a7f7760d26b5f8e1b50a5dbfa8509b0faecdc68dd4"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\prompts\\stock-research.md",
+      "size": 6879,
+      "sha256": "fab58aaee66ba3f25cdb2191095eafcaccd479a031842f682c14aba4876079d0",
+      "hermes_sha256": "fab58aaee66ba3f25cdb2191095eafcaccd479a031842f682c14aba4876079d0"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\academic-paper.html",
+      "size": 7025,
+      "sha256": "9b7c15702ae75c55774c535828e0873ce77d5ba3726652a9c8c72f6a5630f37d",
+      "hermes_sha256": "9b7c15702ae75c55774c535828e0873ce77d5ba3726652a9c8c72f6a5630f37d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\annual-report.html",
+      "size": 7073,
+      "sha256": "341553ab4d40f6460c73dc2d8b7cab338a8c2562b3dbf2cff67cce6fa57c99f0",
+      "hermes_sha256": "341553ab4d40f6460c73dc2d8b7cab338a8c2562b3dbf2cff67cce6fa57c99f0"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\base.html",
+      "size": 4208,
+      "sha256": "c975336b8bc04848862edc2e3f0994a7108db6c7e15f0388d8bb343554508b1f",
+      "hermes_sha256": "c975336b8bc04848862edc2e3f0994a7108db6c7e15f0388d8bb343554508b1f"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\business-report.html",
+      "size": 6920,
+      "sha256": "dcb117717175ed7c1229433ca751231ef1386e54546336750589e88b6ea74835",
+      "hermes_sha256": "dcb117717175ed7c1229433ca751231ef1386e54546336750589e88b6ea74835"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\government-doc.html",
+      "size": 4341,
+      "sha256": "a3a408c817b58b754f052002c78bda5e9d10eaeb4711e0d606461f85c73df609",
+      "hermes_sha256": "a3a408c817b58b754f052002c78bda5e9d10eaeb4711e0d606461f85c73df609"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\legal-contract.html",
+      "size": 4963,
+      "sha256": "b96104cf343e738a5b76962980a0f6dfaea18028752239d6e53ed12973d3d820",
+      "hermes_sha256": "b96104cf343e738a5b76962980a0f6dfaea18028752239d6e53ed12973d3d820"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\meeting-minutes.html",
+      "size": 5175,
+      "sha256": "a35ec3a251e58e2b2196928dc1c87ac08bfa0bffdf4881cd835e0eded8c9ccea",
+      "hermes_sha256": "a35ec3a251e58e2b2196928dc1c87ac08bfa0bffdf4881cd835e0eded8c9ccea"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\doc-typeset\\templates\\stock-research.html",
+      "size": 16438,
+      "sha256": "89e357a45faba4e190dadbb1a5601dcd70a2569bf670235c4f9e05607b89a071",
+      "hermes_sha256": "89e357a45faba4e190dadbb1a5601dcd70a2569bf670235c4f9e05607b89a071"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\scripts\\build_tokens.py",
+      "size": 4035,
+      "sha256": "3fbe718bccaca928f27fccf48b73daba5c12e9e789b36a2507364ada62024bcd",
+      "hermes_sha256": "3fbe718bccaca928f27fccf48b73daba5c12e9e789b36a2507364ada62024bcd"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\compiled\\academic-paper.json",
+      "size": 7514,
+      "sha256": "811ac4c0a6a80e72aa566ed59b90995b63bb8dac5c954b9a28423f71db37cfdf",
+      "hermes_sha256": "811ac4c0a6a80e72aa566ed59b90995b63bb8dac5c954b9a28423f71db37cfdf"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\compiled\\business-report.json",
+      "size": 8894,
+      "sha256": "51e42ba7a40af3ccbf36ebc05fae280f272e7f9b6be3fbc5056b1c05289093da",
+      "hermes_sha256": "51e42ba7a40af3ccbf36ebc05fae280f272e7f9b6be3fbc5056b1c05289093da"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\compiled\\general.json",
+      "size": 5678,
+      "sha256": "6ccfaa701c0737ff4379d304ffefd832136025d2b0218c6c98d17dfb77be8cee",
+      "hermes_sha256": "6ccfaa701c0737ff4379d304ffefd832136025d2b0218c6c98d17dfb77be8cee"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\compiled\\government-doc.json",
+      "size": 6089,
+      "sha256": "5e1a8838b8e49e2bfcb2af9b6718c49e32742592faff3529a33a8548f33088dd",
+      "hermes_sha256": "5e1a8838b8e49e2bfcb2af9b6718c49e32742592faff3529a33a8548f33088dd"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\compiled\\index.json",
+      "size": 318,
+      "sha256": "f2dde5f8a72b7fb43734080fe423a685b2fa6515045cab540d34180d8089f6ca",
+      "hermes_sha256": "f2dde5f8a72b7fb43734080fe423a685b2fa6515045cab540d34180d8089f6ca"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\compiled\\marketing-doc.json",
+      "size": 7215,
+      "sha256": "bd08997df7a1d318a5ecdc7dda36fc0ad088a277b2e7743b034d8cbaff66936d",
+      "hermes_sha256": "bd08997df7a1d318a5ecdc7dda36fc0ad088a277b2e7743b034d8cbaff66936d"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\rules\\gb-t-7713-academic.md",
+      "size": 3544,
+      "sha256": "0fd7f1081d8ebc1b4702105a985ca26028a75643d5d6394907ffdd7493cc8cc1",
+      "hermes_sha256": "0fd7f1081d8ebc1b4702105a985ca26028a75643d5d6394907ffdd7493cc8cc1"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\rules\\gb-t-7714-citation.md",
+      "size": 4644,
+      "sha256": "f9731669799984f2de67a5ac5b2d6849ca7bd545dd385c7b03b108c55018ad2a",
+      "hermes_sha256": "f9731669799984f2de67a5ac5b2d6849ca7bd545dd385c7b03b108c55018ad2a"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\rules\\gb-t-9704-government.md",
+      "size": 3017,
+      "sha256": "4c9be8179cb4dd5921a7d62a9844c72eff3aec4c27ab912575c7082520d8ab50",
+      "hermes_sha256": "4c9be8179cb4dd5921a7d62a9844c72eff3aec4c27ab912575c7082520d8ab50"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\themes\\academic-paper.json",
+      "size": 4111,
+      "sha256": "b377ccb375b9faf76f21d077e2ec665397c0e72dcb4f53bc4f55e6bd6ff78183",
+      "hermes_sha256": "b377ccb375b9faf76f21d077e2ec665397c0e72dcb4f53bc4f55e6bd6ff78183"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\themes\\business-modern.json",
+      "size": 4599,
+      "sha256": "82f793da70685f46e8e8d04c0ce08db048db38d3a382254db7ef25ff0a8dc55b",
+      "hermes_sha256": "82f793da70685f46e8e8d04c0ce08db048db38d3a382254db7ef25ff0a8dc55b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\themes\\creative-marketing.json",
+      "size": 3637,
+      "sha256": "420af2cf671f9d7caa6e160879ec4f3e2ab442985eff1e80d167279643369dab",
+      "hermes_sha256": "420af2cf671f9d7caa6e160879ec4f3e2ab442985eff1e80d167279643369dab"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\themes\\formal-government.json",
+      "size": 3219,
+      "sha256": "d59234e705ff30fa6f0a1e09ab9c7d8180c159ec5b3b79edbfdc9770d1b85450",
+      "hermes_sha256": "d59234e705ff30fa6f0a1e09ab9c7d8180c159ec5b3b79edbfdc9770d1b85450"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\skills\\design-token\\tokens\\themes\\modern-minimal.json",
+      "size": 2755,
+      "sha256": "474e763449137f4f15c2c600c52b453f1dec7c6e0eb5105888c092ee94a4572e",
+      "hermes_sha256": "474e763449137f4f15c2c600c52b453f1dec7c6e0eb5105888c092ee94a4572e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\scripts\\wb\\local\\resolve_output_docx_path.py",
+      "size": 5123,
+      "sha256": "5e6b6dd756b673a5379295c9567850f276063fb6154380fe6484697ec5d1e2f3",
+      "hermes_sha256": "5e6b6dd756b673a5379295c9567850f276063fb6154380fe6484697ec5d1e2f3"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\scripts\\wb\\local\\setup.sh",
+      "size": 4001,
+      "sha256": "1722d4e1e15988154811e06c3991406b643d18b46911c054362baf7169390337",
+      "hermes_sha256": "1722d4e1e15988154811e06c3991406b643d18b46911c054362baf7169390337"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\academic-paper-expert\\SKILL.md",
+      "size": 3077,
+      "sha256": "83fee77c50145ddffa1b350deb95422b455c08dfaf9df75c99ad8bc29bb1d800",
+      "hermes_sha256": "83fee77c50145ddffa1b350deb95422b455c08dfaf9df75c99ad8bc29bb1d800"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\SKILL.md",
+      "size": 4040,
+      "sha256": "905fd6830902d9aac53bbb2d38db9fb0331535e9efb865370aa7371038d7a0df",
+      "hermes_sha256": "905fd6830902d9aac53bbb2d38db9fb0331535e9efb865370aa7371038d7a0df"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\general-writer\\SKILL.md",
+      "size": 1961,
+      "sha256": "558f6ceca0f01bf5a798433fb4e1972592f127b6f527f3b9d7cba8f1b3822728",
+      "hermes_sha256": "558f6ceca0f01bf5a798433fb4e1972592f127b6f527f3b9d7cba8f1b3822728"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\legal-contract-expert\\SKILL.md",
+      "size": 2974,
+      "sha256": "54a3249f8f1655b75e828b6ef68591dc36a0bafe50e029e8a486cf331e63754f",
+      "hermes_sha256": "54a3249f8f1655b75e828b6ef68591dc36a0bafe50e029e8a486cf331e63754f"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\poetry-prose-expert\\SKILL.md",
+      "size": 2842,
+      "sha256": "d5eae35bede2c178193ff2d3565e2175af62ab3a3538c3c41974364253be654c",
+      "hermes_sha256": "d5eae35bede2c178193ff2d3565e2175af62ab3a3538c3c41974364253be654c"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\science-writing-expert\\SKILL.md",
+      "size": 2803,
+      "sha256": "66e3d24c97a890bcc90c70ea587714114a3239faf3f87a80f7db77036516498a",
+      "hermes_sha256": "66e3d24c97a890bcc90c70ea587714114a3239faf3f87a80f7db77036516498a"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\stock-research-report-expert\\SKILL.md",
+      "size": 5182,
+      "sha256": "89396ee40bab5a4e23a8129739a7694d97a4a8eca8fa32efe41783749347af0f",
+      "hermes_sha256": "89396ee40bab5a4e23a8129739a7694d97a4a8eca8fa32efe41783749347af0f"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\SKILL.md",
+      "size": 4024,
+      "sha256": "704fc9bfbdfb26534b6869ead8c010b7e23a22f1d44d8a6bb73f1ccefedcc4db",
+      "hermes_sha256": "704fc9bfbdfb26534b6869ead8c010b7e23a22f1d44d8a6bb73f1ccefedcc4db"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\work-report-expert\\SKILL.md",
+      "size": 2882,
+      "sha256": "3a7616239c51e09a8d6d349ada63db94847df87e28974099696bc8a28985653b",
+      "hermes_sha256": "3a7616239c51e09a8d6d349ada63db94847df87e28974099696bc8a28985653b"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\anti-patterns.md",
+      "size": 2765,
+      "sha256": "1c6f91950c3bd18150c143d8b73699266b248f3c84ad4d3c2e6c2092900c2172",
+      "hermes_sha256": "1c6f91950c3bd18150c143d8b73699266b248f3c84ad4d3c2e6c2092900c2172"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\arch-design.md",
+      "size": 2762,
+      "sha256": "9cdb8f7d09292200da316715ce59fe4e976b20c0baa6cd7aec810c66053fc82e",
+      "hermes_sha256": "9cdb8f7d09292200da316715ce59fe4e976b20c0baa6cd7aec810c66053fc82e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\article-diagnosis.md",
+      "size": 2349,
+      "sha256": "7f72088a694033cebb9be74924730d5df589b8245e7b6676d1bdc6d67c0bf151",
+      "hermes_sha256": "7f72088a694033cebb9be74924730d5df589b8245e7b6676d1bdc6d67c0bf151"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\project-docs.md",
+      "size": 2171,
+      "sha256": "26f2672ad3a3928b6002ea23a7787986b5f2f4b63236fce208985b8982e397d8",
+      "hermes_sha256": "26f2672ad3a3928b6002ea23a7787986b5f2f4b63236fce208985b8982e397d8"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\tech-article.md",
+      "size": 4060,
+      "sha256": "3c7cdadb4ee959be7babef3da9d353b22db864cc5f90001d6b09797f6b78b198",
+      "hermes_sha256": "3c7cdadb4ee959be7babef3da9d353b22db864cc5f90001d6b09797f6b78b198"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\tech-tutorial.md",
+      "size": 3089,
+      "sha256": "dc2d4d9347a94aca3819d7b5e8d58abb6f4c43a8df2a2f30856b672c27f2d450",
+      "hermes_sha256": "dc2d4d9347a94aca3819d7b5e8d58abb6f4c43a8df2a2f30856b672c27f2d450"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\examples\\article-comparison.md",
+      "size": 3329,
+      "sha256": "b3372a3665d9da08db18e33f86a970ece802bb168a4c437156e36e71d7fb86c3",
+      "hermes_sha256": "b3372a3665d9da08db18e33f86a970ece802bb168a4c437156e36e71d7fb86c3"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\examples\\article-deep-dive.md",
+      "size": 4271,
+      "sha256": "2b8730df0b44294548e483da0d342a1e439cf2d8225001ce96a963e405b71f39",
+      "hermes_sha256": "2b8730df0b44294548e483da0d342a1e439cf2d8225001ce96a963e405b71f39"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\examples\\article-experience.md",
+      "size": 3775,
+      "sha256": "d297b3ffd01909a6d5d28ea40f30c9918746fc7a00df6e13163a329ba24e2a26",
+      "hermes_sha256": "d297b3ffd01909a6d5d28ea40f30c9918746fc7a00df6e13163a329ba24e2a26"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\tech-blog-expert\\references\\examples\\index.md",
+      "size": 1048,
+      "sha256": "364639d7ff82cbc61eb27329aebb8e9f631d1902dcc1cc7cb8b9b8a6f998b7c3",
+      "hermes_sha256": "364639d7ff82cbc61eb27329aebb8e9f631d1902dcc1cc7cb8b9b8a6f998b7c3"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\stock-research-report-expert\\references\\structure_contract.md",
+      "size": 7849,
+      "sha256": "ff53f1dfcf77d32cd06ce99095a27dd4e8c0bf5af2007337b0686fd4881a9c34",
+      "hermes_sha256": "ff53f1dfcf77d32cd06ce99095a27dd4e8c0bf5af2007337b0686fd4881a9c34"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\legal-contract-expert\\assets\\README.md",
+      "size": 396,
+      "sha256": "3742c6346024aa1b0c7389604935700d45c78deb22c9788a8b3e870918e300af",
+      "hermes_sha256": "3742c6346024aa1b0c7389604935700d45c78deb22c9788a8b3e870918e300af"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\legal-contract-expert\\references\\anti-patterns.md",
+      "size": 5000,
+      "sha256": "1764be0f9acbeb005c7775159c4b27c67be32e3006abf90c23c71da8fc9903e6",
+      "hermes_sha256": "1764be0f9acbeb005c7775159c4b27c67be32e3006abf90c23c71da8fc9903e6"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\legal-contract-expert\\references\\terms-library.md",
+      "size": 4732,
+      "sha256": "658700f567ae372783fc1965c4a3276305349b2b2aa5554c7a9dff81c26333b8",
+      "hermes_sha256": "658700f567ae372783fc1965c4a3276305349b2b2aa5554c7a9dff81c26333b8"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\legal-contract-expert\\scripts\\README.md",
+      "size": 499,
+      "sha256": "9f3ff9d381b38dbf70cec9790a56226d14f543ad90170338af313ef5cad38d40",
+      "hermes_sha256": "9f3ff9d381b38dbf70cec9790a56226d14f543ad90170338af313ef5cad38d40"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\general-writer\\assets\\README.md",
+      "size": 334,
+      "sha256": "653b0ccf0887bf39a0ba7a52de16ab2449efa6813c354523dd01cb4d37939f74",
+      "hermes_sha256": "653b0ccf0887bf39a0ba7a52de16ab2449efa6813c354523dd01cb4d37939f74"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\general-writer\\references\\doc-type-matrix.md",
+      "size": 4708,
+      "sha256": "800936e693c45e84fa15c975b2bf7cf2df78e967e4d53eb7b0dcefb7c7348e41",
+      "hermes_sha256": "800936e693c45e84fa15c975b2bf7cf2df78e967e4d53eb7b0dcefb7c7348e41"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\general-writer\\references\\quality-framework.md",
+      "size": 3849,
+      "sha256": "e7625a8abb4138873db3e45944122adf447930f4edd730420390493fee3627bd",
+      "hermes_sha256": "e7625a8abb4138873db3e45944122adf447930f4edd730420390493fee3627bd"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\general-writer\\scripts\\README.md",
+      "size": 377,
+      "sha256": "aef83d27de6d2a2704c8043f573214d5e94490106eec5cc09a6c20ba03ae02b8",
+      "hermes_sha256": "aef83d27de6d2a2704c8043f573214d5e94490106eec5cc09a6c20ba03ae02b8"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\anti-patterns.md",
+      "size": 2419,
+      "sha256": "9e5ba1ff1a2a64514aa9ed00b016641c10bb98b4321004067abfff5158728f7c",
+      "hermes_sha256": "9e5ba1ff1a2a64514aa9ed00b016641c10bb98b4321004067abfff5158728f7c"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\brand-copy.md",
+      "size": 2990,
+      "sha256": "ccc75ae60c25e9b9ab01c932a654eae8997b9f0b7ad7c1ec45b92790d1ce36f2",
+      "hermes_sha256": "ccc75ae60c25e9b9ab01c932a654eae8997b9f0b7ad7c1ec45b92790d1ce36f2"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\copy-diagnosis.md",
+      "size": 2168,
+      "sha256": "b1fc549501847d9525e483678143d6c3a76d5dbd625c10d8d4da45d30e0dabd5",
+      "hermes_sha256": "b1fc549501847d9525e483678143d6c3a76d5dbd625c10d8d4da45d30e0dabd5"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\email-marketing.md",
+      "size": 2526,
+      "sha256": "6e5f1d67ee0fdb75892f3b417f89f6a09e2e0c5f489f03f9e058ed4d00dccb1f",
+      "hermes_sha256": "6e5f1d67ee0fdb75892f3b417f89f6a09e2e0c5f489f03f9e058ed4d00dccb1f"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\product-copy.md",
+      "size": 2553,
+      "sha256": "f0d4a89f4c748df405d957ab8590e0a280412dae9ce65c8ce5f90b86b14c52ee",
+      "hermes_sha256": "f0d4a89f4c748df405d957ab8590e0a280412dae9ce65c8ce5f90b86b14c52ee"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\social-media.md",
+      "size": 2890,
+      "sha256": "737274cf1bac56b3337f55935646770f70b7020d5ed4f42d9b47e7588ad6b416",
+      "hermes_sha256": "737274cf1bac56b3337f55935646770f70b7020d5ed4f42d9b47e7588ad6b416"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\examples\\brand-functional.md",
+      "size": 1640,
+      "sha256": "1ff1d00a61f18dc69b043d5cc16db1cc317eb45413b0a55690cf7df4140a64cb",
+      "hermes_sha256": "1ff1d00a61f18dc69b043d5cc16db1cc317eb45413b0a55690cf7df4140a64cb"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\examples\\email-cold.md",
+      "size": 2246,
+      "sha256": "fa6b7fe1f38f06e5b19cf99cf4663e3114ed1b01bbc228085f8267b189b7bd4e",
+      "hermes_sha256": "fa6b7fe1f38f06e5b19cf99cf4663e3114ed1b01bbc228085f8267b189b7bd4e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\examples\\index.md",
+      "size": 1557,
+      "sha256": "e2a5f94532e1bba8814adf1db7e29fba21813fc3ac6d23e279a0fea300897cc1",
+      "hermes_sha256": "e2a5f94532e1bba8814adf1db7e29fba21813fc3ac6d23e279a0fea300897cc1"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\examples\\product-premium.md",
+      "size": 1937,
+      "sha256": "b0e4dec72ac82bd8ea3d0ca1a5170b81d5aa56f9834f7255f91e780b37bb2175",
+      "hermes_sha256": "b0e4dec72ac82bd8ea3d0ca1a5170b81d5aa56f9834f7255f91e780b37bb2175"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\experts\\business-copy-expert\\references\\examples\\social-xiaohongshu.md",
+      "size": 2339,
+      "sha256": "33a934cbc8878c892ca6cbec93f5998d16bd727f2924d947bd4c62c53af9802e",
+      "hermes_sha256": "33a934cbc8878c892ca6cbec93f5998d16bd727f2924d947bd4c62c53af9802e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\core\\engines\\critic-generator\\engine.md",
+      "size": 15421,
+      "sha256": "fef103ac078ab220f31da4470ba8287304446f3acfb7c015b6ad59f8efba3b9e",
+      "hermes_sha256": "fef103ac078ab220f31da4470ba8287304446f3acfb7c015b6ad59f8efba3b9e"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\core\\engines\\critic-generator\\README.md",
+      "size": 5669,
+      "sha256": "f70bdbf3ddee8be94f2cb900e35a960175ebdf358c37aa57619017ab48cc4944",
+      "hermes_sha256": "f70bdbf3ddee8be94f2cb900e35a960175ebdf358c37aa57619017ab48cc4944"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\core\\engines\\deep-research\\engine.md",
+      "size": 11565,
+      "sha256": "40e2aca2d02b7ef5e1420f30d7bf87fa2cc7d2d27c3e3cea05e3211d92e030e9",
+      "hermes_sha256": "40e2aca2d02b7ef5e1420f30d7bf87fa2cc7d2d27c3e3cea05e3211d92e030e9"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\core\\engines\\deep-research\\README.md",
+      "size": 4955,
+      "sha256": "52234186f8433bd57d18227f38be5b912aa297256016b0eb6c87425a6ea5ef40",
+      "hermes_sha256": "52234186f8433bd57d18227f38be5b912aa297256016b0eb6c87425a6ea5ef40"
+    },
+    {
+      "target": "workbuddy-office-runtime\\5.9.3\\docx\\agents\\references\\engine-capabilities.md",
+      "size": 1688,
+      "sha256": "07f5d02ddc4f6f68d9bb4002103090a5d4670706110788c9b1a250c15b7584bc",
+      "hermes_sha256": "07f5d02ddc4f6f68d9bb4002103090a5d4670706110788c9b1a250c15b7584bc"
+    }
+  ],
+  "hash_note": "sha256 records the imported source baseline. hermes_sha256 records the adapted current target; they need not match.",
+  "hermes_extensions": [
+    {
+      "target": "plugins\\uniwork-kits\\office\\word_compose.py",
+      "sha256": "1fbcd6f30498900605dc187de48aff1365e39258e6d448d79fa68c30515834ae",
+      "purpose": "Single-pass original converter, draft preservation and pagination checks"
+    },
+    {
+      "target": "plugins\\uniwork-kits\\office\\word_exact.py",
+      "sha256": "5e7a4f9881fc28f33246e061c1329469d07d42c626ba5c56ce94d7dc788c5555",
+      "purpose": "Package-preserving scoped text changes"
+    },
+    {
+      "target": "plugins\\uniwork-kits\\office\\word_restyle.py",
+      "sha256": "d1c04ee8b05d40482da898f16f1d201030166365cd2896e2f0e8342c8aa0e6a3",
+      "purpose": "Source-preserving report typography and verified native TOC"
+    },
+    {
+      "target": "plugins\\uniwork-kits\\office\\word_refresh.py",
+      "sha256": "3b04c894312e4f5664c6772eb25b74770508284ae264e1153842ae6abc33cfd0",
+      "purpose": "Owned LibreOffice pagination/index update"
+    },
+    {
+      "target": "plugins\\uniwork-kits\\office\\word_quality.py",
+      "sha256": "2ff65bac675554211f8af02458931eb3a313197b9ee6663c036d91d3df86d1b1",
+      "purpose": "Bounded independent review against the original scoped user request"
+    },
+    {
+      "target": "plugins\\uniwork-kits\\office\\tools.py",
+      "sha256": "7d8e74523d501bee7cc2374c4621d88d81fa883e4f84fbc899eaca3f739eb9d4",
+      "purpose": "Profile/workspace tool boundary"
+    },
+    {
+      "target": "plugins\\uniwork-kits\\office\\seed.py",
+      "sha256": "610817a992f9997006a603489e936b6506b96425e5527a4795dfb0643e13d249",
+      "purpose": "Native skill installation"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/word_sections.py",
+      "sha256": "4a7f82811192ed5566555848aacd678d57ea0af9724f9ba428aa061cb92a5ea6",
+      "purpose": "Office edge adapter validated in supplemental 2026-11-08 acceptance"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/word_fidelity.py",
+      "sha256": "2c1c5000a23e9346e89765bedb04997dbb3411ea088796b9b1dde8622773dbd4",
+      "purpose": "Office edge adapter validated in supplemental 2026-11-08 acceptance"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/word_reference.py",
+      "sha256": "8d7f68eef9c44d509d371bd6fa5759626118720dd634dbe7949d5af0c594ff07",
+      "purpose": "Office edge adapter validated in supplemental 2026-11-08 acceptance"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/word_source_facts.py",
+      "sha256": "a45634d9f09969b49e5b5770c663a13c4bcb511f66d374d209308ecd9a017298",
+      "purpose": "Office edge adapter validated in supplemental 2026-11-08 acceptance"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/word_table_layout.py",
+      "sha256": "4c37fe2ede54dd498b19c2c493abb5d115730cadb31f68e7fc7d4d3570cbbfd2",
+      "purpose": "Office edge adapter validated in supplemental 2026-11-08 acceptance"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/sheet_exact.py",
+      "sha256": "94ca14f7e02f3c280160d9be605cf8dfe817858d526e446bc0b132695ea4e0b7",
+      "purpose": "Office edge adapter validated in supplemental 2026-11-08 acceptance"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/sheet_layout.py",
+      "sha256": "f908e709aeceed2ca14e52934a6123c58e5a98236439d596c23e12a3a171b66e",
+      "purpose": "Office edge adapter validated in supplemental 2026-11-08 acceptance"
+    },
+    {
+      "target": "plugins/uniwork-kits/office/file_lock.py",
+      "sha256": "9619ffb1577adfc788336eb4fdbf1766ad634d8c90bda37cfa4a404d722b9e23",
+      "purpose": "Cross-process Office publication lock with real contention tests"
+    }
+  ]
+}
