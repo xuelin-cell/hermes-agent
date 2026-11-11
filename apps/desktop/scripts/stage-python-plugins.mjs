@@ -1,39 +1,48 @@
-import { cpSync, existsSync, mkdirSync, rmSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { isMain } from '../../../scripts/build/frontend-common.mjs'
+
+/** The one plugin list: the build's dependency collector reads the same file. */
+export function personalPlugins(source) {
+  const manifest = JSON.parse(
+    readFileSync(join(resolve(source), 'apps/desktop/assets/desktop-plugins.json'), 'utf8')
+  )
+
+  return manifest.personal.map(entry => ({ source: entry.source, target: entry.target }))
+}
 
 /** Build one complete discovery root; never assemble plugins inside an account home. */
 export function stagePythonPlugins({ source, out, bundledKits = null }) {
   source = resolve(source)
   const destination = join(resolve(out), 'python-plugins')
   const official = join(source, 'plugins')
-  const personal = join(source, 'apps/desktop/assets/uniagentgate-plugin')
-  for (const input of [official, personal]) {
+  const assets = join(source, 'apps/desktop/assets')
+  const personal = personalPlugins(source)
+  for (const input of [official, ...personal.map(entry => join(assets, entry.source))]) {
     const rel = relative(input, destination)
     const reverse = relative(destination, input)
     if (!rel || (!rel.startsWith('..') && !isAbsolute(rel)) || (!reverse.startsWith('..') && !isAbsolute(reverse))) {
       throw new Error('Plugin output must be outside plugin sources')
     }
   }
-  if (!statSync(join(personal, 'plugin.yaml')).isFile() || !statSync(official).isDirectory()) {
+  if (
+    !statSync(official).isDirectory() ||
+    personal.some(entry => !statSync(join(assets, entry.source, 'plugin.yaml')).isFile())
+  ) {
     throw new Error('Desktop Python plugin inputs are incomplete')
   }
   const filter = file => basename(file) !== '__pycache__' && !file.endsWith('.pyc')
   rmSync(destination, { recursive: true, force: true })
   mkdirSync(destination, { recursive: true })
   cpSync(official, destination, { recursive: true, dereference: true, filter })
-  cpSync(personal, join(destination, 'uniagentgate'), { recursive: true, dereference: true, filter })
-  cpSync(join(source, 'apps/desktop/assets/unisearch-plugin'), join(destination, 'unisearch'), {
-    recursive: true,
-    dereference: true,
-    filter
-  })
-  cpSync(join(source, 'apps/desktop/assets/usage-telemetry-plugin'), join(destination, 'uniwork-telemetry'), {
-    recursive: true,
-    dereference: true,
-    filter
-  })
+  for (const entry of personal) {
+    cpSync(join(assets, entry.source), join(destination, entry.target), {
+      recursive: true,
+      dereference: true,
+      filter
+    })
+  }
   if (bundledKits) {
     // desktop-mt: 内置套件和专家打包时才从 GitCode 拉进 agent-payload 快照，源码 plugins/ 里没有；
     // 安装版后端从这里发现插件，autoseed 在 uniwork-kits/bundled 下找包，所以一起放进来。

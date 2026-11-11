@@ -345,9 +345,11 @@ def prepare_in_worker(request: BuildRequest) -> Path:
         cwd=request.source, env=env)
     payload = None
     if request.variant != "light":
+        from scripts.bundles.plugin_dependencies import personal_plugin_names
         payload = prepare_native(out=request.source / "apps/desktop/build/agent-payload", ref=request.commit,
                                  source=request.source, cache=Path(env["UV_CACHE_DIR"]),
-                                 tools=request.cache / "tools", env=env)
+                                 tools=request.cache / "tools", env=env,
+                                 plugin_assets=tuple(personal_plugin_names(request.source)))
     require_source(request.source, request.commit)
     prepared = PreparedDesktop.record(request, python=python, node=node, icon_python=icon_python,
                                       native=native, packager=packager / "prepared.json", payload=payload,

@@ -41,8 +41,12 @@ if __name__ == "__main__":
             except importlib.metadata.PackageNotFoundError:
                 missing = True
         if missing:
+            from pm.client import ensure_tools_for_sync
             from pm.plugin_inputs import Candidates
 
+            # 依赖同步前先把工具装进 store 并挂到 PATH：core 的锁里有 android 专用的
+            # psutil git 源，全量解析会去拉它，打包版进程 PATH 上没有 git 就会失败。
+            ensure_tools_for_sync()
             pm.sync_venv(explicit=True, plugins=Candidates([Path(__file__).parent]))
         # Chromium remains managed by Hermes PM, never by raw playwright/pip commands.
         pm.ensure("chromium")

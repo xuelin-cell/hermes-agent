@@ -218,6 +218,11 @@ async function writeUniSearchConfiguration(
 }
 
 /** 后台依赖准备沿可信账号的 PM 选择运行，失败只影响需要该依赖的抓取能力。 */
+// PM 的依赖同步上限是 1800s（pm/environment.py 的 sync 超时）；这里留出余量，
+// 让 PM 自己超时退出，而不是把子进程砍在半路——半路被杀会留下未提交的世代，
+// 下次启动继续重装同一批依赖。
+const PREPARE_TIMEOUT_MS = 1_900_000
+
 export function prepareUniSearchRuntime(context: PreparedLocalContext, root: string): Promise<void> {
   const accountEnv = accountDesktopEnvironment(context)
   const backend = accountSourceBackend(context, [], accountEnv)
@@ -230,7 +235,7 @@ export function prepareUniSearchRuntime(context: PreparedLocalContext, root: str
         env: { ...accountEnv, ...backend.env, HERMES_BUNDLED_PLUGINS: root },
         cwd: context.installationRoot,
         windowsHide: true,
-        timeout: 180_000
+        timeout: PREPARE_TIMEOUT_MS
       },
       error => {
         if (error) {
