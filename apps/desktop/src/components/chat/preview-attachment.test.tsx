@@ -130,6 +130,12 @@ it('本机文件显示上传、打开所在文件夹、另存为，不再单独�
   render(<PreviewAttachment target="report.csv" />)
   expect(screen.getByRole('button', { name: 'Save as' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: 'Open preview' })).toBeNull()
+
+  // 操作按钮只放图标，文案只出现在无障碍名称和悬停提示里，不占文件名宽度。
+  for (const name of ['Save as', 'Open containing folder']) {
+    expect(screen.getByRole('button', { name }).textContent).toBe('')
+  }
+
   await act(async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open containing folder' }))
   })

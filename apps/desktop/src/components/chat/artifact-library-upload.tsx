@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Tip } from '@/components/ui/tooltip'
 import type { HermesConnection } from '@/global'
 import { useI18n } from '@/i18n'
-import { Upload } from '@/lib/icons'
+import { CloudUpload } from '@/lib/icons'
 import { localPreviewTarget } from '@/lib/local-preview'
 import { previewShareSource } from '@/lib/preview-share-source'
 import type { PreviewTarget } from '@/store/preview'
@@ -61,7 +61,7 @@ export function ArtifactLibraryUpload(props: ArtifactLibraryUploadProps) {
   return <ScopedUpload {...props} artifact={props.artifact} key={JSON.stringify([scope, props.artifact])} />
 }
 
-/** 卡片显示文字，预览工具栏使用带提示的图标，共用同一个上传弹窗。 */
+/** 卡片和预览工具栏都只显示云朵上传图标，文案放在悬停提示里，共用同一个上传弹窗。 */
 function ScopedUpload({ artifact, appearance = 'card' }: ArtifactLibraryUploadProps & { artifact: ArtifactRecord }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -73,12 +73,11 @@ function ScopedUpload({ artifact, appearance = 'card' }: ArtifactLibraryUploadPr
         <Button
           aria-label={label}
           onClick={() => setOpen(true)}
-          size={appearance === 'toolbar' ? 'icon-sm' : 'sm'}
+          size="icon-sm"
           type="button"
           variant={appearance === 'toolbar' ? 'ghost' : 'outline'}
         >
-          <Upload aria-hidden="true" />
-          {appearance === 'card' && label}
+          <CloudUpload aria-hidden="true" className={appearance === 'card' ? 'size-4' : undefined} />
         </Button>
       </Tip>
       {open && (
